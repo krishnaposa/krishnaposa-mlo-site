@@ -160,3 +160,42 @@ img { max-width:100%; height:auto; display:block; }
 @media (max-width:560px){
   .footer-grid{ grid-template-columns: 1fr; }
 }
+/* --- Fix: prevent horizontal scroll and allow flex children to shrink --- */
+html, body { overflow-x: hidden; }
+.topbar, .brand, .nav, .nav .menu { min-width: 0; }
+
+/* --- Mobile: ensure dropdown overrides the desktop flex menu (match specificity) --- */
+@media (max-width: 900px){
+  .nav .menu{
+    display: none !important;                 /* hide ribbon on small screens */
+    position: absolute; right: 20px; top: 60px;
+    background: var(--panel);
+    padding: 12px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.1);
+    width: min(92vw, 320px);
+    box-shadow: 0 20px 40px rgba(0,0,0,.35);
+    backdrop-filter: saturate(160%) blur(8px);
+  }
+  .nav .menu.show{ display: block !important; }
+  .menu-toggle{ display:block; }
+}
+
+/* --- Desktop: keep horizontal layout, but allow wrap if needed instead of overflow --- */
+@media (min-width: 901px){
+  .nav .menu{ display: flex; flex-wrap: wrap; gap: 14px; }
+}
+
+/* --- CTA row: force wrapping on small screens; full-width buttons when very narrow --- */
+.hero .cta{ display: flex; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 520px){
+  .hero .cta a{ flex: 1 1 100%; }
+}
+
+/* --- Give content some room above the sticky bar on mobile so it doesn't overlap --- */
+@media (max-width: 900px){
+  main{ padding-bottom: 84px; } /* adjust if your sticky bar is taller/shorter */
+}
+
+/* --- Safety: avoid long link text causing overflow in the header --- */
+.nav .menu a{ white-space: nowrap; }     /* keeps items tidy in one line inside dropdown */
