@@ -15,7 +15,15 @@ const POSTS = [
     excerpt:
       "Indexed Universal Life (IUL) is one of the most misunderstood financial tools. Learn why most IULs fail and the 6 principles that separate strong designs from ticking time bombs.",
     tags: ["IUL", "Insurance", "Wealth"]
-  }
+  },
+  {
+    title: "My 5-Year Experience with Prosper P2P Investing",
+    url: "blog-prosper-returns.html",
+    date: "2025-08-23",
+    excerpt:
+      "After five years on Prosper, my returns tell a different story than the advertised 8–12%. Here’s how defaults, fees, and prepayments cut my net return to 3.8%.",
+    tags: ["Investing", "P2P Lending", "Personal Finance"]
+ }
   // Add future posts below this line
 ];
 /* Render cards */
