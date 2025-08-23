@@ -1,77 +1,119 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" class="no-js">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5fff">
+
   <title>My 5-Year Experience with Prosper P2P Investing</title>
-  <link rel="stylesheet" href="styles.css"/>
+  <meta name="description" content="After five years investing on Prosper, my real returns told a different story than the advertised 8–12%. Here’s why defaults, fees, and prepayments cut my net return to 3.8%.">
+
+  <!-- Canonical & social -->
+  <link rel="canonical" href="https://www.krishposa.com/blog-prosper-returns.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="My 5-Year Experience with Prosper P2P Investing">
+  <meta property="og:description" content="After five years on Prosper, my returns told a different story than the advertised 8–12%.">
+  <meta property="og:url" content="https://www.krishposa.com/blog-prosper-returns.html">
+  <meta property="og:image" content="https://www.krishposa.com/assets/img/IMG_1512.jpeg">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- ✅ Use your real site assets -->
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="icon" href="assets/img/favicon.png" type="image/png">
+  <script defer src="assets/js/script.js"></script>
 </head>
 <body>
-
-  <!-- Header / Nav (same as other blog pages) -->
-  <header class="site-header">
-    <a class="brand" href="index.html">KP</a>
-    <div class="site-title">
-      <h1>Krish Posa</h1>
-      <p>Mortgage Loan Officer · NMLS #2533287</p>
+<header class="site-header">
+  <div class="container topbar">
+    <div class="brand">
+      <a href="index.html" class="logo" aria-label="Home">KP</a>
+      <div class="brand-text">
+        <h1>Krish Posa</h1>
+        <p>Mortgage Loan Officer · NMLS #2533287</p>
+      </div>
     </div>
-    <nav class="site-nav">
-      <a href="index.html">Home</a>
-      <a href="loan-programs.html">Loan Programs</a>
-      <a href="resources.html">Resources</a>
-      <a href="about.html">About</a>
-      <a href="blog.html">Blog</a>
-      <a href="https://www.myperfectlending.com" target="_blank" rel="noopener">Apply Now</a>
+
+    <!-- ✅ Same nav markup/classes -->
+    <nav class="nav" id="site-nav">
+      <button class="menu-toggle" aria-label="Toggle menu" aria-controls="primary-menu" aria-expanded="false">☰</button>
+      <ul class="menu" id="primary-menu" hidden>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="loans.html">Loan Programs</a></li>
+        <li><a href="resources.html">Resources</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="blog.html">Blog</a></li>
+        <li><a class="btn" href="https://www.myperfectlending.com/" target="_blank" rel="noopener">Apply Now</a></li>
+      </ul>
     </nav>
-  </header>
+  </div>
+</header>
 
-  <main class="container blog-article">
-    <article>
+<main>
+  <!-- Page hero -->
+  <section class="page-hero">
+    <div class="container">
       <h1>My 5-Year Experience with Prosper P2P Investing</h1>
-      <p class="muted">Published: August 23, 2025 · Investing · P2P Lending · Personal Finance</p>
+      <p class="small">Published: <time datetime="2025-08-23">August 23, 2025</time> · Investing · P2P Lending · Personal Finance</p>
+    </div>
+  </section>
 
+  <!-- Article body -->
+  <section class="content">
+    <div class="container narrow">
       <p>
-        About five years ago, I allocated a slice of my portfolio to peer-to-peer lending on <strong>Prosper</strong>.
-        The headline borrower rates (often 8–12% depending on grade) looked attractive and felt like a nice diversifier.
+        About five years ago, I allocated part of my portfolio to peer-to-peer lending on <strong>Prosper</strong>.
+        At the start, advertised borrower rates of 8–12% looked attractive and seemed like a good diversifier.
       </p>
 
       <p>
-        As the notes aged, late payments, defaults, servicing/collection fees, prepayments, and idle cash between allocations
-        chipped away at the yield.
+        Over time, reality was different. Defaults, late payments, servicing fees, and early repayments steadily
+        chipped away at returns. Idle cash between allocations created additional drag. As the loans aged, my return curve
+        peaked near double digits, then steadily fell.
       </p>
 
       <figure>
-        <img src="assets/img/IMG_1512.jpeg" alt="Prosper 5-Year Rate of Return graph" style="max-width:100%;height:auto;"/>
-        <figcaption>My Prosper return curve from May 2020 to July 2025. Current all-time return: 3.80%.</figcaption>
+        <img src="assets/img/IMG_1512.jpeg" alt="Prosper 5-Year Rate of Return graph" style="max-width:100%; height:auto;">
+        <figcaption>My Prosper return curve from May 2020 to July 2025, ending at 3.8%.</figcaption>
       </figure>
 
       <p>
-        Net-net, my <strong>all-time return settled around 3.8%</strong>—well below note rates once defaults, fees, cash drag,
-        and taxes are factored in. Not “bad,” just different from the headline APRs.
+        In the end, my <strong>all-time return settled around 3.8%</strong>—a far cry from the advertised yields.
+        That doesn’t make Prosper a bad platform, but it highlights the gap between headline rates and
+        what investors actually keep after defaults, fees, and taxes.
       </p>
+
+      <hr>
 
       <h2>Key Takeaways</h2>
-      <ul>
-        <li>Defaults + servicing/collection fees are the biggest haircut.</li>
-        <li>Prepayments cap interest and force reinvestment at uncertain rates.</li>
-        <li>Idle cash between allocations hurts returns.</li>
-        <li>Taxed as ordinary income reduces the net further.</li>
+      <ul class="checklist">
+        <li>Defaults and servicing fees are the biggest drag on returns.</li>
+        <li>Prepayments cap interest earned and create reinvestment risk.</li>
+        <li>Idle cash between notes reduces annualized yield.</li>
+        <li>Ordinary income tax treatment lowers net take-home returns.</li>
       </ul>
 
-      <p><a href="blog.html">← Back to Blog</a></p>
-    </article>
+      <hr>
 
-    <aside class="cta">
-      <p><strong>Got mortgage questions?</strong></p>
+      <h2>Final Word</h2>
       <p>
-        <a href="tel:+16786676761">Call</a>
-        &nbsp;&nbsp;
-        <a href="sms:+16786676761">Text</a>
-        &nbsp;&nbsp;
-        <a href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book</a>
+        For me, Prosper was a useful experiment but not a long-term core holding. A steady <strong>3–4%</strong>
+        return is decent compared to a bank account, but not enough to justify the risk versus other investments.
       </p>
-    </aside>
-  </main>
 
+      <p><a href="blog.html">← Back to Blog</a></p>
+    </div>
+  </section>
+
+  <!-- Sticky mobile CTA -->
+  <div class="sticky-cta" role="region" aria-label="Quick actions">
+    <a class="btn" href="tel:+16784818252">Call</a>
+    <a class="btn" href="sms:+16784818252">Text</a>
+    <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book</a>
+  </div>
+</main>
+
+<!-- Footer -->
+<div id="footer"></div>
+<script defer src="assets/js/footer.js"></script>
 </body>
 </html>
