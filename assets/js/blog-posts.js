@@ -23,7 +23,15 @@ const POSTS = [
     excerpt:
       "After five years on Prosper, my returns tell a different story than the advertised 8–12%. Here’s how defaults, fees, and prepayments cut my net return to 3.8%.",
     tags: ["Investing", "P2P Lending", "Personal Finance"]
- }
+ },
+{
+  title: "My Experience Investing in Artwork Through Masterworks",
+  url: "blog-art-investing.html",
+  date: "2025-08-23",
+  excerpt:
+    "In 2020, I bought into a Basquiat painting on Masterworks and sold in 2024 for a 26.25% profit. Sounds good, but over four years the annualized return wasn’t as strong as it looked.",
+  tags: ["Investing", "Alternative Assets", "Art"]
+}
   // Add future posts below this line
 ];
 /* Render cards */
