@@ -1,0 +1,9 @@
+{
+  "devDependencies": {
+    "javascript-obfuscator": "^4.1.1"
+  },
+  "scripts": {
+    "build:js": "javascript-obfuscator assets/js --output assets/js/dist --compact true --control-flow-flattening true --self-defending true --string-array true --string-array-encoding base64 --string-array-threshold 0.75"
+  }
+}
+
