@@ -11,7 +11,10 @@ html,body{
   line-height:1.5;
   font-size: clamp(16px, 1.5vw + 12px, 18px);
 }
-
+.announce-ai{background:#eef4ff;border-bottom:1px solid #dbe7ff}
+.announce-ai .container{display:flex;gap:.75rem;align-items:center;padding:.6rem 1rem}
+.announce-ai a{font-weight:700}
+.announce-ai button{margin-left:auto;background:transparent;border:0;font-size:1.2rem;cursor:pointer}
 .tag-ai{font-size:.7rem;padding:.1rem .35rem;border:1px solid #1a73e8;border-radius:.5rem;margin-left:.4rem}
 
 /* Make AI reasoning full-strength text */
