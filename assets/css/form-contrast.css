@@ -75,3 +75,30 @@
 /* Small info “i” badge used near County fields */
 .help { color: #d1d7e3; border:1px solid rgba(209,215,227,.6); }
 .help:hover { background: rgba(209,215,227,.15); }
+
+/* ===== Realtor Co-Brand (Agent Card) ===== */
+#agentCard label {
+  color: var(--form-label);
+  font-weight: 600;
+}
+
+#agentCard input, #agentCard select, #agentCard textarea {
+  color: var(--form-text);
+  background-color: var(--form-bg);
+  border-color: var(--form-border);
+}
+
+#agentCard ::placeholder {
+  color: var(--form-placeholder);
+  opacity: 1;
+}
+
+#agentCard .tiny, #agentCard .small, #agentCard .help-tip {
+  color: var(--form-help);
+}
+
+#agentCard input:focus, #agentCard select:focus, #agentCard textarea:focus {
+  outline: 2px solid var(--form-focus);
+  outline-offset: 2px;
+  border-color: var(--form-focus-border);
+}
