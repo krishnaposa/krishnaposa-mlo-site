@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-KJZPQKBM');</script>
+  <!-- End Google Tag Manager -->
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5fff">
+
+  <title>Get Pre-Approved | Krish Posa, Mortgage Loan Officer</title>
+  <meta name="description" content="Fast buyer funnel for Georgia homebuyers. Quick qualify, instant payment estimate, 5-minute pre-approval intake, and easy scheduling.">
+
+  <link rel="canonical" href="https://www.krishposa.com/buyer-funnel.html">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Get Pre-Approved | Krish Posa, MLO">
+  <meta property="og:description" content="Know your payment, get pre-approved, and shop with confidence in Georgia.">
+  <meta property="og:url" content="https://www.krishposa.com/buyer-funnel.html">
+  <meta property="og:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Get Pre-Approved | Krish Posa, MLO">
+  <meta name="twitter:description" content="Quick qualify, instant estimate, and pre-approval intake.">
+  <meta name="twitter:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
+
+  <!-- CSS & Favicon -->
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="icon" href="assets/img/favicon.png" type="image/png">
+
+  <!-- JS -->
+  <script defer src="assets/js/script.js"></script>
+</head>
+<body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End GTM (noscript) -->
+
+  <!-- Shared header -->
+  <div id="header"></div>
+  <script defer src="assets/js/header.js"></script>
+
+  <!-- Optional announce ribbon (kept consistent with index) -->
+  <div id="announce-ai" class="announce-ai" role="region" aria-label="New: AI Loan Advisor" hidden>
+    <div class="container">
+      <strong>New:</strong> Try our <a href="loan-advisor.html">AI Loan Advisor</a> for instant product guidance and estimated rate ranges.
+      <button type="button" id="announce-ai-close" aria-label="Close">×</button>
+    </div>
+  </div>
+
+  <main>
+    <!-- HERO -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <h1>Get Pre-Approved and Shop With Confidence</h1>
+          <p>Start with a quick qualify and instant payment estimate, submit a five minute pre-approval form, and book a call. I keep you and your agent aligned from offer to close.</p>
+          <div class="cta">
+            <a class="btn btn-blue" href="#qualify" onclick="window.dataLayer=window.dataLayer||[];dataLayer.push({event:'funnel_cta_top'});">Start Now</a>
+            <a class="btn-outline btn-green" id="bookTop" target="_blank" rel="noopener">Book a Call</a>
+          </div>
+          <ul class="trust">
+            <li>Georgia • Purchase and Refinance</li>
+            <li>NMLS #2533287 • Equal Housing Lender</li>
+          </ul>
+        </div>
+        <div class="hero-photo-card">
+          <img src="assets/img/headshot.jpg" alt="Krish Posa" width="600" height="600" loading="lazy" decoding="async">
+          <p class="small center">Your mortgage guide in Atlanta, GA</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEPS -->
+    <section class="container narrow" aria-label="Steps">
+      <div class="grid-3">
+        <div class="card">
+          <h4>1) Quick Qualify</h4>
+          <p>Share basics so I can tailor your numbers and next steps.</p>
+        </div>
+        <div class="card">
+          <h4>2) Instant Estimate</h4>
+          <p>See principal and interest, taxes and insurance, and a rough DTI.</p>
+        </div>
+        <div class="card">
+          <h4>3) Pre-Approval + Book</h4>
+          <p>Submit a five minute intake and grab a time to talk.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- QUICK QUALIFY -->
+    <section id="qualify" class="home-tools">
+      <div class="container">
+        <div class="card" style="padding:1rem 1.25rem">
+          <h2 style="margin:0 0 .25rem">Quick Qualify</h2>
+          <p class="small" style="margin:.25rem 0 1rem">Enter a few details. I will calculate an estimate and DTI. This is not a loan offer.</p>
+
+          <form id="qualifyForm" novalidate>
+            <div class="grid-3">
+              <div class="field">
+                <label for="zip">Target ZIP</label>
+                <input id="zip" name="zip" inputmode="numeric" pattern="\\d{5}" placeholder="30301" required>
+                <p class="tiny">Helps estimate taxes and insurance</p>
+              </div>
+              <div class="field">
+                <label for="price">Home Price</label>
+                <input id="price" name="price" inputmode="decimal" placeholder="400000" required>
+              </div>
+              <div class="field">
+                <label for="down">Down Payment</label>
+                <input id="down" name="down" inputmode="decimal" placeholder="80000 or 20%">
+              </div>
+            </div>
+
+            <div class="grid-3" style="margin-top:.75rem">
+              <div class="field">
+                <label for="rate">Estimated Interest Rate</label>
+                <input id="rate" name="rate" inputmode="decimal" placeholder="6.75%">
+              </div>
+              <div class="field">
+                <label for="fico">Credit Score Range</label>
+                <select id="fico" name="fico" required>
+                  <option value="">Select</option>
+                  <option>760+</option><option>740-759</option><option>720-739</option>
+                  <option>700-719</option><option>680-699</option><option>660-679</option>
+                  <option>640-659</option><option>620-639</option><option><620</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="program">Loan Program</label>
+                <select id="program" name="program">
+                  <option value="conventional">Conventional</option>
+                  <option value="fha">FHA</option>
+                  <option value="va">VA</option>
+                  <option value="usda">USDA</option>
+                  <option value="jumbo">Jumbo</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="grid-3" style="margin-top:.75rem">
+              <div class="field">
+                <label for="income">Gross Monthly Income</label>
+                <input id="income" name="income" inputmode="decimal" placeholder="8500" required>
+              </div>
+              <div class="field">
+                <label for="debts">Monthly Debts</label>
+                <input id="debts" name="debts" inputmode="decimal" placeholder="Car, cards, loans">
+              </div>
+              <div class="field" aria-hidden="true"></div>
+            </div>
+
+            <div class="cta" style="gap:.5rem;margin-top:.75rem">
+              <button class="btn btn-blue" type="button" id="estimateBtn">Get Payment Estimate</button>
+              <button class="btn-outline" type="reset" id="resetBtn">Reset</button>
+            </div>
+
+            <div class="progress" aria-hidden="true" style="margin-top:.75rem">
+              <div id="bar" style="height:8px;border-radius:999px;background:linear-gradient(90deg,#60a5fa,#38bdf8);width:0%"></div>
+            </div>
+            <p id="formMsg" class="small"></p>
+          </form>
+
+          <!-- Estimate results -->
+          <div id="estimatesWrap" class="grid-3" style="margin-top:1rem;display:none">
+            <div class="card">
+              <strong>Principal + Interest</strong>
+              <p id="pAndI" style="font-size:1.1rem;margin:.35rem 0 0">$—</p>
+            </div>
+            <div class="card">
+              <strong>Taxes + Insurance</strong>
+              <p id="taxes" style="font-size:1.1rem;margin:.35rem 0 0">$—</p>
+            </div>
+            <div class="card">
+              <strong>Estimated Total Monthly</strong>
+              <p id="totalPay" style="font-size:1.1rem;margin:.35rem 0 0">$—</p>
+            </div>
+          </div>
+          <p id="dtiLine" class="small" style="display:none"></p>
+          <p id="pmiLine" class="small" style="display:none"></p>
+
+          <div class="cta" style="gap:.5rem;margin-top:.75rem">
+            <a class="btn" href="#preapproval">Continue to Pre-Approval</a>
+            <a class="btn-outline btn-green" id="bookMid" target="_blank" rel="noopener">Book a Call</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRE-APPROVAL INTAKE -->
+    <section id="preapproval" class="container narrow">
+      <div class="card">
+        <h2 style="margin:0 0 .25rem">Pre-Approval Intake</h2>
+        <p class="small" style="margin:.25rem 0 1rem">Five minute form. Secure. I will follow up with next steps and a document checklist.</p>
+
+        <!-- TODO: Replace action with your Formspree/Netlify/Zapier endpoint -->
+        <form id="intakeForm" action="https://formspree.io/f/your_form_id" method="POST">
+          <div class="grid-3">
+            <div class="field">
+              <label for="fullName">Full Name</label>
+              <input id="fullName" name="fullName" placeholder="Your name" required>
+            </div>
+            <div class="field">
+              <label for="email">Email</label>
+              <input id="email" name="email" type="email" placeholder="you@email.com" required>
+            </div>
+            <div class="field">
+              <label for="phone">Phone</label>
+              <input id="phone" name="phone" inputmode="tel" placeholder="(###) ###-####" required>
+            </div>
+          </div>
+
+          <div class="grid-3" style="margin-top:.75rem">
+            <div class="field">
+              <label for="timeline">Buying Timeline</label>
+              <select id="timeline" name="timeline">
+                <option>ASAP</option><option>30-60 days</option><option>60-90 days</option><option>3-6 months</option><option>6+ months</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="occupancy">Occupancy</label>
+              <select id="occupancy" name="occupancy">
+                <option>Primary residence</option><option>Second home</option><option>Investment</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="source">How did you hear about me</label>
+              <select id="source" name="source">
+                <option>Realtor partner</option><option>Instagram</option><option>Facebook</option><option>Google</option><option>Friend or family</option><option>Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid-3" style="margin-top:.75rem">
+            <div class="field">
+              <label for="estPrice">Target Price</label>
+              <input id="estPrice" name="estPrice" inputmode="decimal" placeholder="400000">
+            </div>
+            <div class="field">
+              <label for="estDown">Down Payment</label>
+              <input id="estDown" name="estDown" placeholder="80000 or 20%">
+            </div>
+            <div class="field">
+              <label for="employment">Employment</label>
+              <select id="employment" name="employment">
+                <option>W2</option><option>Self-employed</option><option>1099</option><option>Mixed</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid-3" style="margin-top:.75rem">
+            <div class="field">
+              <label for="coBorrower">Co-Borrower</label>
+              <select id="coBorrower" name="coBorrower">
+                <option>No</option><option>Yes</option>
+              </select>
+            </div>
+            <div class="field" aria-hidden="true"></div>
+            <div class="field" aria-hidden="true"></div>
+          </div>
+
+          <div class="field" style="margin-top:.75rem">
+            <label for="notes">Notes</label>
+            <textarea id="notes" name="notes" rows="4" placeholder="Anything I should know"></textarea>
+          </div>
+
+          <!-- Hidden fields auto-filled -->
+          <input type="hidden" name="estMonthly" id="h_estMonthly">
+          <input type="hidden" name="estDTI" id="h_estDTI">
+          <input type="hidden" name="agentName" id="h_agentName">
+          <input type="hidden" name="agentEmail" id="h_agentEmail">
+          <input type="hidden" name="utm" id="h_utm">
+
+          <div class="cta" style="gap:.5rem;margin-top:1rem">
+            <button class="btn btn-blue" type="submit">Submit Pre-Approval</button>
+            <a class="btn-outline btn-green" id="bookBottom" target="_blank" rel="noopener">Book a Call</a>
+          </div>
+
+          <p class="small" style="margin-top:.5rem">You will receive a confirmation email and a document checklist.</p>
+        </form>
+      </div>
+    </section>
+
+    <!-- REALTOR CO-BRAND -->
+    <section class="container narrow">
+      <div class="card">
+        <h2 style="margin:0 0 .25rem">Realtor Co-Brand</h2>
+        <p class="small" style="margin:.25rem 0 1rem">Already shopping with an agent. Add their info and I will keep everyone aligned.</p>
+
+        <div class="grid-3" style="align-items:center">
+          <div class="field">
+            <label for="agent_name">Agent Name</label>
+            <input id="agent_name" placeholder="First Last">
+          </div>
+          <div class="field">
+            <label for="agent_firm">Brokerage</label>
+            <input id="agent_firm" placeholder="Firm or Team">
+          </div>
+          <div class="field">
+            <label for="agent_email">Agent Email</label>
+            <input id="agent_email" placeholder="agent@broker.com">
+          </div>
+        </div>
+
+        <div class="grid-3" style="margin-top:.75rem;align-items:end">
+          <div class="field">
+            <label for="agent_logo">Agent Logo URL</label>
+            <input id="agent_logo" placeholder="https://…/logo.png">
+          </div>
+          <div class="field" aria-hidden="true"></div>
+          <div class="cta" style="justify-content:flex-end">
+            <button class="btn" type="button" id="saveAgent">Save Agent</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:1rem;display:flex;gap:12px;align-items:center">
+          <img id="agentAvatar" alt="Agent logo or headshot" src="" width="64" height="64" style="border-radius:50%;object-fit:cover">
+          <div>
+            <div style="font-weight:700" id="agentName">No agent added</div>
+            <div class="small" id="agentFirm">You can add one above</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQS -->
+    <section class="container narrow">
+      <div class="card">
+        <h2 style="margin:0 0 .25rem">Questions</h2>
+        <details>
+          <summary>Will this affect my credit</summary>
+          <p class="small">We can start with a soft pull when appropriate. Full pre-approval needs a hard pull.</p>
+        </details>
+        <details>
+          <summary>How accurate is the estimate</summary>
+          <p class="small">It is a solid starting point. Final numbers depend on property taxes, insurance, credit, and program.</p>
+        </details>
+        <details>
+          <summary>How long does pre-approval take</summary>
+          <p class="small">If your documents are ready most files can move quickly.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- CHECKLIST -->
+    <section class="container narrow">
+      <div class="card">
+        <h2 style="margin:0 0 .25rem">Document Checklist</h2>
+        <ul class="small">
+          <li>Last two pay stubs and last two years W-2 or 1099</li>
+          <li>Last two years tax returns if self-employed</li>
+          <li>Two months bank statements for down payment and reserves</li>
+          <li>Photo ID</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- DISCLOSURE -->
+    <section class="container narrow">
+      <div class="card">
+        <h2 style="margin:0 0 .25rem">Disclosure</h2>
+        <p class="small">Payment estimates are for education only and are not a loan offer. Rates, APR, mortgage insurance, taxes, and insurance vary by borrower profile and property. Subject to credit approval and program guidelines.</p>
+      </div>
+    </section>
+
+    <!-- Sticky mobile CTA (consistent with index) -->
+    <div class="sticky-cta" role="region" aria-label="Quick actions">
+      <a class="btn" href="tel:+16784818252">Call</a>
+      <a class="btn" href="sms:+16784818252">Text</a>
+      <a class="btn btn-blue" id="bookSticky" target="_blank" rel="noopener">Book</a>
+    </div>
+  </main>
+  <!-- Shared footer -->
+  <div id="footer"></div>
+  <script src="assets/js/footer.js"></script>
+  <script defer src="assets/js/buyer-funnel.js"></script>
+</body>
+</html>
