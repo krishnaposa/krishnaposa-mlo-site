@@ -93,14 +93,18 @@
               <label for="aff_zip">ZIP (for taxes)</label>
               <input id="aff_zip" inputmode="numeric" pattern="\\d{5}" placeholder="30301">
             </div>
-            <div class="field">
-              <label for="aff_county">County (optional)</label>
-              <select id="aff_county">
-                <option value="">— Select county —</option>
-                <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
-                <option>DeKalb</option><option>Forsyth</option>
-              </select>
-            </div>
+           <div class="field">
+  <label for="aff_county">
+    County (optional)
+    <span class="help" aria-label="Info" title="Uses midpoint county-wide effective property tax rates to tighten monthly estimates. Actual taxes vary by city millage and exemptions (e.g., homestead).">i</span>
+  </label>
+  <select id="aff_county">
+    <option value="">— Select county —</option>
+    <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
+    <option>DeKalb</option><option>Forsyth</option>
+  </select>
+  <span class="help-tip">If both County and ZIP are provided, County takes priority for taxes.</span>
+</div>
             <div class="field">
               <label for="aff_down">Down Payment</label>
               <input id="aff_down" inputmode="decimal" placeholder="80000 or 20%">
@@ -139,14 +143,18 @@
               <label for="pay_zip">ZIP (for taxes)</label>
               <input id="pay_zip" inputmode="numeric" pattern="\\d{5}" placeholder="30301">
             </div>
-            <div class="field">
-              <label for="pay_county">County (optional)</label>
-              <select id="pay_county">
-                <option value="">— Select county —</option>
-                <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
-                <option>DeKalb</option><option>Forsyth</option>
-              </select>
-            </div>
+          <div class="field">
+  <label for="pay_county">
+    County (optional)
+    <span class="help" aria-label="Info" title="Uses midpoint county-wide effective property tax rates to tighten monthly estimates. Actual taxes vary by city millage and exemptions (e.g., homestead).">i</span>
+  </label>
+  <select id="pay_county">
+    <option value="">— Select county —</option>
+    <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
+    <option>DeKalb</option><option>Forsyth</option>
+  </select>
+  <span class="help-tip">If both County and ZIP are provided, County takes priority for taxes.</span>
+</div>
             <div class="field">
               <label for="pay_program">Program</label>
               <select id="pay_program">
