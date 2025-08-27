@@ -12,16 +12,35 @@ html,body{
   font-size: clamp(16px, 1.5vw + 12px, 18px);
 }
 /* Announcement ribbon (top) */
-.announce-ai{
-  background: #eaf2ff;            /* brighter */
-  border-bottom: 1px solid #c8dcff;
+/* Announcement ribbon */
+.announce-ai {
+  background: #0b5fff;         /* bright brand blue */
+  color: #fff;                 /* white text */
+  font-weight: 600;
+  border-bottom: 2px solid #0845c6;
 }
-.announce-ai .container{
-  display:flex;gap:.75rem;align-items:center;padding:.7rem 1rem;
-}
-.announce-ai a{ font-weight:700; color:#0b5fff; text-decoration:underline; }
-#announce-ai button{ margin-left:auto;background:transparent;border:0;font-size:1.2rem;cursor:pointer }
 
+.announce-ai .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.announce-ai a {
+  color: #fff;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.announce-ai button {
+  background: transparent;
+  border: 0;
+  color: #fff;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
 /* Home tools promo card */
 .home-tools .card{
   background: #f3f8ff;            /* light blue wash */
