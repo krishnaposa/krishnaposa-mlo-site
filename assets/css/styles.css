@@ -281,3 +281,12 @@ html, body { overflow-x: hidden; }
 @media (max-width:520px){
   .hero .cta a{ flex:1 1 100%; }
 }
+.help {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:18px; height:18px; margin-left:6px; border-radius:50%;
+  border:1px solid rgba(148,163,184,.5); font-size:12px; cursor:help;
+}
+.help:hover { background:rgba(148,163,184,.15); }
+.help-tip {
+  display:block; font-size:12px; color:#6b7280; margin-top:4px;
+}
