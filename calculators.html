@@ -32,6 +32,58 @@
 
   <!-- CSS & Favicon -->
   <link rel="stylesheet" href="assets/css/styles.css">
+    <style>
+  /* --- Calculator form contrast fixes --- */
+  /* Scope to the four calculator cards so we don't affect other pages */
+  #affCard label,
+  #payCard label,
+  #refiCard label,
+  #extraCard label {
+    color: #e5e7eb;          /* strong light gray for dark backgrounds */
+    font-weight: 600;
+  }
+
+  /* Inputs/selects readable text + clearer borders */
+  #affCard input, #affCard select, #affCard textarea,
+  #payCard input, #payCard select, #payCard textarea,
+  #refiCard input, #refiCard select, #refiCard textarea,
+  #extraCard input, #extraCard select, #extraCard textarea {
+    color: #f8fafc;          /* near-white text */
+    background-color: #0f172a;  /* dark slate bg */
+    border-color: rgba(148,163,184,.45); /* slightly brighter border */
+  }
+
+  /* Placeholder text brighter for readability */
+  #affCard ::placeholder,
+  #payCard ::placeholder,
+  #refiCard ::placeholder,
+  #extraCard ::placeholder {
+    color: #a8b3c7;          /* muted but readable on dark bg */
+    opacity: 1;              /* ensure consistent across browsers */
+  }
+
+  /* Tiny/helper text (like the county tip) a touch brighter */
+  #affCard .tiny, #affCard .small, #affCard .help-tip,
+  #payCard .tiny, #payCard .small, #payCard .help-tip,
+  #refiCard .tiny, #refiCard .small, #refiCard .help-tip,
+  #extraCard .tiny, #extraCard .small, #extraCard .help-tip {
+    color: #b6c2d4;
+  }
+
+  /* Focus ring more visible for accessibility */
+  #affCard input:focus, #affCard select:focus, #affCard textarea:focus,
+  #payCard input:focus, #payCard select:focus, #payCard textarea:focus,
+  #refiCard input:focus, #refiCard select:focus, #refiCard textarea:focus,
+  #extraCard input:focus, #extraCard select:focus, #extraCard textarea:focus {
+    outline: 2px solid rgba(96,165,250,.55); /* blue focus */
+    outline-offset: 2px;
+    border-color: rgba(96,165,250,.65);
+  }
+
+  /* Small info icon contrast */
+  .help { color: #d1d7e3; border-color: rgba(209,215,227,.6); }
+  .help:hover { background: rgba(209,215,227,.15); }
+</style>
   <link rel="icon" href="assets/img/favicon.png" type="image/png">
 
   <!-- Site JS -->
