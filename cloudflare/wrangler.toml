@@ -1,0 +1,9 @@
+name = "loan-advisor"
+main = "src/loan-advisor.js"
+compatibility_date = "2025-08-27"
+
+# Optional: bind environment variables (secrets set via CLI)
+[vars]
+# Nothing public here; keep secrets out of git
+
+# If you later add KV/D1/etc., declare bindings here.
