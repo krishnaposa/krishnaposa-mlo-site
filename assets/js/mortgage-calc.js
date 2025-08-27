@@ -1,14 +1,24 @@
 /* assets/js/mortgage-calc.js
    Lightweight mortgage helpers exposed as window.MortgageCalc
-   Usage: const { cfg, parseNumber, fmtCurrency, fmtPercent, calc } = MortgageCalc;
+   Reusable across pages (buyer funnel, calculators, blog embeds).
 */
 (function () {
+  // ---------- Config ----------
   const cfg = {
     defaultRatePct: 6.75,     // default nominal APR, percent
     defaultPmiPct: 0.6,       // annual PMI as percent of price if LTV>80 (rough)
     insurancePerYear: 1200,   // fallback homeowners insurance
-    taxRateByZip: {           // rough millage map; extend for accuracy
+    // ZIP-level fallback map (extend as needed)
+    taxRateByZip: {
       "30004": 0.012, "30301": 0.012, "30305": 0.0125, "30309": 0.013
+    },
+    // NEW: County-level presets for GA (midpoint “effective” rates; directional)
+    taxRateByCounty: {
+      "Fulton":  0.0105, // ~1.05%
+      "Cobb":    0.0100, // ~1.00%
+      "Gwinnett":0.0102, // ~1.02%
+      "DeKalb":  0.0095, // ~0.95%
+      "Forsyth": 0.0118  // ~1.18%
     }
   };
 
@@ -30,6 +40,11 @@
   }
 
   // ---------- Core calcs ----------
+  function taxRateFor(price, { zip, county }) {
+    if (county && cfg.taxRateByCounty[county]) return cfg.taxRateByCounty[county];
+    return cfg.taxRateByZip[zip] ?? 0.012; // conservative fallback ~1.2%
+  }
+
   const calc = {
     monthlyPI(loanAmt, annualRatePct, years = 30) {
       const n = years * 12;
@@ -39,8 +54,8 @@
       const pow = Math.pow(1 + m, n);
       return loanAmt * (m * pow) / (pow - 1);
     },
-    taxesPerMonth(price, zip) {
-      const rate = cfg.taxRateByZip[zip] ?? 0.012;
+    taxesPerMonth(price, zip, county) {
+      const rate = taxRateFor(price, { zip, county });
       return (price * rate) / 12;
     },
     insurancePerMonth() {
@@ -51,10 +66,10 @@
       const pct = (annualPmiPctOverride ?? cfg.defaultPmiPct) / 100;
       return (price * pct) / 12;
     },
-    totalMonthly({ price, down, ratePct, program, zip }) {
+    totalMonthly({ price, down, ratePct, program, zip, county }) {
       const loan = Math.max(0, price - (down || 0));
       const pAndI = calc.monthlyPI(loan, ratePct);
-      const taxes = calc.taxesPerMonth(price, zip);
+      const taxes = calc.taxesPerMonth(price, zip, county);
       const ins = calc.insurancePerMonth();
       const ltv = price ? loan / price : 0;
       const pmi = calc.pmiPerMonth(price, ltv, program);
