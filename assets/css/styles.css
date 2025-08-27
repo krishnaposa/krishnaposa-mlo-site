@@ -11,6 +11,8 @@ html,body{
   line-height:1.5;
   font-size: clamp(16px, 1.5vw + 12px, 18px);
 }
+
+.label-ai{font-size:.6em;vertical-align:middle;padding:.25em .45em;border:1px solid #1a73e8;border-radius:.5em;margin-left:.35em}
 .announce-ai{background:#eef4ff;border-bottom:1px solid #dbe7ff}
 .announce-ai .container{display:flex;gap:.75rem;align-items:center;padding:.6rem 1rem}
 .announce-ai a{font-weight:700}
