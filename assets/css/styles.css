@@ -11,6 +11,15 @@ html,body{
   line-height:1.5;
   font-size: clamp(16px, 1.5vw + 12px, 18px);
 }
+.tip-box{
+  background:#f8fafc;
+  border:1px solid #e5e7eb;
+  border-radius:8px;
+  padding:12px 14px;
+  margin:16px 0 20px;
+}
+.tip-box a{ font-weight:700; }
+
 
 .label-ai{font-size:.6em;vertical-align:middle;padding:.25em .45em;border:1px solid #1a73e8;border-radius:.5em;margin-left:.35em}
 .announce-ai{background:#eef4ff;border-bottom:1px solid #dbe7ff}
