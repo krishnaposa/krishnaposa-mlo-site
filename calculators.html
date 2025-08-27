@@ -73,7 +73,7 @@
     <section class="container" style="margin-top:1rem">
       <div class="grid-3">
         <!-- Affordability -->
-        <div class="card">
+        <div class="card" id="affCard">
           <h2 style="margin:0 0 .25rem">Affordability</h2>
           <p class="small">Estimate a target home price from income, debts, and down payment.</p>
           <form id="affForm">
@@ -94,12 +94,21 @@
               <input id="aff_zip" inputmode="numeric" pattern="\\d{5}" placeholder="30301">
             </div>
             <div class="field">
+              <label for="aff_county">County (optional)</label>
+              <select id="aff_county">
+                <option value="">— Select county —</option>
+                <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
+                <option>DeKalb</option><option>Forsyth</option>
+              </select>
+            </div>
+            <div class="field">
               <label for="aff_down">Down Payment</label>
               <input id="aff_down" inputmode="decimal" placeholder="80000 or 20%">
             </div>
             <div class="cta" style="gap:.5rem;margin-top:.5rem">
               <button class="btn btn-blue" type="button" id="aff_calc">Calculate</button>
               <button class="btn-outline" type="reset" id="aff_reset">Reset</button>
+              <button class="btn-outline" type="button" data-print="#affCard">Save as PDF</button>
             </div>
             <div class="card" style="margin-top:.5rem">
               <strong>Estimated Max Price</strong>
@@ -110,7 +119,7 @@
         </div>
 
         <!-- Monthly Payment -->
-        <div class="card">
+        <div class="card" id="payCard">
           <h2 style="margin:0 0 .25rem">Monthly Payment</h2>
           <p class="small">Break down principal and interest, taxes, insurance, PMI.</p>
           <form id="payForm">
@@ -131,6 +140,14 @@
               <input id="pay_zip" inputmode="numeric" pattern="\\d{5}" placeholder="30301">
             </div>
             <div class="field">
+              <label for="pay_county">County (optional)</label>
+              <select id="pay_county">
+                <option value="">— Select county —</option>
+                <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
+                <option>DeKalb</option><option>Forsyth</option>
+              </select>
+            </div>
+            <div class="field">
               <label for="pay_program">Program</label>
               <select id="pay_program">
                 <option value="conventional">Conventional</option>
@@ -143,6 +160,7 @@
             <div class="cta" style="gap:.5rem;margin-top:.5rem">
               <button class="btn btn-blue" type="button" id="pay_calc">Calculate</button>
               <button class="btn-outline" type="reset" id="pay_reset">Reset</button>
+              <button class="btn-outline" type="button" data-print="#payCard">Save as PDF</button>
             </div>
             <div class="grid-3" style="margin-top:.5rem">
               <div class="card"><strong>P + I</strong><p id="pay_pi" style="margin:.35rem 0 0">$—</p></div>
@@ -154,7 +172,7 @@
         </div>
 
         <!-- Refi Break-Even -->
-        <div class="card">
+        <div class="card" id="refiCard">
           <h2 style="margin:0 0 .25rem">Refi Break-Even</h2>
           <p class="small">Months to recover refi costs based on monthly savings.</p>
           <form id="refiForm">
@@ -177,6 +195,7 @@
             <div class="cta" style="gap:.5rem;margin-top:.5rem">
               <button class="btn btn-blue" type="button" id="refi_calc">Calculate</button>
               <button class="btn-outline" type="reset" id="refi_reset">Reset</button>
+              <button class="btn-outline" type="button" data-print="#refiCard">Save as PDF</button>
             </div>
             <div class="card" style="margin-top:.5rem">
               <strong>Estimated Monthly Savings</strong>
@@ -189,7 +208,7 @@
         </div>
 
         <!-- Extra Payment Impact (full-width on small screens) -->
-        <div class="card" style="grid-column:1/-1">
+        <div class="card" id="extraCard" style="grid-column:1/-1">
           <h2 style="margin:0 0 .25rem">Extra Payment Impact</h2>
           <p class="small">See how an extra monthly amount may reduce interest and shorten payoff time.</p>
           <form id="extraForm">
@@ -218,6 +237,7 @@
             <div class="cta" style="gap:.5rem;margin-top:.5rem">
               <button class="btn btn-blue" type="button" id="extra_calc">Calculate</button>
               <button class="btn-outline" type="reset" id="extra_reset">Reset</button>
+              <button class="btn-outline" type="button" data-print="#extraCard">Save as PDF</button>
             </div>
             <div class="grid-3" style="margin-top:.5rem">
               <div class="card"><strong>Base Payment (P+I)</strong><p id="extra_base" style="margin:.35rem 0 0">$—</p></div>
