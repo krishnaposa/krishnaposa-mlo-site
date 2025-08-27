@@ -1,104 +1,78 @@
 /* =========================================================
-   Form Contrast (shared for buyer-funnel + calculators)
-   Scope is limited to specific sections to avoid bleed.
-   Tweak the variables below if you want different tones.
+   Form Contrast (shared) — Light by default, Dark on .is-dark
    ========================================================= */
-:root {
-  --form-label: #e5e7eb;         /* label text */
-  --form-text: #f8fafc;          /* input text */
-  --form-bg: #0f172a;            /* input background */
-  --form-border: rgba(148,163,184,.45);
-  --form-help: #b6c2d4;          /* helper/tiny text */
-  --form-placeholder: #a8b3c7;
-  --form-focus: rgba(96,165,250,.55);
-  --form-focus-border: rgba(96,165,250,.65);
+
+/* ---- Light (default) variables ---- */
+:root{
+  --form-label:#0f172a;           /* near-black labels for light bg */
+  --form-text:#0f172a;            /* input text */
+  --form-bg:transparent;          /* inherit site bg */
+  --form-border:#cbd5e1;          /* slate-300 */
+  --form-help:#475569;            /* slate-600 */
+  --form-placeholder:#64748b;     /* slate-500 */
+  --form-focus:rgba(37,99,235,.45);       /* blue-600-ish */
+  --form-focus-border:rgba(37,99,235,.65);
 }
 
-/* ===== Calculators (four panels) ===== */
-#affCard label, #payCard label, #refiCard label, #extraCard label {
-  color: var(--form-label);
-  font-weight: 600;
-}
-#affCard input, #affCard select, #affCard textarea,
-#payCard input, #payCard select, #payCard textarea,
-#refiCard input, #refiCard select, #refiCard textarea,
-#extraCard input, #extraCard select, #extraCard textarea {
-  color: var(--form-text);
-  background-color: var(--form-bg);
-  border-color: var(--form-border);
-}
-#affCard ::placeholder, #payCard ::placeholder, #refiCard ::placeholder, #extraCard ::placeholder {
-  color: var(--form-placeholder);
-  opacity: 1;
-}
-#affCard .tiny, #affCard .small, #affCard .help-tip,
-#payCard .tiny, #payCard .small, #payCard .help-tip,
-#refiCard .tiny, #refiCard .small, #refiCard .help-tip,
-#extraCard .tiny, #extraCard .small, #extraCard .help-tip {
-  color: var(--form-help);
-}
-#affCard input:focus, #affCard select:focus, #affCard textarea:focus,
-#payCard input:focus, #payCard select:focus, #payCard textarea:focus,
-#refiCard input:focus, #refiCard select:focus, #refiCard textarea:focus,
-#extraCard input:focus, #extraCard select:focus, #extraCard textarea:focus {
-  outline: 2px solid var(--form-focus);
-  outline-offset: 2px;
-  border-color: var(--form-focus-border);
+/* ---- DARK variant toggled by .is-dark on a parent card ---- */
+.is-dark{
+  --form-label:#e5e7eb;           /* light labels */
+  --form-text:#f8fafc;            /* nearly white text */
+  --form-bg:#0f172a;              /* dark input bg */
+  --form-border:rgba(148,163,184,.45);
+  --form-help:#b6c2d4;
+  --form-placeholder:#cbd5e1;     /* brighter placeholder for contrast */
+  --form-focus:rgba(96,165,250,.55);
+  --form-focus-border:rgba(96,165,250,.65);
 }
 
 /* ===== Buyer Funnel (qualify + intake) ===== */
-#qualifyForm label, #intakeForm label {
-  color: var(--form-label);
-  font-weight: 600;
+#qualifyForm label, #intakeForm label{
+  color:var(--form-label);
+  font-weight:600;
 }
-#qualifyForm input, #qualifyForm select, #qualifyForm textarea,
-#intakeForm input, #intakeForm select, #intakeForm textarea {
-  color: var(--form-text);
-  background-color: var(--form-bg);
-  border-color: var(--form-border);
+#qualifyForm input,#qualifyForm select,#qualifyForm textarea,
+#intakeForm input,#intakeForm select,#intakeForm textarea{
+  color:var(--form-text);
+  background-color:var(--form-bg);
+  border-color:var(--form-border);
 }
-#qualifyForm ::placeholder, #intakeForm ::placeholder {
-  color: var(--form-placeholder);
-  opacity: 1;
+#qualifyForm ::placeholder,#intakeForm ::placeholder{
+  color:var(--form-placeholder);
+  opacity:1;
 }
-#qualifyForm .tiny, #qualifyForm .small, #qualifyForm .help-tip,
-#intakeForm .tiny, #intakeForm .small, #intakeForm .help-tip {
-  color: var(--form-help);
+#qualifyForm .tiny,#qualifyForm .small,#qualifyForm .help-tip,
+#intakeForm .tiny,#intakeForm .small,#intakeForm .help-tip{
+  color:var(--form-help);
 }
-#qualifyForm input:focus, #qualifyForm select:focus, #qualifyForm textarea:focus,
-#intakeForm input:focus, #intakeForm select:focus, #intakeForm textarea:focus {
-  outline: 2px solid var(--form-focus);
-  outline-offset: 2px;
-  border-color: var(--form-focus-border);
-}
-
-/* Small info “i” badge used near County fields */
-.help { color: #d1d7e3; border:1px solid rgba(209,215,227,.6); }
-.help:hover { background: rgba(209,215,227,.15); }
-
-/* ===== Realtor Co-Brand (Agent Card) ===== */
-#agentCard label {
-  color: var(--form-label);
-  font-weight: 600;
+#qualifyForm input:focus,#qualifyForm select:focus,#qualifyForm textarea:focus,
+#intakeForm input:focus,#intakeForm select:focus,#intakeForm textarea:focus{
+  outline:2px solid var(--form-focus);
+  outline-offset:2px;
+  border-color:var(--form-focus-border);
 }
 
-#agentCard input, #agentCard select, #agentCard textarea {
-  color: var(--form-text);
-  background-color: var(--form-bg);
-  border-color: var(--form-border);
+/* ===== Realtor Co-Brand (agent card) ===== */
+#agentCard label{color:var(--form-label);font-weight:600;}
+#agentCard input,#agentCard select,#agentCard textarea{
+  color:var(--form-text);
+  background-color:var(--form-bg);
+  border-color:var(--form-border);
+}
+#agentCard ::placeholder{color:var(--form-placeholder);opacity:1;}
+#agentCard .tiny,#agentCard .small,#agentCard .help-tip{color:var(--form-help);}
+#agentCard input:focus,#agentCard select:focus,#agentCard textarea:focus{
+  outline:2px solid var(--form-focus);
+  outline-offset:2px;
+  border-color:var(--form-focus-border);
 }
 
-#agentCard ::placeholder {
-  color: var(--form-placeholder);
-  opacity: 1;
+/* Small info “i” badge (if you use it) */
+.help{
+  color:var(--form-label);
+  border:1px solid var(--form-border);
+  display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;margin-left:6px;border-radius:50%;font-size:12px;cursor:help
 }
-
-#agentCard .tiny, #agentCard .small, #agentCard .help-tip {
-  color: var(--form-help);
-}
-
-#agentCard input:focus, #agentCard select:focus, #agentCard textarea:focus {
-  outline: 2px solid var(--form-focus);
-  outline-offset: 2px;
-  border-color: var(--form-focus-border);
-}
+.help:hover{background:rgba(148,163,184,.15)}
+.help-tip{display:block;font-size:12px;color:var(--form-help);margin-top:4px}
