@@ -219,6 +219,25 @@ html, body { overflow-x: hidden; }
 @media (max-width: 900px){
   main{ padding-bottom: 84px; } /* adjust if your sticky bar is taller/shorter */
 }
+/* General form labels */
+.field label {
+  display: block;
+  font-weight: 600;
+  margin: 6px 0;
+  color: #111;            /* dark text for contrast */
+  font-size: 0.95rem;
+}
 
+/* Special style for checkbox / consent label */
+.field label input[type="checkbox"] {
+  margin-right: 6px;      /* space between box and text */
+}
+
+.field label[for="consent"],
+.field label input[type="checkbox"] + * {
+  color: #111;            /* same dark text */
+  font-weight: 500;       /* slightly lighter than titles, still readable */
+  font-size: 0.95rem;
+}
 /* --- Safety: avoid long link text causing overflow in the header --- */
 .nav .menu a{ white-space: nowrap; }     /* keeps items tidy in one line inside dropdown */
