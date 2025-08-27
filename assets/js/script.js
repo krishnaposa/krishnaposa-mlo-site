@@ -111,3 +111,15 @@ document.documentElement.classList.add('js');
     img.setAttribute('decoding', 'async');
   });
 })();
+(function(){
+  const bar = document.getElementById('announce-ai');
+  const btn = document.getElementById('announce-ai-close');
+  if(!bar || !btn) return;
+  if(localStorage.getItem('kp_ai_bar_dismissed') !== '1') bar.hidden = false;
+  btn.addEventListener('click', ()=>{
+    localStorage.setItem('kp_ai_bar_dismissed','1');
+    bar.hidden = true;
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({event:'ai_banner_dismiss'});
+  });
+})();
