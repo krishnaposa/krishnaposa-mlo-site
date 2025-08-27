@@ -1,0 +1,198 @@
+/* calculators.js — uses MortgageCalc for math, focuses on UI */
+(function () {
+  const { parseNumber: num, fmtCurrency: fmt, fmtPercent: pct, calc, cfg } = window.MortgageCalc;
+
+  // ---------- Affordability ----------
+  // Very simple target: keep DTI (housing + other debts) ≤ 43%
+  // We iterate to find a price that makes total housing fit the target.
+  const AFF_DTI_TARGET = 0.43;
+
+  function priceFromConstraints({ income, debts, ratePct, down, zip }) {
+    // Binary search for price that fits DTI target
+    let lo = 50_000, hi = 2_000_000, guess = 0, best = 0;
+    for (let i = 0; i < 32; i++) {
+      guess = (lo + hi) / 2;
+      const res = calc.totalMonthly({ price: guess, down, ratePct, program: "conventional", zip });
+      const dti = calc.dti(res.total, debts, income);
+      if (!isFinite(dti)) break;
+      if (dti <= AFF_DTI_TARGET) { best = guess; lo = guess; } else { hi = guess; }
+    }
+    return best;
+  }
+
+  function affCalc() {
+    const income = num(document.getElementById("aff_income").value);
+    const debts = num(document.getElementById("aff_debts").value || 0);
+    const ratePct = (function () {
+      const v = document.getElementById("aff_rate").value || cfg.defaultRatePct;
+      const p = num(v);
+      // if the field had %, num returns decimal; convert back to percent if needed
+      return v.toString().trim().endsWith("%") ? p * 100 : p;
+    })();
+    const zip = (document.getElementById("aff_zip").value || "").trim();
+    const downInput = (document.getElementById("aff_down").value || "").trim();
+    const down = downInput.endsWith("%") ? 1 * num(downInput) /* decimal */ : num(downInput || 0);
+
+    if (!income) {
+      alert("Please enter gross monthly income.");
+      return;
+    }
+    // If down is given as percent, we will convert to absolute during search using current guess.
+
+    // helper that adapts down whether number or percent-decimal
+    function computePrice() {
+      let priceGuess = priceFromConstraints({
+        income,
+        debts,
+        ratePct,
+        down: 0, // placeholder, we’ll handle %
+        zip
+      });
+      if (downInput.endsWith("%")) {
+        const downAmt = priceGuess * down; // down is decimal (e.g., 0.2)
+        priceGuess = priceFromConstraints({
+          income, debts, ratePct, down: downAmt, zip
+        });
+      } else {
+        priceGuess = priceFromConstraints({
+          income, debts, ratePct, down, zip
+        });
+      }
+      return priceGuess;
+    }
+
+    const price = computePrice();
+    document.getElementById("aff_price").textContent = price ? fmt(price) : "$—";
+    const targetPct = pct(AFF_DTI_TARGET);
+    document.getElementById("aff_note").textContent = `Targets total DTI near ${targetPct}. Final numbers vary by taxes, insurance, program, and credit.`;
+    if (window.dataLayer) dataLayer.push({ event: "calc_affordability" });
+  }
+
+  document.getElementById("aff_calc").addEventListener("click", affCalc);
+  document.getElementById("aff_reset").addEventListener("click", () => {
+    document.getElementById("aff_price").textContent = "$—";
+    document.getElementById("aff_note").textContent = "";
+  });
+
+  // ---------- Monthly Payment ----------
+  function payCalc() {
+    const price = num(document.getElementById("pay_price").value);
+    const downInput = (document.getElementById("pay_down").value || "").trim();
+    const down = downInput.endsWith("%") ? price * num(downInput) : num(downInput || 0);
+    const rateField = (document.getElementById("pay_rate").value || cfg.defaultRatePct);
+    const ratePct = (rateField.toString().trim().endsWith("%") ? num(rateField) * 100 : num(rateField));
+    const zip = (document.getElementById("pay_zip").value || "").trim();
+    const program = document.getElementById("pay_program").value;
+
+    if (!price) { alert("Please enter home price."); return; }
+
+    const res = calc.totalMonthly({ price, down, ratePct, program, zip });
+    document.getElementById("pay_pi").textContent = fmt(res.pAndI);
+    document.getElementById("pay_ti").textContent = fmt(res.taxes + res.ins + res.pmi);
+    document.getElementById("pay_total").textContent = fmt(res.total);
+
+    const pmiNote = document.getElementById("pay_pmi_note");
+    if (program === "conventional" && res.ltv > 0.80) {
+      pmiNote.style.display = "";
+      pmiNote.textContent = "PMI estimated due to LTV above 80 percent. It can fall off when equity improves.";
+    } else {
+      pmiNote.style.display = "none";
+      pmiNote.textContent = "";
+    }
+
+    if (window.dataLayer) dataLayer.push({ event: "calc_payment" });
+  }
+
+  document.getElementById("pay_calc").addEventListener("click", payCalc);
+  document.getElementById("pay_reset").addEventListener("click", () => {
+    ["pay_pi", "pay_ti", "pay_total"].forEach(id => document.getElementById(id).textContent = "$—");
+    const n = document.getElementById("pay_pmi_note");
+    n.style.display = "none"; n.textContent = "";
+  });
+
+  // ---------- Refi Break-Even ----------
+  function monthlyPI(loan, ratePct, years = 30) {
+    const n = years * 12;
+    const m = (ratePct / 100) / 12;
+    if (m === 0) return loan / n;
+    const pow = Math.pow(1 + m, n);
+    return loan * (m * pow) / (pow - 1);
+  }
+  function refiCalc() {
+    const loan = num(document.getElementById("refi_loan").value);
+    const oldRateField = (document.getElementById("refi_old_rate").value || cfg.defaultRatePct);
+    const newRateField = (document.getElementById("refi_new_rate").value || cfg.defaultRatePct);
+    const costs = num(document.getElementById("refi_costs").value || 0);
+
+    if (!loan) { alert("Please enter current loan balance."); return; }
+
+    const oldRatePct = (oldRateField.toString().trim().endsWith("%") ? num(oldRateField) * 100 : num(oldRateField));
+    const newRatePct = (newRateField.toString().trim().endsWith("%") ? num(newRateField) * 100 : num(newRateField));
+
+    const oldPI = monthlyPI(loan, oldRatePct);
+    const newPI = monthlyPI(loan, newRatePct);
+    const savings = Math.max(0, oldPI - newPI);
+    const months = savings > 0 ? Math.ceil(costs / savings) : Infinity;
+
+    document.getElementById("refi_savings").textContent = fmt(savings);
+    document.getElementById("refi_months").textContent = isFinite(months) ? months : "N/A";
+
+    if (window.dataLayer) dataLayer.push({ event: "calc_refi" });
+  }
+
+  document.getElementById("refi_calc").addEventListener("click", refiCalc);
+  document.getElementById("refi_reset").addEventListener("click", () => {
+    document.getElementById("refi_savings").textContent = "$—";
+    document.getElementById("refi_months").textContent = "—";
+  });
+
+  // ---------- Extra Payment Impact ----------
+  function extraCalc() {
+    const loan = num(document.getElementById("extra_loan").value);
+    const rateField = (document.getElementById("extra_rate").value || cfg.defaultRatePct);
+    const years = Math.max(1, parseInt(document.getElementById("extra_years").value || "30", 10));
+    const extra = num(document.getElementById("extra_add").value || 0);
+
+    if (!loan) { alert("Please enter loan amount."); return; }
+    const ratePct = (rateField.toString().trim().endsWith("%") ? num(rateField) * 100 : num(rateField));
+
+    const base = monthlyPI(loan, ratePct, years);
+    let balance = loan;
+    let month = 0;
+    const m = (ratePct / 100) / 12;
+    const basePay = base;
+    const payWithExtra = base + (extra || 0);
+
+    // Amortize with extra payment
+    while (balance > 0 && month < years * 12 + 240 /* safety cap */) {
+      const interest = balance * m;
+      let principal = payWithExtra - interest;
+      if (principal <= 0) { // rate too high or payment too small
+        break;
+      }
+      if (principal > balance) principal = balance;
+      balance -= principal;
+      month++;
+    }
+
+    const baseMonths = years * 12;
+    const savedMonths = Math.max(0, baseMonths - month);
+
+    document.getElementById("extra_base").textContent = fmt(basePay);
+    document.getElementById("extra_with").textContent = fmt(payWithExtra);
+    document.getElementById("extra_time").textContent = savedMonths ? `${savedMonths} months` : "—";
+    document.getElementById("extra_note").textContent = savedMonths
+      ? `At this rate you could finish about ${Math.floor(savedMonths/12)} years and ${savedMonths%12} months sooner (estimate).`
+      : `If time saved shows “—”, try increasing the extra payment.`;
+
+    if (window.dataLayer) dataLayer.push({ event: "calc_extra_payment" });
+  }
+
+  document.getElementById("extra_calc").addEventListener("click", extraCalc);
+  document.getElementById("extra_reset").addEventListener("click", () => {
+    document.getElementById("extra_base").textContent = "$—";
+    document.getElementById("extra_with").textContent = "$—";
+    document.getElementById("extra_time").textContent = "—";
+    document.getElementById("extra_note").textContent = "";
+  });
+})();
