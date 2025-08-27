@@ -32,18 +32,18 @@
   <meta name="twitter:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
 
   <!-- CSS & Favicon -->
-<link rel="stylesheet" href="assets/css/styles.css">
-<link rel="stylesheet" href="assets/css/form-contrast.css">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <!-- NEW: high-contrast form styles (shared) -->
+  <link rel="stylesheet" href="assets/css/form-contrast.css">
   <link rel="icon" href="assets/img/favicon.png" type="image/png">
 
-  <!-- JS -->
+  <!-- Site JS -->
   <script defer src="assets/js/script.js"></script>
 </head>
 <body>
   <!-- Google Tag Manager (noscript) -->
   <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM"
   height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-  <!-- End GTM (noscript) -->
 
   <!-- Shared header -->
   <div id="header"></div>
@@ -133,7 +133,7 @@
                   <option value="">Select</option>
                   <option>760+</option><option>740-759</option><option>720-739</option>
                   <option>700-719</option><option>680-699</option><option>660-679</option>
-                  <option>640-659</option><option>620-639</option><option><620</option>
+                  <option>640-659</option><option>620-639</option><option>&lt;620</option>
                 </select>
               </div>
               <div class="field">
@@ -293,7 +293,7 @@
 
     <!-- REALTOR CO-BRAND -->
     <section class="container narrow">
-      <div class="card">
+      <div class="card" id="agentCard">
         <h2 style="margin:0 0 .25rem">Realtor Co-Brand</h2>
         <p class="small" style="margin:.25rem 0 1rem">Already shopping with an agent. Add their info and I will keep everyone aligned.</p>
 
@@ -380,11 +380,12 @@
       <a class="btn btn-blue" id="bookSticky" target="_blank" rel="noopener">Book</a>
     </div>
   </main>
-    <!-- Shared footer -->
+
+  <!-- Shared footer -->
   <div id="footer"></div>
   <script src="assets/js/footer.js"></script>
 
-  <!-- New: shared mortgage helpers, then page wiring -->
+  <!-- Shared mortgage helpers, then page wiring -->
   <script defer src="assets/js/mortgage-calc.js"></script>
   <script defer src="assets/js/buyer-funnel.js"></script>
 </body>
