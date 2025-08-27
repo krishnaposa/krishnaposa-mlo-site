@@ -12,6 +12,8 @@ html,body{
   font-size: clamp(16px, 1.5vw + 12px, 18px);
 }
 
+.tag-ai{font-size:.7rem;padding:.1rem .35rem;border:1px solid #1a73e8;border-radius:.5rem;margin-left:.4rem}
+
 /* Make AI reasoning full-strength text */
 #result #aiRec,
 #result #aiRec p,
