@@ -101,14 +101,44 @@ export default {
 
     const estRate = rate + (ficoAdj + ltvAdj + occAdj + propAdj + dtiAdj + cashAdj);
 
-    // Optional: richer LLM explanation (env.AI_API_KEY secret). Omitted by default.
+        // Optional: richer LLM explanation (env.AI_API_KEY secret).
     let reasoning = 'Based on your credit tier, LTV, occupancy, and goal, this product balances eligibility and cost while aligning with your payment objective.';
-    // if (env.AI_API_KEY) {
-    //   const prompt = `User profile: ${JSON.stringify({state, occupancy, purpose, propertyType, ltv, fico, dti, term, veteran, goals})}.
-    //     Recommend the best loan type and explain why in 2 short paragraphs, plain English, and include one cautionary note.`;
-    //   // Example (pseudo): call your LLM provider here using fetch() with env.AI_API_KEY
-    //   // reasoning = await callLLM(prompt, env.AI_API_KEY);
-    // }
+
+    if (env.AI_API_KEY) {
+      try {
+        const prompt = `User profile: ${JSON.stringify({
+          state, occupancy, purpose, propertyType, ltv, fico, dti, term, veteran, goals
+        })}.
+        
+        Recommend the best loan type and explain why in 2 short paragraphs, plain English, no jargon.
+        End with one cautionary note about risks (like rate changes, PMI, or costs).`;
+
+        const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${env.AI_API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: "You are a helpful mortgage loan advisor." },
+              { role: "user", content: prompt }
+            ],
+            max_tokens: 250
+          })
+        });
+
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          reasoning = aiData.choices?.[0]?.message?.content?.trim() || reasoning;
+        } else {
+          console.error("AI API error", aiRes.status);
+        }
+      } catch (err) {
+        console.error("AI call failed", err);
+      }
+    }
 
     const response = {
       metrics: { ltv },
