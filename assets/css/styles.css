@@ -290,3 +290,9 @@ html, body { overflow-x: hidden; }
 .help-tip {
   display:block; font-size:12px; color:#6b7280; margin-top:4px;
 }
+/* Wider container option for funnel forms */
+.container.wide {
+  max-width: 1100px;   /* adjust as you like */
+  margin: 0 auto;
+  padding: 0 var(--pad, 1rem);
+}
