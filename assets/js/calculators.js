@@ -1,18 +1,16 @@
-/* calculators.js — uses MortgageCalc for math, focuses on UI */
+/* assets/js/calculators.js — uses MortgageCalc for math; handles UI + PDF */
 (function () {
   const { parseNumber: num, fmtCurrency: fmt, fmtPercent: pct, calc, cfg } = window.MortgageCalc;
 
   // ---------- Affordability ----------
-  // Very simple target: keep DTI (housing + other debts) ≤ 43%
-  // We iterate to find a price that makes total housing fit the target.
+  // Target DTI for affordability. You can tweak this to 0.41–0.45 range if desired.
   const AFF_DTI_TARGET = 0.43;
 
-  function priceFromConstraints({ income, debts, ratePct, down, zip }) {
-    // Binary search for price that fits DTI target
+  function priceFromConstraints({ income, debts, ratePct, down, zip, county }) {
     let lo = 50_000, hi = 2_000_000, guess = 0, best = 0;
     for (let i = 0; i < 32; i++) {
       guess = (lo + hi) / 2;
-      const res = calc.totalMonthly({ price: guess, down, ratePct, program: "conventional", zip });
+      const res = calc.totalMonthly({ price: guess, down, ratePct, program: "conventional", zip, county });
       const dti = calc.dti(res.total, debts, income);
       if (!isFinite(dti)) break;
       if (dti <= AFF_DTI_TARGET) { best = guess; lo = guess; } else { hi = guess; }
@@ -23,48 +21,31 @@
   function affCalc() {
     const income = num(document.getElementById("aff_income").value);
     const debts = num(document.getElementById("aff_debts").value || 0);
-    const ratePct = (function () {
-      const v = document.getElementById("aff_rate").value || cfg.defaultRatePct;
-      const p = num(v);
-      // if the field had %, num returns decimal; convert back to percent if needed
-      return v.toString().trim().endsWith("%") ? p * 100 : p;
-    })();
+    const rateInput = document.getElementById("aff_rate").value || cfg.defaultRatePct;
+    const ratePct = (rateInput.toString().trim().endsWith("%") ? num(rateInput) * 100 : num(rateInput));
     const zip = (document.getElementById("aff_zip").value || "").trim();
+    const county = (document.getElementById("aff_county").value || "").trim() || null;
     const downInput = (document.getElementById("aff_down").value || "").trim();
-    const down = downInput.endsWith("%") ? 1 * num(downInput) /* decimal */ : num(downInput || 0);
+    const downVal = downInput.endsWith("%") ? num(downInput) /* decimal */ : num(downInput || 0);
 
-    if (!income) {
-      alert("Please enter gross monthly income.");
-      return;
-    }
-    // If down is given as percent, we will convert to absolute during search using current guess.
+    if (!income) { alert("Please enter gross monthly income."); return; }
 
-    // helper that adapts down whether number or percent-decimal
+    // If down given as percent, iterate with that percent; else use absolute
     function computePrice() {
-      let priceGuess = priceFromConstraints({
-        income,
-        debts,
-        ratePct,
-        down: 0, // placeholder, we’ll handle %
-        zip
-      });
+      let priceGuess = priceFromConstraints({ income, debts, ratePct, down: 0, zip, county });
       if (downInput.endsWith("%")) {
-        const downAmt = priceGuess * down; // down is decimal (e.g., 0.2)
-        priceGuess = priceFromConstraints({
-          income, debts, ratePct, down: downAmt, zip
-        });
+        const downAmt = priceGuess * downVal; // downVal is decimal if endsWith("%")
+        priceGuess = priceFromConstraints({ income, debts, ratePct, down: downAmt, zip, county });
       } else {
-        priceGuess = priceFromConstraints({
-          income, debts, ratePct, down, zip
-        });
+        priceGuess = priceFromConstraints({ income, debts, ratePct, down: downVal, zip, county });
       }
       return priceGuess;
     }
 
     const price = computePrice();
     document.getElementById("aff_price").textContent = price ? fmt(price) : "$—";
-    const targetPct = pct(AFF_DTI_TARGET);
-    document.getElementById("aff_note").textContent = `Targets total DTI near ${targetPct}. Final numbers vary by taxes, insurance, program, and credit.`;
+    document.getElementById("aff_note").textContent =
+      `Targets total DTI near ${pct(AFF_DTI_TARGET)}. Final numbers vary by taxes, insurance, program, and credit.`;
     if (window.dataLayer) dataLayer.push({ event: "calc_affordability" });
   }
 
@@ -82,11 +63,12 @@
     const rateField = (document.getElementById("pay_rate").value || cfg.defaultRatePct);
     const ratePct = (rateField.toString().trim().endsWith("%") ? num(rateField) * 100 : num(rateField));
     const zip = (document.getElementById("pay_zip").value || "").trim();
+    const county = (document.getElementById("pay_county").value || "").trim() || null;
     const program = document.getElementById("pay_program").value;
 
     if (!price) { alert("Please enter home price."); return; }
 
-    const res = calc.totalMonthly({ price, down, ratePct, program, zip });
+    const res = calc.totalMonthly({ price, down, ratePct, program, zip, county });
     document.getElementById("pay_pi").textContent = fmt(res.pAndI);
     document.getElementById("pay_ti").textContent = fmt(res.taxes + res.ins + res.pmi);
     document.getElementById("pay_total").textContent = fmt(res.total);
@@ -167,9 +149,7 @@
     while (balance > 0 && month < years * 12 + 240 /* safety cap */) {
       const interest = balance * m;
       let principal = payWithExtra - interest;
-      if (principal <= 0) { // rate too high or payment too small
-        break;
-      }
+      if (principal <= 0) break; // payment too small
       if (principal > balance) principal = balance;
       balance -= principal;
       month++;
@@ -194,5 +174,53 @@
     document.getElementById("extra_with").textContent = "$—";
     document.getElementById("extra_time").textContent = "—";
     document.getElementById("extra_note").textContent = "";
+  });
+
+  // ---------- Print-to-PDF (single panel) ----------
+  function printPanel(selector, title = "Mortgage Calculator") {
+    const node = document.querySelector(selector);
+    if (!node) return alert("Section not found.");
+    const win = window.open("", "_blank", "noopener,noreferrer,width=900,height=1200");
+    const when = new Date().toLocaleString();
+    win.document.write(`
+      <!doctype html><html><head>
+        <meta charset="utf-8">
+        <title>${title}</title>
+        <link rel="stylesheet" href="assets/css/styles.css">
+        <style>
+          @page { size: A4; margin: 16mm; }
+          body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+          .print-wrap { max-width: 800px; margin: 0 auto; }
+          .print-header { margin-bottom: 12px; }
+          .print-header h1 { font-size: 20px; margin: 0 0 4px; }
+          .tiny { font-size: 12px; color: #666; }
+          .card { box-shadow: none !important; border: 1px solid #ddd; }
+        </style>
+      </head><body>
+        <div class="print-wrap">
+          <div class="print-header">
+            <h1>${title}</h1>
+            <div class="tiny">Generated ${when} • krishposa.com</div>
+          </div>
+          ${node.outerHTML}
+        </div>
+        <script>window.onload = () => { window.print(); setTimeout(()=>window.close(), 300); }<\/script>
+      </body></html>
+    `);
+    win.document.close();
+  }
+
+  // Bind buttons
+  document.querySelectorAll('[data-print]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sel = btn.getAttribute('data-print');
+      const title =
+        sel === '#affCard'  ? 'Affordability Results' :
+        sel === '#payCard'  ? 'Monthly Payment Results' :
+        sel === '#refiCard' ? 'Refi Break-Even Results' :
+        sel === '#extraCard'? 'Extra Payment Impact Results' :
+                              'Calculator Results';
+      printPanel(sel, title);
+    });
   });
 })();
