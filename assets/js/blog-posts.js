@@ -1,5 +1,13 @@
 /* Auto-blog index: add posts here. Newest first. */
 const POSTS = [
+  // In your POSTS array (blog.js)
+{
+  title: "Now Live: AI Loan Advisor",
+  url: "blog-ai-loan-advisor.html",
+  date: "2025-08-27",
+  excerpt: "Instant, AI-assisted guidance on loan types and estimated rate ranges—built right into KrishPosa.com.",
+  tags: ["AI", "Tools", "Rates"]
+},
   {
     title: "Mortgage Rates Slide to 10-Month Low — What It Means for Atlanta Buyers",
     url: "blog-mortgage-rates.html",
