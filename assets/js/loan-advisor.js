@@ -31,7 +31,7 @@
 
     try {
       // IMPORTANT: replace with your deployed serverless endpoint
-      const API_URL = 'https://YOUR-NETLIFY-SITE.netlify.app/.netlify/functions/loan-advisor';
+      const API_URL = 'https://loan-advisor.krishna-posa.workers.dev';
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
