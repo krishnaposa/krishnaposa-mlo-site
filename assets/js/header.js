@@ -103,7 +103,7 @@
       });
       backdrop.addEventListener("click", () => closeMenu(menu, toggle, backdrop));
       document.addEventListener("keydown", (ev) => {
-        if (ev.key === "Escape") closeMenu(menu, toggle, backdrop));
+        if (ev.key === "Escape") closeMenu(menu, toggle, backdrop);
       });
     }
 
