@@ -22,6 +22,7 @@
   border: 1px solid var(--muted);
   padding: 0.55rem 0.6rem;
   border-radius: 6px;
+  box-sizing: border-box;
 }
 #le-compare-section input::placeholder { color: var(--muted); }
 
@@ -78,13 +79,13 @@
 }
 
 /* ---------- Medium screens ---------- */
-@media (min-width: 760px) and (max-width: 1023px) {
+@media (min-width: 760px) and (max-width: 1023.98px) {
   /* 2 columns: A | B, then Explainer spans full width */
   #le-compare-section .grid-3 {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr !important;
   }
   #le-compare-section aside {
-    grid-column: 1 / -1;
+    grid-column: 1 / -1 !important;
   }
 
   /* Results: 2 columns where possible */
@@ -93,15 +94,35 @@
   }
 }
 
-/* ---------- Desktop / Wide ---------- */
-@media (min-width: 1024px) {
-  /* A | B | Explainer */
+/* ---------- Desktop (laptops) ---------- */
+/* Force 2 columns on typical laptop widths to prevent overflow.
+   The aside stacks below A|B. */
+@media (min-width: 1024px) and (max-width: 1399.98px) {
   #le-compare-section .grid-3 {
-    grid-template-columns: 1fr 1fr minmax(320px, 0.8fr);
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr) !important;
     align-items: start;
   }
+  #le-compare-section aside.card {
+    grid-column: 1 / -1 !important;
+  }
+}
 
-  /* Results: 3 blocks on first row, then 2 blocks */
+/* ---------- Wide Desktop ---------- */
+/* Restore 3 columns when there is ample space.
+   Aside gets sane bounds so it won't push the grid wider. */
+@media (min-width: 1400px) {
+  #le-compare-section .grid-3 {
+    grid-template-columns:
+      minmax(0,1fr)             /* Lender A */
+      minmax(0,1fr)             /* Lender B */
+      clamp(300px, 28vw, 420px) /* Aside panel */
+    !important;
+    align-items: start;
+  }
+}
+
+/* Results: 3 blocks on first row, then 2 blocks (wide screens) */
+@media (min-width: 1024px) {
   #le-compare-results .grid-3:first-of-type {
     grid-template-columns: 1fr 1fr 1fr;
   }
@@ -109,6 +130,12 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* --- Prevent overflow from any child elements --- */
+#le-compare-section .grid-3 > * { min-width: 0; max-width: 100%; }
+#le-compare-section .card,
+#le-compare-section .card * { overflow-wrap: anywhere; word-break: break-word; }
+#le-compare-section { overflow-x: clip; }
 
 /* Subtle hover/focus for inputs and cards on desktop */
 @media (hover: hover) {
@@ -130,36 +157,8 @@
 
 /* Micro-utility: tighten tiny notes */
 .tiny { opacity: .85; }
+
 /* TL;DR + FAQ spacing */
 #tldr p.small { line-height: 1.55; }
 #faq details { margin: .35rem 0; }
 #faq summary { cursor: pointer; font-weight: 600; }
-/* --- Fix desktop overflow on the compare grid --- */
-
-/* 1) Allow grid children to shrink inside the container */
-#le-compare-section .grid-3 > * {
-  min-width: 0;          /* critical: prevent overflow of cards */
-  max-width: 100%;
-}
-
-/* 2) Use shrinkable tracks on desktop (still 3 columns) */
-@media (min-width: 1024px) {
-  #le-compare-section .grid-3 {
-    /* beats the inline grid-template with a safer version */
-    grid-template-columns:
-      minmax(0, 1fr)      /* Lender A */
-      minmax(0, 1fr)      /* Lender B */
-      minmax(320px, 0.8fr) /* Aside panel, with a sensible floor */
-    !important;
-  }
-}
-
-/* 3) Safety: wrap long strings so they don't force expansion */
-#le-compare-section .card,
-#le-compare-section .card * {
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-/* 4) If any child leaks width, clip the section’s x-overflow */
-#le-compare-section { overflow-x: clip; }
