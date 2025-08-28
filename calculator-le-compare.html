@@ -36,6 +36,70 @@
 
   <!-- Site JS -->
   <script defer src="assets/js/script.js"></script>
+  <!-- FAQ schema -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [{
+    "@type": "Question",
+    "name": "What affects my monthly payment the most?",
+    "acceptedAnswer": {
+      "@type":"Answer",
+      "text":"Rate, loan amount and term, private mortgage insurance (PMI), property taxes, and homeowners insurance."
+    }
+  },{
+    "@type": "Question",
+    "name": "Which fees can I shop to lower costs?",
+    "acceptedAnswer": {
+      "@type":"Answer",
+      "text":"Discount points, lender origination/processing/underwriting fees, title & settlement services, appraisal/credit/flood fees, and homeowners insurance."
+    }
+  },{
+    "@type": "Question",
+    "name": "Is a lower rate always cheaper?",
+    "acceptedAnswer": {
+      "@type":"Answer",
+      "text":"Not necessarily. Over shorter horizons a slightly higher rate with lower upfront fees can be cheaper. Compare 5-year cost."
+    }
+  },{
+    "@type": "Question",
+    "name": "How do points pay back?",
+    "acceptedAnswer": {
+      "@type":"Answer",
+      "text":"Points make sense when the monthly savings from the lower rate recover the upfront cost within the time you expect to keep the loan (see this page’s break-even)."
+    }
+  }]
+}
+</script>
+
+<!-- Declare the page as a web app/calculator -->
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"WebApplication",
+  "name":"Loan Estimate Comparison Calculator",
+  "url":"https://www.krishposa.com/calculator-le-compare.html",
+  "applicationCategory":"FinanceApplication",
+  "operatingSystem":"Web",
+  "description":"Compare two mortgage Loan Estimates—monthly payment, cash to close, 5-year cost, and points breakeven.",
+  "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
+  "creator":{"@type":"Person","name":"Krish (Akhil) Posa","jobTitle":"Mortgage Loan Officer"},
+  "inLanguage":"en"
+}
+</script>
+
+<!-- Breadcrumbs to reinforce intent/location -->
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"BreadcrumbList",
+  "itemListElement":[
+    {"@type":"ListItem","position":1,"name":"Calculators","item":"https://www.krishposa.com/calculators.html"},
+    {"@type":"ListItem","position":2,"name":"Compare Loan Estimates","item":"https://www.krishposa.com/calculator-le-compare.html"}
+  ]
+}
+</script>
 </head>
 <body>
   <!-- GTM (noscript) -->
