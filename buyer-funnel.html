@@ -97,7 +97,7 @@
       </div>
     </section>
 
-    <!-- QUICK QUALIFY (now matches Pre-Approval Intake layout) -->
+    <!-- QUICK QUALIFY -->
     <section id="qualify" class="container wide">
       <div class="card">
         <h2 style="margin:0 0 .25rem">Quick Qualify</h2>
@@ -196,8 +196,11 @@
         <h2 style="margin:0 0 .25rem">Pre-Approval Intake</h2>
         <p class="small" style="margin:.25rem 0 1rem">Five minute form. Secure. I will follow up with next steps and a document checklist.</p>
 
-        <!-- TODO: Replace action with your Formspree/Netlify/Zapier endpoint -->
-        <form id="intakeForm" action="https://formspree.io/f/your_form_id" method="POST">
+        <!-- JS handles Google Forms submit; keep action="#" so page doesn't navigate -->
+        <form id="intakeForm" action="#" method="POST" novalidate>
+          <!-- Honeypot anti-spam -->
+          <input type="text" name="_gotcha" id="hp" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+
           <div class="grid-3">
             <div class="field">
               <label for="fullName">Full Name</label>
@@ -275,11 +278,11 @@
           <input type="hidden" name="utm" id="h_utm">
 
           <div class="cta" style="gap:.5rem;margin-top:1rem">
-            <button class="btn btn-blue" type="submit">Submit Pre-Approval</button>
+            <button class="btn btn-blue" type="submit" id="submitBtn">Submit Pre-Approval</button>
             <a class="btn-outline btn-green" id="bookBottom" target="_blank" rel="noopener">Book a Call</a>
           </div>
 
-          <p class="small" style="margin-top:.5rem">You will receive a confirmation email and a document checklist.</p>
+          <p id="submitMsg" class="small" style="margin-top:.5rem"></p>
         </form>
       </div>
     </section>
