@@ -1,14 +1,16 @@
 /* assets/js/buyer-funnel.js
-   Estimate math, agent co-brand, and robust Google Forms submit
+   Estimate math, agent co-brand, and Google Forms submit (no fetch/iframe)
 */
 (function () {
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
 
-  // Your live Google Form /formResponse URL
-  const GOOGLE_FORM_ACTION = "https://docs.google.com/forms/u/0/d/1FMqkjaYU8LP2OwSCp_IYyN0U2K3fWr780n8ACjeRfdU/previewResponse";
-  
+  // === Google Form action (derived from your previewResponse URL) ===
+  // Was: /forms/u/0/d/1FMqkjaYU8LP2OwSCp_IYyN0U2K3fWr780n8ACjeRfdU/previewResponse
+  // Use:
+  const GOOGLE_FORM_ACTION =
+    "https://docs.google.com/forms/d/1FMqkjaYU8LP2OwSCp_IYyN0U2K3fWr780n8ACjeRfdU/formResponse";
 
-  // Your entry IDs (from your form)
+  // === Your entry IDs (unchanged) ===
   const ENTRY = {
     fullName:   "entry.1081531616",
     email:      "entry.1665114649",
@@ -32,16 +34,18 @@
 
   // Booking links
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
-  ["#bookTop", "#bookBottom", "#bookSticky"].forEach((q) => { const el = $(q); if (el) el.href = BOOKING_URL; });
+  ["#bookTop", "#bookBottom", "#bookSticky"].forEach((q) => {
+    const el = $(q); if (el) el.href = BOOKING_URL;
+  });
 
   // Realtor co-brand
   function drawAgent() {
     const data = JSON.parse(localStorage.getItem("agent") || "{}");
-    $("#agentName") && ($("#agentName").textContent = data.name || "No agent added");
-    $("#agentFirm") && ($("#agentFirm").textContent = data.firm || "You can add one above");
-    $("#agentAvatar") && ($("#agentAvatar").src = data.logo || "");
-    $("#h_agentName") && ($("#h_agentName").value = data.name || "");
-    $("#h_agentEmail") && ($("#h_agentEmail").value = data.email || "");
+    $("#agentName")  && ($("#agentName").textContent  = data.name || "No agent added");
+    $("#agentFirm")  && ($("#agentFirm").textContent  = data.firm || "You can add one above");
+    $("#agentAvatar")&& ($("#agentAvatar").src        = data.logo || "");
+    $("#h_agentName")&& ($("#h_agentName").value      = data.name || "");
+    $("#h_agentEmail")&&($("#h_agentEmail").value     = data.email || "");
   }
   $("#saveAgent")?.addEventListener("click", () => {
     const payload = {
@@ -73,9 +77,9 @@
     const res = calc.totalMonthly({ price, down, ratePct, program, zip });
     const dti = calc.dti(res.total, debts, income);
 
-    $("#pAndI") && ($("#pAndI").textContent = fmt(res.pAndI));
-    $("#taxes") && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
-    $("#totalPay") && ($("#totalPay").textContent = fmt(res.total));
+    $("#pAndI")       && ($("#pAndI").textContent = fmt(res.pAndI));
+    $("#taxes")       && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
+    $("#totalPay")    && ($("#totalPay").textContent = fmt(res.total));
     $("#estimatesWrap") && ($("#estimatesWrap").style.display = "grid");
 
     const dtiEl = $("#dtiLine");
@@ -95,21 +99,24 @@
     }
 
     $("#h_estMonthly") && ($("#h_estMonthly").value = Math.round(res.total));
-    $("#h_estDTI") && ($("#h_estDTI").value = `${(dti * 100).toFixed(1)}%`);
-    localStorage.setItem("lastEstimate", JSON.stringify({ price, down, rate: ratePct, program, monthly: Math.round(res.total), dti: (dti * 100).toFixed(1) }));
+    $("#h_estDTI")     && ($("#h_estDTI").value     = `${(dti * 100).toFixed(1)}%`);
+
+    localStorage.setItem("lastEstimate",
+      JSON.stringify({ price, down, rate: ratePct, program, monthly: Math.round(res.total), dti: (dti * 100).toFixed(1) })
+    );
 
     window.dataLayer && window.dataLayer.push({ event: "estimate_calculated" });
   });
 
   $("#resetBtn")?.addEventListener("click", () => {
     $("#estimatesWrap") && ($("#estimatesWrap").style.display = "none");
-    $("#dtiLine") && ($("#dtiLine").style.display = "none");
-    $("#pmiLine") && ($("#pmiLine").style.display = "none");
-    $("#formMsg") && ($("#formMsg").textContent = "");
+    $("#dtiLine")      && ($("#dtiLine").style.display = "none");
+    $("#pmiLine")      && ($("#pmiLine").style.display = "none");
+    $("#formMsg")      && ($("#formMsg").textContent = "");
     localStorage.removeItem("lastEstimate");
   });
 
-  // Prefill from saved estimate + UTM chain
+  // Prefill from saved estimate + UTM
   (function () {
     try {
       const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
@@ -124,69 +131,48 @@
     $("#h_utm") && ($("#h_utm").value = utm);
   })();
 
-  // ------- Robust Google Forms submit -------
-// ------- Google Forms submit (fetch + top-level POST fallback) -------
-$("#intakeForm")?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const formEl = e.currentTarget;
-  const submitBtn = $("#submitBtn") || formEl.querySelector('button[type="submit"]');
-  const msg = $("#submitMsg");
-  const hp = $("#hp");
+  // Submit to Google Forms using a top-level POST (no fetch/iframe → no CORB/CSP)
+  $("#intakeForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const formEl = e.currentTarget;
+    const submitBtn = $("#submitBtn") || formEl.querySelector('button[type="submit"]');
+    const msg = $("#submitMsg");
+    const hp = $("#hp");
 
-  if (msg) msg.textContent = "";
-  if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
+    if (msg) msg.textContent = "";
+    if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
 
-  // Build payload
-  const payload = new Map([
-    [ENTRY.fullName,   $("#fullName")?.value.trim() || ""],
-    [ENTRY.email,      $("#email")?.value.trim() || ""],
-    [ENTRY.phone,      $("#phone")?.value.trim() || ""],
-    [ENTRY.timeline,   $("#timeline")?.value || ""],
-    [ENTRY.occupancy,  $("#occupancy")?.value || ""],
-    [ENTRY.source,     $("#source")?.value || ""],
-    [ENTRY.estPrice,   $("#estPrice")?.value.trim() || ""],
-    [ENTRY.estDown,    $("#estDown")?.value.trim() || ""],
-    [ENTRY.employment, $("#employment")?.value || ""],
-    [ENTRY.coBorrower, $("#coBorrower")?.value || ""],
-    [ENTRY.notes,      $("#notes")?.value.trim() || ""],
-    // hidden/derived
-    [ENTRY.estMonthly, $("#h_estMonthly")?.value || ""],
-    [ENTRY.estDTI,     $("#h_estDTI")?.value || ""],
-    [ENTRY.agentName,  $("#h_agentName")?.value || ""],
-    [ENTRY.agentEmail, $("#h_agentEmail")?.value || ""],
-    [ENTRY.utm,        $("#h_utm")?.value || ""]
-  ]);
+    // Build payload
+    const payload = new Map([
+      [ENTRY.fullName,   $("#fullName")?.value.trim() || ""],
+      [ENTRY.email,      $("#email")?.value.trim() || ""],
+      [ENTRY.phone,      $("#phone")?.value.trim() || ""],
+      [ENTRY.timeline,   $("#timeline")?.value || ""],
+      [ENTRY.occupancy,  $("#occupancy")?.value || ""],
+      [ENTRY.source,     $("#source")?.value || ""],
+      [ENTRY.estPrice,   $("#estPrice")?.value.trim() || ""],
+      [ENTRY.estDown,    $("#estDown")?.value.trim() || ""],
+      [ENTRY.employment, $("#employment")?.value || ""],
+      [ENTRY.coBorrower, $("#coBorrower")?.value || ""],
+      [ENTRY.notes,      $("#notes")?.value.trim() || ""],
+      [ENTRY.estMonthly, $("#h_estMonthly")?.value || ""],
+      [ENTRY.estDTI,     $("#h_estDTI")?.value || ""],
+      [ENTRY.agentName,  $("#h_agentName")?.value || ""],
+      [ENTRY.agentEmail, $("#h_agentEmail")?.value || ""],
+      [ENTRY.utm,        $("#h_utm")?.value || ""]
+    ]);
 
-  // Extra params Google expects
+    // Extra Google params
     const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
     const extra = new Map([["fvv","1"],["pageHistory","0"],["fbzx",fbzx]]);
 
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
 
-    // 1) Try fetch (no-cors). Opaque success but usually records.
-    let fetchFailed = false;
-    try {
-      const fd = new FormData();
-      payload.forEach((v,k)=>fd.append(k,v));
-      extra.forEach((v,k)=>fd.append(k,v));
-      await fetch(GOOGLE_FORM_ACTION, { method: "POST", mode: "no-cors", body: fd });
-    } catch (_) {
-      fetchFailed = true;
-    }
-
-    if (!fetchFailed) {
-      if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received. I’ll reach out shortly.";
-      formEl.reset();
-      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
-      return;
-    }
-
-    // 2) Fallback: top-level POST in a new tab (bypasses CSP frame-ancestors 'none')
+    // Top-level POST to a new tab (Google confirmation page)
     const tempForm = document.createElement("form");
     tempForm.action = GOOGLE_FORM_ACTION;
     tempForm.method = "POST";
-    tempForm.target = "_blank"; // user sees Google confirmation page
+    tempForm.target = "_blank";
     tempForm.style.display = "none";
 
     payload.forEach((v,k)=>{ const i=document.createElement("input"); i.type="hidden"; i.name=k; i.value=v; tempForm.appendChild(i); });
@@ -198,7 +184,7 @@ $("#intakeForm")?.addEventListener("submit", async (e) => {
 
     if (msg) msg.textContent = "Submitted. A confirmation tab opened in your browser.";
     formEl.reset();
+    window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
   });
 })();
-    
