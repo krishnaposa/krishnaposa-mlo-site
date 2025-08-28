@@ -47,3 +47,8 @@
     border: 0; box-shadow: none; border-radius: 0; padding: 0;
   }
 }
+
+/* DEBUG: visualize the dropdown area */
+@media (max-width: 1023.98px) {
+  .site-header .menu { outline: 2px solid lime !important; }
+}
