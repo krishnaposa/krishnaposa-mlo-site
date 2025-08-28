@@ -7,22 +7,22 @@
 #le-compare-results .card {
   margin-bottom: 1rem;
 }
-
 #le-compare-results p { margin: .25rem 0 0; }
 
-/* Labels and inputs: high contrast on dark theme */
+/* Labels and inputs */
 #le-compare-section label {
   color: var(--text);
   font-weight: 500;
-  display: block;            /* ensures label always above input */
-  margin-bottom: 0.25rem;
+  display: block;              /* label above input */
+  margin-bottom: .25rem;
 }
+#le-compare-section .field { min-width: 140px; } /* prevent squashing */
 #le-compare-section input {
   width: 100%;
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--muted);
-  padding: 0.55rem 0.6rem;
+  padding: .55rem .6rem;
   border-radius: 6px;
   box-sizing: border-box;
 }
@@ -34,12 +34,14 @@
 .sticky-cta .btn { min-height: 44px; }
 
 /* ---------- Layout: Mobile (default) ---------- */
+/* Stack everything 1 column */
 #le-compare-section .grid-3 {
   display: grid;
-  grid-template-columns: 1fr;   /* 1 column on mobile */
+  grid-template-columns: 1fr !important; /* override inline template on HTML */
   gap: var(--pad);
 }
 
+/* Results stack by default */
 #le-compare-results .grid-3 {
   display: grid;
   grid-template-columns: 1fr;
@@ -72,45 +74,31 @@
   .hero-photo-card { display: none; }
 }
 
-/* ---------- Medium screens ---------- */
-@media (min-width: 760px) and (max-width: 1023.98px) {
+/* ---------- ≥760px (tablets & all desktops) ---------- */
+/* A | B on the first row, "What You Can Shop" spans the next row */
+@media (min-width: 760px) {
   #le-compare-section .grid-3 {
-    grid-template-columns: 1fr 1fr !important;
-  }
-  #le-compare-section aside { grid-column: 1 / -1 !important; }
-  #le-compare-results .grid-3 { grid-template-columns: 1fr 1fr; }
-}
-
-/* ---------- Laptops (1024–1399px) ---------- */
-@media (min-width: 1024px) and (max-width: 1399.98px) {
-  #le-compare-section .grid-3 {
-    grid-template-columns: minmax(0,1fr) minmax(0,1fr) !important;
+    grid-template-columns: 1fr 1fr !important; /* always 2 cols for the forms */
     align-items: start;
   }
-  #le-compare-section aside.card { grid-column: 1 / -1 !important; }
+  #le-compare-section aside.card {
+    grid-column: 1 / -1 !important;            /* full-width on next row */
+  }
+
+  /* Results: 2 columns where possible */
+  #le-compare-results .grid-3 {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
-/* ---------- Wide screens (≥1400px) ---------- */
+/* ---------- Wide desktop niceties (optional) ---------- */
 @media (min-width: 1400px) {
-  #le-compare-section .grid-3 {
-    grid-template-columns:
-      minmax(0,1fr)
-      minmax(0,1fr)
-      clamp(300px, 28vw, 420px)
-    !important;
-    align-items: start;
-  }
-}
-
-/* Results blocks */
-@media (min-width: 1024px) {
   #le-compare-results .grid-3:first-of-type { grid-template-columns: 1fr 1fr 1fr; }
-  #le-compare-results .grid-3:last-of-type { grid-template-columns: 1fr 1fr; }
+  #le-compare-results .grid-3:last-of-type  { grid-template-columns: 1fr 1fr; }
 }
 
 /* --- Prevent overflow and label squashing --- */
 #le-compare-section .grid-3 > * { min-width: 0; max-width: 100%; }
-#le-compare-section .field { min-width: 120px; } /* ensures label + input don't collapse */
 #le-compare-section .card,
 #le-compare-section .card * { overflow-wrap: anywhere; word-break: break-word; }
 #le-compare-section { overflow-x: clip; }
