@@ -1,35 +1,132 @@
-/* Loan Estimate Comparison – custom tweaks */
+/* ================
+   Loan Estimate Comparison (mobile-first)
+   ================ */
 
-/* Keep cards spaced */
+/* Base spacing + readability */
 #le-compare-section .card,
 #le-compare-results .card {
   margin-bottom: 1rem;
 }
 
-#le-compare-section .grid-3,
-#le-compare-results .grid-3 {
-  gap: var(--pad);
-}
+#le-compare-results p { margin: .25rem 0 0; }
 
-#le-compare-results p {
-  margin: .25rem 0 0;
-}
-
-/* 🔹 Lighten form labels for readability */
+/* Labels and inputs: high contrast on dark theme */
 #le-compare-section label {
-  color: var(--text); /* pulls from your site theme (light gray) */
+  color: var(--text);
   font-weight: 500;
 }
-
-/* 🔹 Inputs: keep text light on dark background */
 #le-compare-section input {
+  width: 100%;
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--muted);
-  padding: 0.4rem 0.5rem;
-  border-radius: 4px;
+  padding: 0.55rem 0.6rem;
+  border-radius: 6px;
+}
+#le-compare-section input::placeholder { color: var(--muted); }
+
+/* Buttons: larger tap targets on mobile */
+#le-compare-section .cta .btn,
+#le-compare-section .cta .btn-outline,
+.sticky-cta .btn { min-height: 44px; }
+
+/* ---------- Layout: Mobile (default) ---------- */
+/* Stack Lender A, Lender B, then Explainer/Actions */
+#le-compare-section .grid-3 {
+  display: grid;
+  grid-template-columns: 1fr;   /* 1 column on mobile */
+  gap: var(--pad);
 }
 
-#le-compare-section input::placeholder {
-  color: var(--muted);
+/* Results: stack metrics; keep each metric readable */
+#le-compare-results .grid-3 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--pad);
 }
+
+/* Inside result metric cards: A / B / Diff rows */
+#le-compare-results .grid-3 .grid-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: .5rem;
+}
+
+/* Action buttons: full width on mobile */
+#le-compare-section aside .cta {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+#le-compare-section aside .cta .btn,
+#le-compare-section aside .cta .btn-outline {
+  width: 100%;
+}
+
+/* Make Compare button sticky within the aside on mobile */
+#le-compare-section aside {
+  position: relative;
+}
+#compareBtn {
+  position: sticky;
+  bottom: .5rem;
+  z-index: 1;
+}
+
+/* Hero tweaks: hide side photo on smaller screens */
+@media (max-width: 760px) {
+  .hero-inner { display: grid; gap: var(--pad); }
+  .hero-photo-card { display: none; }
+}
+
+/* ---------- Medium screens ---------- */
+@media (min-width: 760px) and (max-width: 1023px) {
+  /* 2 columns: A | B, then Explainer spans full width */
+  #le-compare-section .grid-3 {
+    grid-template-columns: 1fr 1fr;
+  }
+  #le-compare-section aside {
+    grid-column: 1 / -1;
+  }
+
+  /* Results: 2 columns where possible */
+  #le-compare-results .grid-3 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ---------- Desktop / Wide ---------- */
+@media (min-width: 1024px) {
+  /* A | B | Explainer */
+  #le-compare-section .grid-3 {
+    grid-template-columns: 1fr 1fr minmax(320px, 0.8fr);
+    align-items: start;
+  }
+
+  /* Results: 3 blocks on first row, then 2 blocks */
+  #le-compare-results .grid-3:first-of-type {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  #le-compare-results .grid-3:last-of-type {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Subtle hover/focus for inputs and cards on desktop */
+@media (hover: hover) {
+  #le-compare-section input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 25%, transparent);
+  }
+  #le-compare-section .card:hover {
+    transform: translateY(-1px);
+    transition: transform .15s ease-out;
+  }
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* Micro-utility: tighten tiny notes */
+.tiny { opacity: .85; }
