@@ -32,26 +32,26 @@ html, body { overflow-x: hidden; }
    ANNOUNCEMENT RIBBON (AI)
    – choose bold brand ribbon
 ============================= */
-.announce-ai{
+.announce{
   background:#0b5fff;     /* bright blue */
   color:#fff;
   font-weight:600;
   border-bottom:2px solid #0845c6;
 }
-.announce-ai .container{
+.announce .container{
   display:flex; align-items:center; justify-content:space-between;
   gap:1rem; padding:.75rem 1rem;
 }
-.announce-ai a{ color:#fff; font-weight:700; text-decoration:underline; }
-.announce-ai button{
+.announce a{ color:#fff; font-weight:700; text-decoration:underline; }
+.announce button{
   background:transparent; border:0; color:#fff;
   font-size:1.2rem; cursor:pointer;
 }
 
 /* Optional light variant (commented)
-.announce-ai{ background:#eaf2ff; color:#0b1a3a; font-weight:600; border-bottom:1px solid #c8dcff }
-.announce-ai a{ color:#0b5fff; text-decoration:underline; font-weight:700 }
-.announce-ai button{ color:inherit }
+.announce{ background:#eaf2ff; color:#0b1a3a; font-weight:600; border-bottom:1px solid #c8dcff }
+.announce a{ color:#0b5fff; text-decoration:underline; font-weight:700 }
+.announce button{ color:inherit }
 */
 
 /* =============================
