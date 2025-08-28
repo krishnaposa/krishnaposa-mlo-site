@@ -125,59 +125,61 @@
   })();
 
   // ------- Robust Google Forms submit -------
-  $("#intakeForm")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const formEl = e.currentTarget;
-    const submitBtn = $("#submitBtn") || formEl.querySelector('button[type="submit"]');
-    const msg = $("#submitMsg");
-    const hp = $("#hp");
+// ------- Google Forms submit (fetch + top-level POST fallback) -------
+$("#intakeForm")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const formEl = e.currentTarget;
+  const submitBtn = $("#submitBtn") || formEl.querySelector('button[type="submit"]');
+  const msg = $("#submitMsg");
+  const hp = $("#hp");
 
-    if (msg) msg.textContent = "";
-    if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
+  if (msg) msg.textContent = "";
+  if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
 
-    // Build payload
-    const payload = new Map([
-      [ENTRY.fullName,   $("#fullName")?.value.trim() || ""],
-      [ENTRY.email,      $("#email")?.value.trim() || ""],
-      [ENTRY.phone,      $("#phone")?.value.trim() || ""],
-      [ENTRY.timeline,   $("#timeline")?.value || ""],
-      [ENTRY.occupancy,  $("#occupancy")?.value || ""],
-      [ENTRY.source,     $("#source")?.value || ""],
-      [ENTRY.estPrice,   $("#estPrice")?.value.trim() || ""],
-      [ENTRY.estDown,    $("#estDown")?.value.trim() || ""],
-      [ENTRY.employment, $("#employment")?.value || ""],
-      [ENTRY.coBorrower, $("#coBorrower")?.value || ""],
-      [ENTRY.notes,      $("#notes")?.value.trim() || ""],
-      [ENTRY.estMonthly, $("#h_estMonthly")?.value || ""],
-      [ENTRY.estDTI,     $("#h_estDTI")?.value || ""],
-      [ENTRY.agentName,  $("#h_agentName")?.value || ""],
-      [ENTRY.agentEmail, $("#h_agentEmail")?.value || ""],
-      [ENTRY.utm,        $("#h_utm")?.value || ""]
-    ]);
+  // Build payload
+  const payload = new Map([
+    [ENTRY.fullName,   $("#fullName")?.value.trim() || ""],
+    [ENTRY.email,      $("#email")?.value.trim() || ""],
+    [ENTRY.phone,      $("#phone")?.value.trim() || ""],
+    [ENTRY.timeline,   $("#timeline")?.value || ""],
+    [ENTRY.occupancy,  $("#occupancy")?.value || ""],
+    [ENTRY.source,     $("#source")?.value || ""],
+    [ENTRY.estPrice,   $("#estPrice")?.value.trim() || ""],
+    [ENTRY.estDown,    $("#estDown")?.value.trim() || ""],
+    [ENTRY.employment, $("#employment")?.value || ""],
+    [ENTRY.coBorrower, $("#coBorrower")?.value || ""],
+    [ENTRY.notes,      $("#notes")?.value.trim() || ""],
+    // hidden/derived
+    [ENTRY.estMonthly, $("#h_estMonthly")?.value || ""],
+    [ENTRY.estDTI,     $("#h_estDTI")?.value || ""],
+    [ENTRY.agentName,  $("#h_agentName")?.value || ""],
+    [ENTRY.agentEmail, $("#h_agentEmail")?.value || ""],
+    [ENTRY.utm,        $("#h_utm")?.value || ""]
+  ]);
 
-    // Extra fields Google expects
-    const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
-    const extra = new Map([["fvv","1"],["pageHistory","0"],["fbzx",fbzx]]);
+  // Google’s extra params
+  const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
+  const extra = new Map([["fvv","1"],["pageHistory","0"],["fbzx",fbzx]]);
 
-    // Try fetch (no-cors)
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
-    try {
-      const fd = new FormData();
-      payload.forEach((v,k)=>fd.append(k,v));
-      extra.forEach((v,k)=>fd.append(k,v));
-      await fetch(GOOGLE_FORM_ACTION, { method: "POST", mode: "no-cors", body: fd });
-    } catch (_) { /* ignore; iframe fallback will run too */ }
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
 
-    // Iframe fallback: real form POST (most reliable)
-    const iframe = document.createElement("iframe");
-    iframe.name = "gf_post";
-    iframe.style.display = "none";
-    document.body.appendChild(iframe);
+  // 1) Try fetch (no-cors). Success is opaque, but this usually records.
+  try {
+    const fd = new FormData();
+    payload.forEach((v,k)=>fd.append(k,v));
+    extra.forEach((v,k)=>fd.append(k,v));
+    await fetch(GOOGLE_FORM_ACTION, { method: "POST", mode: "no-cors", body: fd });
 
+    // Show local success and reset; data should be in the Form/Sheet.
+    if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received. I’ll reach out shortly.";
+    formEl.reset();
+    window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
+  } catch (err) {
+    // 2) Fallback: top-level POST in a new tab (CSP-safe).
     const tempForm = document.createElement("form");
     tempForm.action = GOOGLE_FORM_ACTION;
     tempForm.method = "POST";
-    tempForm.target = "gf_post";
+    tempForm.target = "_blank"; // open Google “Response recorded” page in new tab
     tempForm.style.display = "none";
 
     payload.forEach((v,k)=>{ const i=document.createElement("input"); i.type="hidden"; i.name=k; i.value=v; tempForm.appendChild(i); });
@@ -185,13 +187,12 @@
 
     document.body.appendChild(tempForm);
     tempForm.submit();
+    setTimeout(()=>tempForm.remove(), 500);
 
-    setTimeout(() => {
-      tempForm.remove(); iframe.remove();
-      if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received. I’ll reach out shortly.";
-      formEl.reset();
-      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
-    }, 900);
-  });
-})();
+    if (msg) msg.textContent = "Submitted. A confirmation tab opened in your browser.";
+    formEl.reset();
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
+  }
+});
+    
