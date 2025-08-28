@@ -14,6 +14,8 @@
 #le-compare-section label {
   color: var(--text);
   font-weight: 500;
+  display: block;            /* ensures label always above input */
+  margin-bottom: 0.25rem;
 }
 #le-compare-section input {
   width: 100%;
@@ -32,14 +34,12 @@
 .sticky-cta .btn { min-height: 44px; }
 
 /* ---------- Layout: Mobile (default) ---------- */
-/* Stack Lender A, Lender B, then Explainer/Actions */
 #le-compare-section .grid-3 {
   display: grid;
   grid-template-columns: 1fr;   /* 1 column on mobile */
   gap: var(--pad);
 }
 
-/* Results: stack metrics; keep each metric readable */
 #le-compare-results .grid-3 {
   display: grid;
   grid-template-columns: 1fr;
@@ -52,7 +52,7 @@
   gap: .5rem;
 }
 
-/* Action buttons: full width on mobile */
+/* Action buttons full width on mobile */
 #le-compare-section aside .cta {
   display: grid;
   grid-template-columns: 1fr;
@@ -62,17 +62,11 @@
   width: 100%;
 }
 
-/* Make Compare button sticky within the aside on mobile */
-#le-compare-section aside {
-  position: relative;
-}
-#compareBtn {
-  position: sticky;
-  bottom: .5rem;
-  z-index: 1;
-}
+/* Sticky compare button inside aside */
+#le-compare-section aside { position: relative; }
+#compareBtn { position: sticky; bottom: .5rem; z-index: 1; }
 
-/* Hero tweaks: hide side photo on smaller screens */
+/* Hero tweaks */
 @media (max-width: 760px) {
   .hero-inner { display: grid; gap: var(--pad); }
   .hero-photo-card { display: none; }
@@ -80,64 +74,48 @@
 
 /* ---------- Medium screens ---------- */
 @media (min-width: 760px) and (max-width: 1023.98px) {
-  /* 2 columns: A | B, then Explainer spans full width */
   #le-compare-section .grid-3 {
     grid-template-columns: 1fr 1fr !important;
   }
-  #le-compare-section aside {
-    grid-column: 1 / -1 !important;
-  }
-
-  /* Results: 2 columns where possible */
-  #le-compare-results .grid-3 {
-    grid-template-columns: 1fr 1fr;
-  }
+  #le-compare-section aside { grid-column: 1 / -1 !important; }
+  #le-compare-results .grid-3 { grid-template-columns: 1fr 1fr; }
 }
 
-/* ---------- Desktop (laptops) ---------- */
-/* Force 2 columns on typical laptop widths to prevent overflow.
-   The aside stacks below A|B. */
+/* ---------- Laptops (1024–1399px) ---------- */
 @media (min-width: 1024px) and (max-width: 1399.98px) {
   #le-compare-section .grid-3 {
     grid-template-columns: minmax(0,1fr) minmax(0,1fr) !important;
     align-items: start;
   }
-  #le-compare-section aside.card {
-    grid-column: 1 / -1 !important;
-  }
+  #le-compare-section aside.card { grid-column: 1 / -1 !important; }
 }
 
-/* ---------- Wide Desktop ---------- */
-/* Restore 3 columns when there is ample space.
-   Aside gets sane bounds so it won't push the grid wider. */
+/* ---------- Wide screens (≥1400px) ---------- */
 @media (min-width: 1400px) {
   #le-compare-section .grid-3 {
     grid-template-columns:
-      minmax(0,1fr)             /* Lender A */
-      minmax(0,1fr)             /* Lender B */
-      clamp(300px, 28vw, 420px) /* Aside panel */
+      minmax(0,1fr)
+      minmax(0,1fr)
+      clamp(300px, 28vw, 420px)
     !important;
     align-items: start;
   }
 }
 
-/* Results: 3 blocks on first row, then 2 blocks (wide screens) */
+/* Results blocks */
 @media (min-width: 1024px) {
-  #le-compare-results .grid-3:first-of-type {
-    grid-template-columns: 1fr 1fr 1fr;
-  }
-  #le-compare-results .grid-3:last-of-type {
-    grid-template-columns: 1fr 1fr;
-  }
+  #le-compare-results .grid-3:first-of-type { grid-template-columns: 1fr 1fr 1fr; }
+  #le-compare-results .grid-3:last-of-type { grid-template-columns: 1fr 1fr; }
 }
 
-/* --- Prevent overflow from any child elements --- */
+/* --- Prevent overflow and label squashing --- */
 #le-compare-section .grid-3 > * { min-width: 0; max-width: 100%; }
+#le-compare-section .field { min-width: 120px; } /* ensures label + input don't collapse */
 #le-compare-section .card,
 #le-compare-section .card * { overflow-wrap: anywhere; word-break: break-word; }
 #le-compare-section { overflow-x: clip; }
 
-/* Subtle hover/focus for inputs and cards on desktop */
+/* Hover/focus */
 @media (hover: hover) {
   #le-compare-section input:focus {
     outline: none;
@@ -150,15 +128,13 @@
   }
 }
 
-/* Respect reduced motion */
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
 
-/* Micro-utility: tighten tiny notes */
+/* Utilities */
 .tiny { opacity: .85; }
-
-/* TL;DR + FAQ spacing */
 #tldr p.small { line-height: 1.55; }
 #faq details { margin: .35rem 0; }
 #faq summary { cursor: pointer; font-weight: 600; }
