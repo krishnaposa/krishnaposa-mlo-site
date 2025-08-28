@@ -9,6 +9,15 @@ const POSTS = [
   tags: ["AI", "Tools", "Rates"]
 },
   {
+    title: "How My Website Tools Help Buyers and Realtors",
+    url: "blog-tools.html",
+    date: "2025-08-27",
+    excerpt:
+      "A quick tour of the Buyer Funnel, mortgage calculators, and the AI Loan Advisor—and how they help clients and realtor partners.",
+    tags: ["Tools", "Buyers", "Realtors", "AI"]
+  },
+
+  {
     title: "Mortgage Rates Slide to 10-Month Low — What It Means for Atlanta Buyers",
     url: "blog-mortgage-rates.html",
     date: "2025-08-21",
