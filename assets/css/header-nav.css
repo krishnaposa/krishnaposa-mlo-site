@@ -94,5 +94,7 @@ body.nav-open #menu-backdrop {
   bottom: 0;
   right: min(92vw, 340px); /* <-- same width as your panel */
 }
-
+/* debug */
+.site-header .menu { outline: 2px solid lime !important; }
+#menu-backdrop { outline: 2px solid red !important; }
 /* (Safety) If you ever change the panel width, update the value above too */
