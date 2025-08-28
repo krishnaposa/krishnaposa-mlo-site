@@ -4,10 +4,10 @@
 (function () {
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
 
-  // ===== Your live Google Form /formResponse URL =====
+  // Your live Google Form /formResponse URL
   const GOOGLE_FORM_ACTION = "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse";
 
-  // ===== Your entry IDs (as provided) =====
+  // Your entry IDs (from your form)
   const ENTRY = {
     fullName:   "entry.1081531616",
     email:      "entry.1665114649",
@@ -31,7 +31,7 @@
 
   // Booking links
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
-  ["#bookTop", "#bookMid", "#bookBottom", "#bookSticky"].forEach((q) => { const el = $(q); if (el) el.href = BOOKING_URL; });
+  ["#bookTop", "#bookBottom", "#bookSticky"].forEach((q) => { const el = $(q); if (el) el.href = BOOKING_URL; });
 
   // Realtor co-brand
   function drawAgent() {
@@ -134,7 +134,7 @@
     if (msg) msg.textContent = "";
     if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
 
-    // Build key/value payload
+    // Build payload
     const payload = new Map([
       [ENTRY.fullName,   $("#fullName")?.value.trim() || ""],
       [ENTRY.email,      $("#email")?.value.trim() || ""],
@@ -154,26 +154,20 @@
       [ENTRY.utm,        $("#h_utm")?.value || ""]
     ]);
 
-    // Required extra fields Google often expects
+    // Extra fields Google expects
     const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
-    const extra = new Map([
-      ["fvv", "1"],
-      ["pageHistory", "0"],
-      ["fbzx", fbzx]
-    ]);
+    const extra = new Map([["fvv","1"],["pageHistory","0"],["fbzx",fbzx]]);
 
-    // Try fetch first (no-cors)
+    // Try fetch (no-cors)
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
     try {
       const fd = new FormData();
       payload.forEach((v,k)=>fd.append(k,v));
       extra.forEach((v,k)=>fd.append(k,v));
       await fetch(GOOGLE_FORM_ACTION, { method: "POST", mode: "no-cors", body: fd });
-    } catch (_) {
-      // ignore — we also do the iframe fallback below
-    }
+    } catch (_) { /* ignore; iframe fallback will run too */ }
 
-    // Iframe fallback: real form POST (most reliable with Google Forms)
+    // Iframe fallback: real form POST (most reliable)
     const iframe = document.createElement("iframe");
     iframe.name = "gf_post";
     iframe.style.display = "none";
