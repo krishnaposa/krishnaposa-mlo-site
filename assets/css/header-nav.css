@@ -1,30 +1,24 @@
-/* ===== Mobile nav overlay & visibility ===== */
+/* header-nav.css — Baseline v1 */
 
 /* Keep header above content */
-.site-header {
-  position: relative;
-  z-index: 10010;
-  background: var(--bg, #0f172a);
-}
+.site-header { position: relative; z-index: 1000; background: var(--bg, #0f172a); }
+.site-header .nav  { position: relative; }
 
-.site-header .nav { position: relative; }
-.site-header .menu-toggle { position: relative; z-index: 10012; }
+/* Toggle button always clickable */
+.site-header .menu-toggle { position: relative; z-index: 1003; }
 
-/* Backdrop behind the panel */
+/* Mobile dropdown (off-canvas) */
 #menu-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.35);
-  z-index: 10011;
-  pointer-events: auto;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  /* remove blur for simplicity/reliability */
+  z-index: 1001;
 }
 #menu-backdrop[hidden] { display: none !important; }
 
-/* Menu panel (mobile: off-canvas by default) */
 .site-header .menu {
   position: fixed;
-  top: 0;
-  right: 0;
+  top: 0; right: 0;
   width: min(92vw, 340px);
   height: 100vh;
   overflow: auto;
@@ -32,21 +26,18 @@
   border-left: 1px solid var(--muted, #94a3b8);
   box-shadow: -8px 0 24px rgba(0,0,0,.4);
   padding: .5rem;
-  z-index: 10100;
-  transform: translateX(100%);
-  transition: transform .22s ease-out;
-  pointer-events: auto;
+  z-index: 1002;                 /* above backdrop, below toggle */
+  transform: translateX(100%);   /* off-canvas by default */
+  transition: transform .2s ease-out;
 }
 
-/* Slide in when nav is open */
+/* Open state */
 body.nav-open .site-header .menu {
   transform: translateX(0);
 }
-
-/* Honor [hidden] attribute */
 .site-header .menu[hidden] { display: none !important; }
 
-/* Tap targets */
+/* Menu items */
 .site-header .menu li { list-style: none; }
 .site-header .menu a {
   display: block;
@@ -54,47 +45,14 @@ body.nav-open .site-header .menu {
   text-decoration: none;
 }
 
-/* ===== Desktop layout ===== */
+/* Desktop: inline nav, no overlay */
 @media (min-width: 1024px) {
+  #menu-backdrop { display: none !important; }
   .site-header .menu {
     position: static;
     transform: none;
-    height: auto;
-    width: auto;
-    box-shadow: none;
-    border: 0;
-    overflow: visible;
-    display: flex !important; /* show inline on desktop */
-    gap: .5rem;
+    height: auto; width: auto; overflow: visible;
+    box-shadow: none; border: 0; padding: 0;
+    display: flex !important; gap: .5rem;
   }
-  /* No backdrop on desktop (optional) */
-  #menu-backdrop { display: none !important; }
 }
-/* Force show the mobile menu panel when nav is open */
-body.nav-open .site-header .menu {
-  display: block !important;
-  transform: translateX(0) !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  z-index: 10012 !important;
-}
-/* --- Ensure the menu panel is the topmost clickable layer --- */
-.site-header .menu { z-index: 10100; pointer-events: auto; }
-
-/* The toggle should NOT sit above the panel */
-.site-header .menu-toggle { z-index: 10005; }
-
-/* Backdrop sits below the panel and does NOT cover the panel area */
-#menu-backdrop { z-index: 10001; pointer-events: auto; }
-
-/* When open, shrink the backdrop's right edge so it doesn't overlap the panel */
-body.nav-open #menu-backdrop {
-  left: 0;
-  top: 0;
-  bottom: 0;
-  right: min(92vw, 340px); /* <-- same width as your panel */
-}
-/* debug */
-.site-header .menu { outline: 2px solid lime !important; }
-#menu-backdrop { outline: 2px solid red !important; }
-/* (Safety) If you ever change the panel width, update the value above too */
