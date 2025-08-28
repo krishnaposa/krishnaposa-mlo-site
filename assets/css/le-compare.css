@@ -1,0 +1,14 @@
+/* Loan Estimate Comparison – custom tweaks */
+#le-compare-section .card,
+#le-compare-results .card {
+  margin-bottom: 1rem;
+}
+
+#le-compare-section .grid-3,
+#le-compare-results .grid-3 {
+  gap: var(--pad);
+}
+
+#le-compare-results p {
+  margin: .25rem 0 0;
+}
