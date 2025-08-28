@@ -1,43 +1,71 @@
-/* --- Mobile nav overlay & clickability --- */
-.site-header .nav { position: relative; }
+/* ===== Mobile nav overlay & visibility ===== */
 
-/* ensure the toggle stays clickable above the page */
-.site-header .menu-toggle {
+/* Keep header above content */
+.site-header {
   position: relative;
-  z-index: 10001;
+  z-index: 10010;
+  background: var(--bg, #0f172a);
 }
 
-/* menu panel overlays content when opened */
-.site-header .menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  width: min(92vw, 320px);
-  background: var(--panel, #111827);
-  border: 1px solid var(--muted, #94a3b8);
-  border-radius: 8px;
-  padding: .5rem;
-  box-shadow: 0 12px 24px rgba(0,0,0,.35);
-  z-index: 10000;            /* above hero/content */
-}
+.site-header .nav { position: relative; }
+.site-header .menu-toggle { position: relative; z-index: 10012; }
 
-/* list items clickable and spaced */
-.site-header .menu li { list-style: none; }
-.site-header .menu a {
-  display: block;
-  padding: .6rem .75rem;
-  text-decoration: none;
-}
-
-/* when [hidden] attribute present, keep it off-screen */
-.site-header .menu[hidden] { display: none !important; }
-
-/* optional: dark overlay behind the menu when open */
+/* Backdrop behind the panel */
 #menu-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,.35);
   backdrop-filter: blur(1px);
-  z-index: 9999;
+  z-index: 10011;
 }
-#menu-backdrop[hidden] { display: none; }
+#menu-backdrop[hidden] { display: none !important; }
+
+/* Menu panel (mobile: off-canvas by default) */
+.site-header .menu {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(92vw, 340px);
+  height: 100vh;
+  overflow: auto;
+  background: var(--panel, #111827);
+  border-left: 1px solid var(--muted, #94a3b8);
+  box-shadow: -8px 0 24px rgba(0,0,0,.4);
+  padding: .5rem;
+  z-index: 10012;
+  transform: translateX(100%);
+  transition: transform .22s ease-out;
+}
+
+/* Slide in when nav is open */
+body.nav-open .site-header .menu {
+  transform: translateX(0);
+}
+
+/* Honor [hidden] attribute */
+.site-header .menu[hidden] { display: none !important; }
+
+/* Tap targets */
+.site-header .menu li { list-style: none; }
+.site-header .menu a {
+  display: block;
+  padding: .7rem .8rem;
+  text-decoration: none;
+}
+
+/* ===== Desktop layout ===== */
+@media (min-width: 1024px) {
+  .site-header .menu {
+    position: static;
+    transform: none;
+    height: auto;
+    width: auto;
+    box-shadow: none;
+    border: 0;
+    overflow: visible;
+    display: flex !important; /* show inline on desktop */
+    gap: .5rem;
+  }
+  /* No backdrop on desktop (optional) */
+  #menu-backdrop { display: none !important; }
+}
