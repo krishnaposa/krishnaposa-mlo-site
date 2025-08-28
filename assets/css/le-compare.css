@@ -130,3 +130,7 @@
 
 /* Micro-utility: tighten tiny notes */
 .tiny { opacity: .85; }
+/* TL;DR + FAQ spacing */
+#tldr p.small { line-height: 1.55; }
+#faq details { margin: .35rem 0; }
+#faq summary { cursor: pointer; font-weight: 600; }
