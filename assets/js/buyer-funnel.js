@@ -6,28 +6,28 @@
 
   // ===== 1) SET this to your Google Form action (the /formResponse URL) =====
   // Example: "https://docs.google.com/forms/d/e/1FAIpQLSdEXAMPLEID/formResponse"
-  const GOOGLE_FORM_ACTION = "https://docs.google.com/forms/d/e/YOUR_FORM_ID/formResponse";
+  const GOOGLE_FORM_ACTION = "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse";
 
   // ===== 2) MAP your Google Form "entry.<id>" names here =====
   // Find them in your form's HTML (Preview -> View Source -> look for name="entry.xxxxx")
   const ENTRY = {
-    fullName:   "entry.1111111111",
-    email:      "entry.2222222222",
-    phone:      "entry.3333333333",
-    timeline:   "entry.4444444444",
-    occupancy:  "entry.5555555555",
-    source:     "entry.6666666666",
-    estPrice:   "entry.7777777777",
-    estDown:    "entry.8888888888",
-    employment: "entry.9999999999",
-    coBorrower: "entry.1010101010",
-    notes:      "entry.1212121212",
+    fullName:   "entry.1081531616",
+    email:      "entry.1665114649",
+    phone:      "entry.776689893",
+    timeline:   "entry.938852734",
+    occupancy:  "entry.223995685",
+    source:     "entry.447085241",
+    estPrice:   "entry.390780263",
+    estDown:    "entry.508547119",
+    employment: "entry.1791431821",
+    coBorrower: "entry.1836064847",
+    notes:      "entry.1112680792",
     // Hidden/derived fields — make short-answer questions for them in your Google Form
-    estMonthly: "entry.1313131313",
-    estDTI:     "entry.1414141414",
-    agentName:  "entry.1515151515",
-    agentEmail: "entry.1616161616",
-    utm:        "entry.1717171717"
+    estMonthly: "entry.672377788",
+    estDTI:     "entry.1531234816",
+    agentName:  "entry.816490105",
+    agentEmail: "entry.1411194686",
+    utm:        "entry.1980121130"
   };
 
   // DOM helpers
