@@ -1,4 +1,6 @@
 /* Loan Estimate Comparison – custom tweaks */
+
+/* Keep cards spaced */
 #le-compare-section .card,
 #le-compare-results .card {
   margin-bottom: 1rem;
@@ -11,4 +13,23 @@
 
 #le-compare-results p {
   margin: .25rem 0 0;
+}
+
+/* 🔹 Lighten form labels for readability */
+#le-compare-section label {
+  color: var(--text); /* pulls from your site theme (light gray) */
+  font-weight: 500;
+}
+
+/* 🔹 Inputs: keep text light on dark background */
+#le-compare-section input {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--muted);
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+}
+
+#le-compare-section input::placeholder {
+  color: var(--muted);
 }
