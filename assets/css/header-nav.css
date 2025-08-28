@@ -1,0 +1,43 @@
+/* --- Mobile nav overlay & clickability --- */
+.site-header .nav { position: relative; }
+
+/* ensure the toggle stays clickable above the page */
+.site-header .menu-toggle {
+  position: relative;
+  z-index: 10001;
+}
+
+/* menu panel overlays content when opened */
+.site-header .menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: min(92vw, 320px);
+  background: var(--panel, #111827);
+  border: 1px solid var(--muted, #94a3b8);
+  border-radius: 8px;
+  padding: .5rem;
+  box-shadow: 0 12px 24px rgba(0,0,0,.35);
+  z-index: 10000;            /* above hero/content */
+}
+
+/* list items clickable and spaced */
+.site-header .menu li { list-style: none; }
+.site-header .menu a {
+  display: block;
+  padding: .6rem .75rem;
+  text-decoration: none;
+}
+
+/* when [hidden] attribute present, keep it off-screen */
+.site-header .menu[hidden] { display: none !important; }
+
+/* optional: dark overlay behind the menu when open */
+#menu-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  backdrop-filter: blur(1px);
+  z-index: 9999;
+}
+#menu-backdrop[hidden] { display: none; }
