@@ -1,6 +1,6 @@
-// assets/js/header.js — simple & reliable dropdown
+// assets/js/header.js — final simple dropdown (desktop inline)
 (async function () {
-  // Inject the partial
+  // --- inject the header partial ---
   const mountId = "header";
   let mount = document.getElementById(mountId);
   if (!mount) {
@@ -21,52 +21,63 @@
 
   mount.innerHTML = html;
 
-  // Wire up
+  // --- wire up behavior ---
   const menu   = document.getElementById("primary-menu");
   const toggle = document.querySelector(".menu-toggle");
   if (!menu || !toggle) return;
 
-  // Ensure no [hidden] is left on the menu (partial ships with hidden)
+  // partial ships with [hidden]; remove once so CSS can control visibility
   if (menu.hasAttribute("hidden")) menu.removeAttribute("hidden");
 
-  // Active link
+  // active page state
   const path = location.pathname.split("/").pop() || "index.html";
   menu.querySelectorAll("a[href]").forEach(a => {
     const href = a.getAttribute("href");
     if (href === path || (path === "index.html" && href === "index.html")) {
       a.setAttribute("aria-current", "page");
     }
-    // Close mobile dropdown *after* navigation triggers
-    a.addEventListener("click", () => setTimeout(() => {
-      document.body.classList.remove("nav-open");
-      toggle.setAttribute("aria-expanded", "false");
-    }, 50));
+    // close mobile dropdown after navigation starts
+    a.addEventListener("click", () => setTimeout(closeMobile, 100));
   });
 
-  // Toggle (mobile only)
+  // viewport sync (desktop inline; mobile collapsible)
   const mq = window.matchMedia("(min-width: 1024px)");
-  function syncDesktop() {
+  function syncForViewport() {
     if (mq.matches) {
-      // Desktop: visible inline, no dropdown state
+      // desktop: always visible, no dropdown state
+      document.body.classList.remove("nav-open");
+      toggle.setAttribute("aria-expanded", "false");
+    } else {
+      // mobile: start closed unless user opened it already
+      if (!document.body.classList.contains("nav-open")) {
+        toggle.setAttribute("aria-expanded", "false");
+      }
+    }
+  }
+  syncForViewport();
+  (mq.addEventListener ? mq.addEventListener("change", syncForViewport)
+                       : mq.addListener(syncForViewport)); // Safari
+
+  // toggle button
+  toggle.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (mq.matches) return; // ignore on desktop
+    const open = !document.body.classList.contains("nav-open");
+    document.body.classList.toggle("nav-open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+  });
+
+  // close on ESC (mobile)
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && document.body.classList.contains("nav-open")) {
+      closeMobile();
+    }
+  });
+
+  function closeMobile() {
+    if (!mq.matches) {
       document.body.classList.remove("nav-open");
       toggle.setAttribute("aria-expanded", "false");
     }
   }
-  syncDesktop();
-  (mq.addEventListener ? mq.addEventListener("change", syncDesktop) : mq.addListener(syncDesktop));
-
-  toggle.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (mq.matches) return; // ignore on desktop
-    const open = document.body.classList.toggle("nav-open");
-    toggle.setAttribute("aria-expanded", String(open));
-  });
-
-  // Close on ESC (mobile)
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && document.body.classList.contains("nav-open")) {
-      document.body.classList.remove("nav-open");
-      toggle.setAttribute("aria-expanded", "false");
-    }
-  });
 })();
