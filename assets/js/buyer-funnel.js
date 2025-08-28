@@ -157,29 +157,36 @@ $("#intakeForm")?.addEventListener("submit", async (e) => {
     [ENTRY.utm,        $("#h_utm")?.value || ""]
   ]);
 
-  // Google’s extra params
-  const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
-  const extra = new Map([["fvv","1"],["pageHistory","0"],["fbzx",fbzx]]);
+  // Extra params Google expects
+    const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
+    const extra = new Map([["fvv","1"],["pageHistory","0"],["fbzx",fbzx]]);
 
-  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
 
-  // 1) Try fetch (no-cors). Success is opaque, but this usually records.
-  try {
-    const fd = new FormData();
-    payload.forEach((v,k)=>fd.append(k,v));
-    extra.forEach((v,k)=>fd.append(k,v));
-    await fetch(GOOGLE_FORM_ACTION, { method: "POST", mode: "no-cors", body: fd });
+    // 1) Try fetch (no-cors). Opaque success but usually records.
+    let fetchFailed = false;
+    try {
+      const fd = new FormData();
+      payload.forEach((v,k)=>fd.append(k,v));
+      extra.forEach((v,k)=>fd.append(k,v));
+      await fetch(GOOGLE_FORM_ACTION, { method: "POST", mode: "no-cors", body: fd });
+    } catch (_) {
+      fetchFailed = true;
+    }
 
-    // Show local success and reset; data should be in the Form/Sheet.
-    if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received. I’ll reach out shortly.";
-    formEl.reset();
-    window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
-  } catch (err) {
-    // 2) Fallback: top-level POST in a new tab (CSP-safe).
+    if (!fetchFailed) {
+      if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received. I’ll reach out shortly.";
+      formEl.reset();
+      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
+      return;
+    }
+
+    // 2) Fallback: top-level POST in a new tab (bypasses CSP frame-ancestors 'none')
     const tempForm = document.createElement("form");
     tempForm.action = GOOGLE_FORM_ACTION;
     tempForm.method = "POST";
-    tempForm.target = "_blank"; // open Google “Response recorded” page in new tab
+    tempForm.target = "_blank"; // user sees Google confirmation page
     tempForm.style.display = "none";
 
     payload.forEach((v,k)=>{ const i=document.createElement("input"); i.type="hidden"; i.name=k; i.value=v; tempForm.appendChild(i); });
@@ -187,12 +194,11 @@ $("#intakeForm")?.addEventListener("submit", async (e) => {
 
     document.body.appendChild(tempForm);
     tempForm.submit();
-    setTimeout(()=>tempForm.remove(), 500);
+    setTimeout(()=>tempForm.remove(), 600);
 
     if (msg) msg.textContent = "Submitted. A confirmation tab opened in your browser.";
     formEl.reset();
-  } finally {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
-  }
-});
+  });
+})();
     
