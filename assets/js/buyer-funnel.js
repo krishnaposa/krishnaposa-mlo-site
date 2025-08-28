@@ -5,7 +5,8 @@
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
 
   // Your live Google Form /formResponse URL
-  const GOOGLE_FORM_ACTION = "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse";
+  const GOOGLE_FORM_ACTION = "https://docs.google.com/forms/d/e/1FMqkjaYU8LP2OwSCp_IYyN0U2K3fWr780n8ACjeRfdU/formResponse";
+  
 
   // Your entry IDs (from your form)
   const ENTRY = {
