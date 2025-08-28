@@ -1,54 +1,80 @@
-/* header-nav.css — simple dropdown, no backdrop */
+/* header-nav.css — hardened mobile dropdown */
 
-/* Header sits above content */
-.site-header { position: relative; z-index: 10; background: var(--bg, #0f172a); }
-.site-header .nav { position: relative; }
+/* Header */
+.site-header { position: relative; z-index: 1000; background: var(--bg, #0f172a); }
+.site-header .topbar { position: relative; overflow: visible !important; }
+#site-nav { position: relative; z-index: 1002; }
 
-/* Toggle button */
-.site-header .menu-toggle { position: relative; z-index: 11; }
+/* Toggle */
+.site-header .menu-toggle { position: relative; z-index: 1003; }
 
-/* Base menu styles */
-.site-header .menu {
+/* Base menu reset (wins over generic .menu rules) */
+#primary-menu {
   list-style: none;
-  margin: 0; padding: 0;
+  margin: 0;
+  padding: 0;
 }
 
 /* Links */
-.site-header .menu a {
+#primary-menu a {
   display: block;
   padding: .7rem .8rem;
   text-decoration: none;
 }
 
-/* --- Mobile (default): menu is hidden until nav-open --- */
+/* ===== Mobile (default) — dropdown under header, hidden until nav-open ===== */
 @media (max-width: 1023.98px) {
-  .site-header .menu {
-    position: absolute;
-    top: 100%;                 /* dropdown right below header bar */
-    right: 0;
-    width: min(92vw, 340px);
+  /* Ensure the nav can show an absolutely positioned child */
+  #site-nav { position: relative; overflow: visible !important; }
+
+  /* Position the dropdown */
+  #primary-menu {
+    position: absolute !important;
+    top: 100% !important;         /* directly under the nav bar */
+    right: 0 !important;
+    width: min(92vw, 360px) !important;
+    max-height: calc(100vh - 64px);
+    overflow: auto;
     background: var(--panel, #111827);
     border: 1px solid var(--muted, #94a3b8);
     border-radius: 8px;
     box-shadow: 0 12px 24px rgba(0,0,0,.35);
-    padding: .5rem;
-    display: none;             /* hidden by default */
+    display: none !important;     /* closed by default */
+    z-index: 1002 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
-  body.nav-open .site-header .menu { display: block; }
+
+  /* Open state: when body.nav-open is present */
+  body.nav-open #site-nav > #primary-menu {
+    display: block !important;
+  }
+
+  /* If some stylesheet set [hidden], defeat it */
+  #primary-menu[hidden] {
+    display: block !important; /* we control visibility via nav-open only */
+  }
 }
 
-/* --- Desktop: inline menu, always visible --- */
+/* ===== Desktop — inline menu always visible ===== */
 @media (min-width: 1024px) {
-  .site-header .menu {
-    position: static;
+  #primary-menu {
+    position: static !important;
     display: flex !important;
     gap: .5rem;
-    background: transparent;
-    border: 0; box-shadow: none; border-radius: 0; padding: 0;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
 }
 
-/* DEBUG: visualize the dropdown area */
-@media (max-width: 1023.98px) {
-  .site-header .menu { outline: 2px solid lime !important; }
+/* Safety: prevent any parent from clipping the dropdown */
+.site-header,
+.site-header * {
+  overflow: visible;
 }
