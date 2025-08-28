@@ -23,7 +23,6 @@
   <meta property="og:description" content="Side-by-side LE comparison with actionable savings insights.">
   <meta property="og:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
   <meta property="og:url" content="https://www.krishposa.com/calculator-le-compare.html">
-
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Loan Estimate Comparison | Krish Posa, MLO">
   <meta name="twitter:description" content="Compare rate, fees, cash to close, and 5-year cost between two lenders.">
@@ -40,8 +39,7 @@
 </head>
 <body>
   <!-- GTM (noscript) -->
-  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM"
-  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
   <!-- Shared header -->
   <div id="header"></div>
@@ -64,28 +62,164 @@
           </ul>
         </div>
         <div class="hero-photo-card">
-          <img src="assets/img/headshot.jpg" alt="Krish Posa" width="600" height="600" loading="lazy">
+          <img src="assets/img/headshot.jpg" alt="Krish Posa" width="600" height="600" loading="lazy" decoding="async">
           <p class="small center">Your mortgage guide in Atlanta, GA</p>
         </div>
       </div>
     </section>
 
-    <!-- Comparison Section -->
-    <section class="container" id="le-compare-section">
-      <!-- Lender A, Lender B, Explainer grid injected from markup (same as before) -->
-      <!-- (keep all form fields/cards exactly as in previous version, no inline JS) -->
+    <!-- COMPARISON FORMS -->
+    <section class="container" id="le-compare-section" style="margin-top:1rem">
+      <div class="grid-3" style="grid-template-columns:1fr 1fr minmax(280px,0.8fr);gap:var(--pad)">
+        <!-- Lender A -->
+        <div class="card">
+          <h2 style="margin:0 0 .25rem">Lender A</h2>
+          <p class="small">Paste from the Loan Estimate. Use numeric values.</p>
+          <form id="formA">
+            <div class="field"><label for="a_amount">Loan Amount</label><input id="a_amount" inputmode="decimal" placeholder="360000" required></div>
+            <div class="grid-3">
+              <div class="field"><label for="a_rate">Rate</label><input id="a_rate" inputmode="decimal" placeholder="6.75%"></div>
+              <div class="field"><label for="a_term">Term (years)</label><input id="a_term" inputmode="numeric" placeholder="30"></div>
+              <div class="field"><label for="a_lock">Lock Days</label><input id="a_lock" inputmode="numeric" placeholder="30"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="a_points">Discount Points (%)</label><input id="a_points" inputmode="decimal" placeholder="0 or 1.0"></div>
+              <div class="field"><label for="a_lender_fees">Lender Fees ($)</label><input id="a_lender_fees" inputmode="decimal" placeholder="1295"></div>
+              <div class="field"><label for="a_credits">Lender Credits ($)</label><input id="a_credits" inputmode="decimal" placeholder="0"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="a_shop_total">Shoppable 3rd-Party ($)</label><input id="a_shop_total" inputmode="decimal" placeholder="Title, settlement, etc."></div>
+              <div class="field"><label for="a_other_3p">Other 3rd-Party ($)</label><input id="a_other_3p" inputmode="decimal" placeholder="Appraisal, credit, flood"></div>
+              <div class="field"><label for="a_prepaids">Prepaids + Initial Escrows ($)</label><input id="a_prepaids" inputmode="decimal" placeholder="Taxes, insurance escrows"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="a_taxes_ins">Taxes + HOI per mo ($)</label><input id="a_taxes_ins" inputmode="decimal" placeholder="450"></div>
+              <div class="field"><label for="a_pmi">PMI per mo ($)</label><input id="a_pmi" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="a_down">Down Payment ($)</label><input id="a_down" inputmode="decimal" placeholder="80000"></div>
+            </div>
+          </form>
+        </div>
+
+        <!-- Lender B -->
+        <div class="card">
+          <h2 style="margin:0 0 .25rem">Lender B</h2>
+          <p class="small">Same fields for apples-to-apples.</p>
+          <form id="formB">
+            <div class="field"><label for="b_amount">Loan Amount</label><input id="b_amount" inputmode="decimal" placeholder="360000" required></div>
+            <div class="grid-3">
+              <div class="field"><label for="b_rate">Rate</label><input id="b_rate" inputmode="decimal" placeholder="6.625%"></div>
+              <div class="field"><label for="b_term">Term (years)</label><input id="b_term" inputmode="numeric" placeholder="30"></div>
+              <div class="field"><label for="b_lock">Lock Days</label><input id="b_lock" inputmode="numeric" placeholder="45"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="b_points">Discount Points (%)</label><input id="b_points" inputmode="decimal" placeholder="0.5"></div>
+              <div class="field"><label for="b_lender_fees">Lender Fees ($)</label><input id="b_lender_fees" inputmode="decimal" placeholder="995"></div>
+              <div class="field"><label for="b_credits">Lender Credits ($)</label><input id="b_credits" inputmode="decimal" placeholder="500"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="b_shop_total">Shoppable 3rd-Party ($)</label><input id="b_shop_total" inputmode="decimal" placeholder="Title, settlement, etc."></div>
+              <div class="field"><label for="b_other_3p">Other 3rd-Party ($)</label><input id="b_other_3p" inputmode="decimal" placeholder="Appraisal, credit, flood"></div>
+              <div class="field"><label for="b_prepaids">Prepaids + Initial Escrows ($)</label><input id="b_prepaids" inputmode="decimal" placeholder="Taxes, insurance escrows"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="b_taxes_ins">Taxes + HOI per mo ($)</label><input id="b_taxes_ins" inputmode="decimal" placeholder="450"></div>
+              <div class="field"><label for="b_pmi">PMI per mo ($)</label><input id="b_pmi" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="b_down">Down Payment ($)</label><input id="b_down" inputmode="decimal" placeholder="80000"></div>
+            </div>
+          </form>
+        </div>
+
+        <!-- Explainer / Actions -->
+        <aside class="card">
+          <h2 style="margin:0 0 .25rem">What You Can Shop</h2>
+          <ul class="small" style="margin-top:.25rem">
+            <li><strong>Discount points</strong>: trade upfront cost for lower rate.</li>
+            <li><strong>Lender fees</strong>: application, processing, underwriting.</li>
+            <li><strong>Title & settlement</strong>: request quotes from multiple providers.</li>
+            <li><strong>Other 3rd-party</strong>: appraisal/credit/flood can vary.</li>
+            <li><strong>Homeowner’s insurance</strong>: shopping lowers escrows.</li>
+          </ul>
+          <p class="tiny">Taxes and government fees are locality-driven. Prepaids/escrows depend on timing.</p>
+
+          <div class="cta" style="gap:.5rem;margin-top:.5rem">
+            <button class="btn btn-blue" id="compareBtn" type="button">Compare</button>
+            <button class="btn-outline" id="resetBtn" type="button">Reset</button>
+          </div>
+
+          <div class="card" style="margin-top:.75rem">
+            <strong>Tip</strong>
+            <p class="tiny" style="margin:.35rem 0 0">Short hold (&lt;~7 years) usually favors lower fees over lower rate. Long hold may favor paying points if break-even &lt; planned hold time.</p>
+          </div>
+        </aside>
+      </div>
     </section>
 
-    <!-- Results Section -->
+    <!-- RESULTS -->
     <section class="container" id="le-compare-results">
-      <!-- Results grid/cards same as before -->
+      <div class="card">
+        <h2 style="margin:0 0 .25rem">Results</h2>
+        <p class="small">“5-Year Cost” = Interest (60 mo) + PMI (60 mo) + points + lender + shoppable + other 3rd-party − credits. Excludes principal and escrows.</p>
+
+        <div class="grid-3" style="grid-template-columns:1fr 1fr 1fr;gap:var(--pad);margin-top:.5rem">
+          <div class="card">
+            <strong>Monthly Payment</strong>
+            <p class="tiny">P&I + Taxes/HOI + PMI</p>
+            <div class="grid-3">
+              <div><p class="small muted">Lender A</p><p id="resA_monthly" style="margin:.25rem 0 0">$—</p></div>
+              <div><p class="small muted">Lender B</p><p id="resB_monthly" style="margin:.25rem 0 0">$—</p></div>
+              <div><p class="small muted">Diff</p><p id="resDiff_monthly" style="margin:.25rem 0 0">—</p></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <strong>Cash to Close</strong>
+            <p class="tiny">Points + lender + shoppable + other 3rd-party + prepaids − credits + down</p>
+            <div class="grid-3">
+              <div><p class="small muted">Lender A</p><p id="resA_cash" style="margin:.25rem 0 0">$—</p></div>
+              <div><p class="small muted">Lender B</p><p id="resB_cash" style="margin:.25rem 0 0">$—</p></div>
+              <div><p class="small muted">Diff</p><p id="resDiff_cash" style="margin:.25rem 0 0">—</p></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <strong>5-Year Cost</strong>
+            <p class="tiny">Interest + PMI + upfront/3P − credits</p>
+            <div class="grid-3">
+              <div><p class="small muted">Lender A</p><p id="resA_5yr" style="margin:.25rem 0 0">$—</p></div>
+              <div><p class="small muted">Lender B</p><p id="resB_5yr" style="margin:.25rem 0 0">$—</p></div>
+              <div><p class="small muted">Diff</p><p id="resDiff_5yr" style="margin:.25rem 0 0">—</p></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-3" style="grid-template-columns:1fr 1fr;gap:var(--pad);margin-top:.5rem">
+          <div class="card">
+            <strong>Points Break-Even</strong>
+            <p class="tiny">Months for lower rate to recover extra points (rough est.).</p>
+            <div class="grid-3">
+              <div><p class="small muted">Lender A</p><p id="resA_breakeven" style="margin:.25rem 0 0">—</p></div>
+              <div><p class="small muted">Lender B</p><p id="resB_breakeven" style="margin:.25rem 0 0">—</p></div>
+              <div><p class="small muted">Who wins?</p><p id="res_breakeven_winner" style="margin:.25rem 0 0">—</p></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <strong>Notes</strong>
+            <ul class="tiny" id="res_notes" style="margin:.35rem 0 0;padding-left:1rem">
+              <li>Longer lock windows usually add to pricing cost.</li>
+              <li>Title/settlement shopping reduces cash to close and 5-year cost.</li>
+              <li>PMI typically ends around 78–80% LTV by schedule or with value updates if allowed.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Sticky mobile CTA -->
-    <div class="sticky-cta">
+    <div class="sticky-cta" role="region" aria-label="Quick actions">
       <a class="btn" href="tel:+16784818252">Call</a>
       <a class="btn" href="sms:+16784818252">Text</a>
-      <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank">Book</a>
+      <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book</a>
     </div>
   </main>
 
