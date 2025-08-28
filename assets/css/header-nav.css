@@ -78,3 +78,21 @@ body.nav-open .site-header .menu {
   opacity: 1 !important;
   z-index: 10012 !important;
 }
+/* --- Ensure the menu panel is the topmost clickable layer --- */
+.site-header .menu { z-index: 10100; pointer-events: auto; }
+
+/* The toggle should NOT sit above the panel */
+.site-header .menu-toggle { z-index: 10005; }
+
+/* Backdrop sits below the panel and does NOT cover the panel area */
+#menu-backdrop { z-index: 10001; pointer-events: auto; }
+
+/* When open, shrink the backdrop's right edge so it doesn't overlap the panel */
+body.nav-open #menu-backdrop {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  right: min(92vw, 340px); /* <-- same width as your panel */
+}
+
+/* (Safety) If you ever change the panel width, update the value above too */
