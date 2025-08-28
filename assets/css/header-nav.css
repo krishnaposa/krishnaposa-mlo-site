@@ -1,47 +1,49 @@
-/* header-nav.css — Baseline */
+/* header-nav.css — simple dropdown, no backdrop */
 
-.site-header { position: relative; z-index: 1000; background: var(--bg, #0f172a); }
-.site-header .nav  { position: relative; }
-.site-header .menu-toggle { position: relative; z-index: 1003; }
+/* Header sits above content */
+.site-header { position: relative; z-index: 10; background: var(--bg, #0f172a); }
+.site-header .nav { position: relative; }
 
-/* Backdrop */
-#menu-backdrop {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,.45);
-  z-index: 1001;
-}
-#menu-backdrop[hidden] { display: none !important; }
+/* Toggle button */
+.site-header .menu-toggle { position: relative; z-index: 11; }
 
-/* Off-canvas menu (mobile) */
+/* Base menu styles */
 .site-header .menu {
-  position: fixed;
-  top: 0; right: 0;
-  width: min(92vw, 340px);
-  height: 100vh;
-  overflow: auto;
-  background: var(--panel, #111827);
-  border-left: 1px solid var(--muted, #94a3b8);
-  box-shadow: -8px 0 24px rgba(0,0,0,.4);
-  padding: .5rem;
-  z-index: 1002;                 /* above backdrop */
-  transform: translateX(100%);   /* hidden by default */
-  transition: transform .2s ease-out;
+  list-style: none;
+  margin: 0; padding: 0;
 }
-body.nav-open .site-header .menu { transform: translateX(0); }
-.site-header .menu[hidden] { display: none !important; }
 
 /* Links */
-.site-header .menu li { list-style: none; }
-.site-header .menu a { display: block; padding: .7rem .8rem; text-decoration: none; }
+.site-header .menu a {
+  display: block;
+  padding: .7rem .8rem;
+  text-decoration: none;
+}
 
-/* Desktop: inline nav */
+/* --- Mobile (default): menu is hidden until nav-open --- */
+@media (max-width: 1023.98px) {
+  .site-header .menu {
+    position: absolute;
+    top: 100%;                 /* dropdown right below header bar */
+    right: 0;
+    width: min(92vw, 340px);
+    background: var(--panel, #111827);
+    border: 1px solid var(--muted, #94a3b8);
+    border-radius: 8px;
+    box-shadow: 0 12px 24px rgba(0,0,0,.35);
+    padding: .5rem;
+    display: none;             /* hidden by default */
+  }
+  body.nav-open .site-header .menu { display: block; }
+}
+
+/* --- Desktop: inline menu, always visible --- */
 @media (min-width: 1024px) {
-  #menu-backdrop { display: none !important; }
   .site-header .menu {
     position: static;
-    transform: none;
-    height: auto; width: auto; overflow: visible;
-    box-shadow: none; border: 0; padding: 0;
-    display: flex !important; gap: .5rem;
+    display: flex !important;
+    gap: .5rem;
+    background: transparent;
+    border: 0; box-shadow: none; border-radius: 0; padding: 0;
   }
 }
