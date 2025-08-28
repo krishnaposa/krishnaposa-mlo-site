@@ -100,6 +100,10 @@ function compare() {
   } else if (beA !== 'N/A') winner = 'A';
   else if (beB !== 'N/A') winner = 'B';
   $('res_breakeven_winner').textContent = winner;
+if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+    const results = document.getElementById('le-compare-results');
+    if (results) results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 function resetAll() {
