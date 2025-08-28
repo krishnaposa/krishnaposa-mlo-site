@@ -89,7 +89,10 @@
         if (href === path || (path === "index.html" && href === "index.html")) {
           a.setAttribute("aria-current", "page");
         }
-        a.addEventListener("click", () => closeMenu(menu, toggle, backdrop));
+    // Let the browser navigate first; then close the panel
+a.addEventListener("click", () => {
+  setTimeout(() => closeMenu(menu, toggle, backdrop), 150);
+});
       });
     }
 
