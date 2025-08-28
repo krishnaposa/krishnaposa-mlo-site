@@ -1,14 +1,14 @@
-/* header-nav.css — hardened mobile dropdown */
+/* header-nav.css — desktop inline, mobile dropdown (no backdrop) */
 
-/* Header */
-.site-header { position: relative; z-index: 1000; background: var(--bg, #0f172a); }
-.site-header .topbar { position: relative; overflow: visible !important; }
-#site-nav { position: relative; z-index: 1002; }
+/* Header container stays above page content */
+.site-header { position: relative; z-index: 10; background: var(--bg, #0f172a); }
+.site-header .topbar { position: relative; }
 
-/* Toggle */
-.site-header .menu-toggle { position: relative; z-index: 1003; }
+/* Nav and toggle */
+#site-nav { position: relative; z-index: 11; }
+.site-header .menu-toggle { position: relative; z-index: 12; }
 
-/* Base menu reset (wins over generic .menu rules) */
+/* Menu base reset (ID beats generic .menu styles) */
 #primary-menu {
   list-style: none;
   margin: 0;
@@ -22,15 +22,14 @@
   text-decoration: none;
 }
 
-/* ===== Mobile (default) — dropdown under header, hidden until nav-open ===== */
+/* ============== Mobile (default) — dropdown ============== */
 @media (max-width: 1023.98px) {
-  /* Ensure the nav can show an absolutely positioned child */
-  #site-nav { position: relative; overflow: visible !important; }
+  /* ensure nothing clips the dropdown */
+  #site-nav { position: relative; overflow: visible; }
 
-  /* Position the dropdown */
   #primary-menu {
     position: absolute !important;
-    top: 100% !important;         /* directly under the nav bar */
+    top: 100% !important;          /* place directly under the nav bar */
     right: 0 !important;
     width: min(92vw, 360px) !important;
     max-height: calc(100vh - 64px);
@@ -39,25 +38,24 @@
     border: 1px solid var(--muted, #94a3b8);
     border-radius: 8px;
     box-shadow: 0 12px 24px rgba(0,0,0,.35);
-    display: none !important;     /* closed by default */
-    z-index: 1002 !important;
+    padding: .5rem;
+    display: none !important;      /* closed until body.nav-open */
     visibility: visible !important;
     opacity: 1 !important;
-    transform: none !important;
   }
 
-  /* Open state: when body.nav-open is present */
+  /* open state */
   body.nav-open #site-nav > #primary-menu {
     display: block !important;
   }
 
-  /* If some stylesheet set [hidden], defeat it */
+  /* if the partial added [hidden], ignore it */
   #primary-menu[hidden] {
-    display: block !important; /* we control visibility via nav-open only */
+    display: block !important;
   }
 }
 
-/* ===== Desktop — inline menu always visible ===== */
+/* ============== Desktop — inline menu ============== */
 @media (min-width: 1024px) {
   #primary-menu {
     position: static !important;
@@ -67,14 +65,6 @@
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    transform: none !important;
-    visibility: visible !important;
-    opacity: 1 !important;
+    padding: 0 !important;
   }
-}
-
-/* Safety: prevent any parent from clipping the dropdown */
-.site-header,
-.site-header * {
-  overflow: visible;
 }
