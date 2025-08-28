@@ -134,3 +134,32 @@
 #tldr p.small { line-height: 1.55; }
 #faq details { margin: .35rem 0; }
 #faq summary { cursor: pointer; font-weight: 600; }
+/* --- Fix desktop overflow on the compare grid --- */
+
+/* 1) Allow grid children to shrink inside the container */
+#le-compare-section .grid-3 > * {
+  min-width: 0;          /* critical: prevent overflow of cards */
+  max-width: 100%;
+}
+
+/* 2) Use shrinkable tracks on desktop (still 3 columns) */
+@media (min-width: 1024px) {
+  #le-compare-section .grid-3 {
+    /* beats the inline grid-template with a safer version */
+    grid-template-columns:
+      minmax(0, 1fr)      /* Lender A */
+      minmax(0, 1fr)      /* Lender B */
+      minmax(320px, 0.8fr) /* Aside panel, with a sensible floor */
+    !important;
+  }
+}
+
+/* 3) Safety: wrap long strings so they don't force expansion */
+#le-compare-section .card,
+#le-compare-section .card * {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 4) If any child leaks width, clip the section’s x-overflow */
+#le-compare-section { overflow-x: clip; }
