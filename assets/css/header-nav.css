@@ -69,3 +69,11 @@ body.nav-open .site-header .menu {
   /* No backdrop on desktop (optional) */
   #menu-backdrop { display: none !important; }
 }
+/* Force show the mobile menu panel when nav is open */
+body.nav-open .site-header .menu {
+  display: block !important;
+  transform: translateX(0) !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 10012 !important;
+}
