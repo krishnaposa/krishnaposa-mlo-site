@@ -4,13 +4,11 @@
 (function () {
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
 
-  // === Google Form action (derived from your previewResponse URL) ===
-  // Was: /forms/u/0/d/1FMqkjaYU8LP2OwSCp_IYyN0U2K3fWr780n8ACjeRfdU/previewResponse
-  // Use:
+  // === Google Form action (must end with /formResponse) ===
   const GOOGLE_FORM_ACTION =
     "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse";
 
-  // === Your entry IDs (unchanged) ===
+  // === Your entry IDs ===
   const ENTRY = {
     fullName:   "entry.1081531616",
     email:      "entry.1665114649",
@@ -36,11 +34,11 @@
   // Realtor co-brand
   function drawAgent() {
     const data = JSON.parse(localStorage.getItem("agent") || "{}");
-    $("#agentName")  && ($("#agentName").textContent  = data.name || "No agent added");
-    $("#agentFirm")  && ($("#agentFirm").textContent  = data.firm || "You can add one above");
-    $("#agentAvatar")&& ($("#agentAvatar").src        = data.logo || "");
-    $("#h_agentName")&& ($("#h_agentName").value      = data.name || "");
-    $("#h_agentEmail")&&($("#h_agentEmail").value     = data.email || "");
+    $("#agentName")   && ($("#agentName").textContent  = data.name || "No agent added");
+    $("#agentFirm")   && ($("#agentFirm").textContent  = data.firm || "You can add one above");
+    $("#agentAvatar") && ($("#agentAvatar").src        = data.logo || "");
+    $("#h_agentName") && ($("#h_agentName").value      = data.name || "");
+    $("#h_agentEmail")&& ($("#h_agentEmail").value     = data.email || "");
   }
   $("#saveAgent")?.addEventListener("click", () => {
     const payload = {
@@ -72,10 +70,10 @@
     const res = calc.totalMonthly({ price, down, ratePct, program, zip });
     const dti = calc.dti(res.total, debts, income);
 
-    $("#pAndI")       && ($("#pAndI").textContent = fmt(res.pAndI));
-    $("#taxes")       && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
-    $("#totalPay")    && ($("#totalPay").textContent = fmt(res.total));
-    $("#estimatesWrap") && ($("#estimatesWrap").style.display = "grid");
+    $("#pAndI")        && ($("#pAndI").textContent = fmt(res.pAndI));
+    $("#taxes")        && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
+    $("#totalPay")     && ($("#totalPay").textContent = fmt(res.total));
+    $("#estimatesWrap")&& ($("#estimatesWrap").style.display = "grid");
 
     const dtiEl = $("#dtiLine");
     if (dtiEl) {
@@ -116,9 +114,9 @@
     try {
       const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
       if (saved.price) {
-        if ($("#price")) $("#price").value = saved.price;
+        if ($("#price"))   $("#price").value = saved.price;
         if (saved.down && $("#down")) $("#down").value = saved.down;
-        if ($("#rate")) $("#rate").value = isFinite(saved.rate) ? saved.rate.toFixed?.(2) + "%" : "";
+        if ($("#rate"))    $("#rate").value = isFinite(saved.rate) ? saved.rate.toFixed?.(2) + "%" : "";
         if ($("#program")) $("#program").value = saved.program || "conventional";
       }
     } catch(e){}
@@ -152,9 +150,14 @@
       [ENTRY.notes,      $("#notes")?.value.trim() || ""]
     ]);
 
-    // Extra Google params
+    // Extra Google params (include draftResponse)
     const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
-    const extra = new Map([["fvv","1"],["pageHistory","0"],["fbzx",fbzx]]);
+    const extra = new Map([
+      ["fvv","1"],
+      ["draftResponse","[]"],
+      ["pageHistory","0"],
+      ["fbzx",fbzx]
+    ]);
 
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
 
