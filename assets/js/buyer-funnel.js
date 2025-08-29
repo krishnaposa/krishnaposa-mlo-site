@@ -1,14 +1,14 @@
 /* assets/js/buyer-funnel.js
-   Estimate math, agent co-brand, and Google Forms submit (no fetch/iframe)
+   Estimate math, agent co-brand, and Google Forms submit (top-level POST)
 */
 (function () {
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
 
-  // === Google Form action (must end with /formResponse) ===
+  // Google Form action (must end with /formResponse)
   const GOOGLE_FORM_ACTION =
     "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse";
 
-  // === Your entry IDs ===
+  // Map to your live entry IDs
   const ENTRY = {
     fullName:   "entry.1081531616",
     email:      "entry.1665114649",
@@ -34,11 +34,11 @@
   // Realtor co-brand
   function drawAgent() {
     const data = JSON.parse(localStorage.getItem("agent") || "{}");
-    $("#agentName")   && ($("#agentName").textContent  = data.name || "No agent added");
-    $("#agentFirm")   && ($("#agentFirm").textContent  = data.firm || "You can add one above");
-    $("#agentAvatar") && ($("#agentAvatar").src        = data.logo || "");
-    $("#h_agentName") && ($("#h_agentName").value      = data.name || "");
-    $("#h_agentEmail")&& ($("#h_agentEmail").value     = data.email || "");
+    $("#agentName")    && ($("#agentName").textContent  = data.name || "No agent added");
+    $("#agentFirm")    && ($("#agentFirm").textContent  = data.firm || "You can add one above");
+    $("#agentAvatar")  && ($("#agentAvatar").src        = data.logo || "");
+    $("#h_agentName")  && ($("#h_agentName").value      = data.name || "");
+    $("#h_agentEmail") && ($("#h_agentEmail").value     = data.email || "");
   }
   $("#saveAgent")?.addEventListener("click", () => {
     const payload = {
@@ -70,10 +70,10 @@
     const res = calc.totalMonthly({ price, down, ratePct, program, zip });
     const dti = calc.dti(res.total, debts, income);
 
-    $("#pAndI")        && ($("#pAndI").textContent = fmt(res.pAndI));
-    $("#taxes")        && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
-    $("#totalPay")     && ($("#totalPay").textContent = fmt(res.total));
-    $("#estimatesWrap")&& ($("#estimatesWrap").style.display = "grid");
+    $("#pAndI")         && ($("#pAndI").textContent = fmt(res.pAndI));
+    $("#taxes")         && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
+    $("#totalPay")      && ($("#totalPay").textContent = fmt(res.total));
+    $("#estimatesWrap") && ($("#estimatesWrap").style.display = "grid");
 
     const dtiEl = $("#dtiLine");
     if (dtiEl) {
@@ -124,19 +124,9 @@
     $("#h_utm") && ($("#h_utm").value = utm);
   })();
 
-  // Submit to Google Forms using a top-level POST (no fetch/iframe → no CORB/CSP)
-  $("#intakeForm")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const formEl = e.currentTarget;
-    const submitBtn = $("#submitBtn") || formEl.querySelector('button[type="submit"]');
-    const msg = $("#submitMsg");
-    const hp = $("#hp");
-
-    if (msg) msg.textContent = "";
-    if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
-
-    // Build payload
-    const payload = new Map([
+  // Build payload from the page
+  function buildPayloadMap() {
+    return new Map([
       [ENTRY.fullName,   $("#fullName")?.value.trim() || ""],
       [ENTRY.email,      $("#email")?.value.trim() || ""],
       [ENTRY.phone,      $("#phone")?.value.trim() || ""],
@@ -149,19 +139,47 @@
       [ENTRY.coBorrower, $("#coBorrower")?.value || ""],
       [ENTRY.notes,      $("#notes")?.value.trim() || ""]
     ]);
+  }
 
-    // Extra Google params (include draftResponse)
+  // Debug helper: open the exact GET URL you just used manually
+  window.openGoogleFormTestURL = function () {
+    const p = buildPayloadMap();
+    const qs = new URLSearchParams();
+    p.forEach((v, k) => qs.set(k, v));
+    qs.set("fvv", "1");
+    qs.set("pageHistory", "0");
+    qs.set("hl", "en");
+    qs.set("submit", "Submit");
+    window.open(GOOGLE_FORM_ACTION + "?" + qs.toString(), "_blank");
+  };
+
+  // Submit to Google Forms with a top-level POST (avoids CORS/CSP/iframe issues)
+  $("#intakeForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const formEl = e.currentTarget;
+    const submitBtn = $("#submitBtn") || formEl.querySelector('button[type="submit"]');
+    const msg = $("#submitMsg");
+    const hp = $("#hp");
+
+    if (msg) msg.textContent = "";
+    if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
+
+    const payload = buildPayloadMap();
+
+    // Extra Google params (add submit + hl like your working test URL)
     const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
     const extra = new Map([
       ["fvv","1"],
       ["draftResponse","[]"],
       ["pageHistory","0"],
+      ["hl","en"],
+      ["submit","Submit"],
       ["fbzx",fbzx]
     ]);
 
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
 
-    // Top-level POST to a new tab (Google confirmation page)
+    // Build and POST a temporary form in a new tab
     const tempForm = document.createElement("form");
     tempForm.action = GOOGLE_FORM_ACTION;
     tempForm.method = "POST";
