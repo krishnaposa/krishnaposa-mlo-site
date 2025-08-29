@@ -34,7 +34,6 @@
   <!-- CSS & Favicon -->
   <link rel="stylesheet" href="assets/css/styles.css">
   <link rel="stylesheet" href="assets/css/header-nav.css?v=final1">
-
   <link rel="stylesheet" href="assets/css/form-contrast.css">
   <link rel="icon" href="assets/img/favicon.png" type="image/png">
 
@@ -49,7 +48,6 @@
   <!-- Shared header -->
   <div id="header"></div>
   <script defer src="assets/js/header.js?v=final1"></script>
-
 
   <main>
     <!-- HERO -->
@@ -102,27 +100,27 @@
           <div class="grid-3">
             <div class="field">
               <label for="zip">Target ZIP</label>
-              <input id="zip" name="zip" inputmode="numeric" pattern="\\d{5}" placeholder="30301" required>
+              <input id="zip" name="zip" inputmode="numeric" pattern="\d{5}" placeholder="30301" required autocomplete="postal-code">
               <p class="tiny">Helps estimate taxes and insurance</p>
             </div>
             <div class="field">
               <label for="price">Home Price</label>
-              <input id="price" name="price" inputmode="decimal" placeholder="400000" required>
+              <input id="price" name="price" inputmode="decimal" placeholder="400000" required autocomplete="off">
             </div>
             <div class="field">
               <label for="down">Down Payment</label>
-              <input id="down" name="down" inputmode="decimal" placeholder="80000 or 20%">
+              <input id="down" name="down" inputmode="decimal" placeholder="80000 or 20%" autocomplete="off">
             </div>
           </div>
 
           <div class="grid-3" style="margin-top:.75rem">
             <div class="field">
               <label for="rate">Estimated Interest Rate</label>
-              <input id="rate" name="rate" inputmode="decimal" placeholder="6.75%">
+              <input id="rate" name="rate" inputmode="decimal" placeholder="6.75%" autocomplete="off">
             </div>
             <div class="field">
               <label for="fico">Credit Score Range</label>
-              <select id="fico" name="fico" required>
+              <select id="fico" name="fico" required autocomplete="off">
                 <option value="">Select</option>
                 <option>760+</option><option>740-759</option><option>720-739</option>
                 <option>700-719</option><option>680-699</option><option>660-679</option>
@@ -131,7 +129,7 @@
             </div>
             <div class="field">
               <label for="program">Loan Program</label>
-              <select id="program" name="program">
+              <select id="program" name="program" autocomplete="off">
                 <option value="conventional">Conventional</option>
                 <option value="fha">FHA</option>
                 <option value="va">VA</option>
@@ -144,11 +142,11 @@
           <div class="grid-3" style="margin-top:.75rem">
             <div class="field">
               <label for="income">Gross Monthly Income</label>
-              <input id="income" name="income" inputmode="decimal" placeholder="8500" required>
+              <input id="income" name="income" inputmode="decimal" placeholder="8500" required autocomplete="off">
             </div>
             <div class="field">
               <label for="debts">Monthly Debts</label>
-              <input id="debts" name="debts" inputmode="decimal" placeholder="Car, cards, loans">
+              <input id="debts" name="debts" inputmode="decimal" placeholder="Car, cards, loans" autocomplete="off">
             </div>
             <div class="field" aria-hidden="true"></div>
           </div>
@@ -199,34 +197,34 @@
           <div class="grid-3">
             <div class="field">
               <label for="fullName">Full Name</label>
-              <input id="fullName" name="fullName" placeholder="Your name" required>
+              <input id="fullName" name="fullName" placeholder="Your name" required autocomplete="name">
             </div>
             <div class="field">
               <label for="email">Email</label>
-              <input id="email" name="email" type="email" placeholder="you@email.com" required>
+              <input id="email" name="email" type="email" placeholder="you@email.com" required autocomplete="email">
             </div>
             <div class="field">
               <label for="phone">Phone</label>
-              <input id="phone" name="phone" inputmode="tel" placeholder="(###) ###-####" required>
+              <input id="phone" name="phone" inputmode="tel" placeholder="(###) ###-####" required autocomplete="tel">
             </div>
           </div>
 
           <div class="grid-3" style="margin-top:.75rem">
             <div class="field">
               <label for="timeline">Buying Timeline</label>
-              <select id="timeline" name="timeline">
+              <select id="timeline" name="timeline" autocomplete="off">
                 <option>ASAP</option><option>30-60 days</option><option>60-90 days</option><option>3-6 months</option><option>6+ months</option>
               </select>
             </div>
             <div class="field">
               <label for="occupancy">Occupancy</label>
-              <select id="occupancy" name="occupancy">
+              <select id="occupancy" name="occupancy" autocomplete="off">
                 <option>Primary residence</option><option>Second home</option><option>Investment</option>
               </select>
             </div>
             <div class="field">
               <label for="source">How did you hear about me</label>
-              <select id="source" name="source">
+              <select id="source" name="source" autocomplete="off">
                 <option>Realtor partner</option><option>Instagram</option><option>Facebook</option><option>Google</option><option>Friend or family</option><option>Other</option>
               </select>
             </div>
@@ -235,15 +233,15 @@
           <div class="grid-3" style="margin-top:.75rem">
             <div class="field">
               <label for="estPrice">Target Price</label>
-              <input id="estPrice" name="estPrice" inputmode="decimal" placeholder="400000">
+              <input id="estPrice" name="estPrice" inputmode="decimal" placeholder="400000" autocomplete="off">
             </div>
             <div class="field">
               <label for="estDown">Down Payment</label>
-              <input id="estDown" name="estDown" placeholder="80000 or 20%">
+              <input id="estDown" name="estDown" placeholder="80000 or 20%" autocomplete="off">
             </div>
             <div class="field">
               <label for="employment">Employment</label>
-              <select id="employment" name="employment">
+              <select id="employment" name="employment" autocomplete="off">
                 <option>W2</option><option>Self-employed</option><option>1099</option><option>Mixed</option>
               </select>
             </div>
@@ -252,7 +250,7 @@
           <div class="grid-3" style="margin-top:.75rem">
             <div class="field">
               <label for="coBorrower">Co-Borrower</label>
-              <select id="coBorrower" name="coBorrower">
+              <select id="coBorrower" name="coBorrower" autocomplete="off">
                 <option>No</option><option>Yes</option>
               </select>
             </div>
@@ -262,15 +260,15 @@
 
           <div class="field" style="margin-top:.75rem">
             <label for="notes">Notes</label>
-            <textarea id="notes" name="notes" rows="4" placeholder="Anything I should know"></textarea>
+            <textarea id="notes" name="notes" rows="4" placeholder="Anything I should know" autocomplete="off"></textarea>
           </div>
 
           <!-- Hidden fields auto-filled -->
-          <input type="hidden" name="estMonthly" id="h_estMonthly">
-          <input type="hidden" name="estDTI" id="h_estDTI">
-          <input type="hidden" name="agentName" id="h_agentName">
-          <input type="hidden" name="agentEmail" id="h_agentEmail">
-          <input type="hidden" name="utm" id="h_utm">
+          <input type="hidden" name="estMonthly" id="h_estMonthly" autocomplete="off">
+          <input type="hidden" name="estDTI" id="h_estDTI" autocomplete="off">
+          <input type="hidden" name="agentName" id="h_agentName" autocomplete="off">
+          <input type="hidden" name="agentEmail" id="h_agentEmail" autocomplete="off">
+          <input type="hidden" name="utm" id="h_utm" autocomplete="off">
 
           <div class="cta" style="gap:.5rem;margin-top:1rem">
             <button class="btn btn-blue" type="submit" id="submitBtn">Submit Pre-Approval</button>
@@ -291,22 +289,22 @@
         <div class="grid-3" style="align-items:center">
           <div class="field">
             <label for="agent_name">Agent Name</label>
-            <input id="agent_name" placeholder="First Last">
+            <input id="agent_name" placeholder="First Last" autocomplete="off">
           </div>
           <div class="field">
             <label for="agent_firm">Brokerage</label>
-            <input id="agent_firm" placeholder="Firm or Team">
+            <input id="agent_firm" placeholder="Firm or Team" autocomplete="organization">
           </div>
           <div class="field">
             <label for="agent_email">Agent Email</label>
-            <input id="agent_email" placeholder="agent@broker.com">
+            <input id="agent_email" placeholder="agent@broker.com" autocomplete="email">
           </div>
         </div>
 
         <div class="grid-3" style="margin-top:.75rem;align-items:end">
           <div class="field">
             <label for="agent_logo">Agent Logo URL</label>
-            <input id="agent_logo" placeholder="https://…/logo.png">
+            <input id="agent_logo" placeholder="https://…/logo.png" autocomplete="url">
           </div>
           <div class="field" aria-hidden="true"></div>
           <div class="cta" style="justify-content:flex-end">
