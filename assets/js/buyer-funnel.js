@@ -22,9 +22,7 @@
     estDown:    "entry.508547119",
     employment: "entry.1791431821",
     coBorrower: "entry.1836064847",
-    notes:      "entry.1112680792",
-    estMonthly: "entry.672377788",
-    estDTI:     "entry.1531234816"
+    notes:      "entry.1112680792"
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -151,9 +149,7 @@
       [ENTRY.estDown,    $("#estDown")?.value.trim() || ""],
       [ENTRY.employment, $("#employment")?.value || ""],
       [ENTRY.coBorrower, $("#coBorrower")?.value || ""],
-      [ENTRY.notes,      $("#notes")?.value.trim() || ""],
-      [ENTRY.estMonthly, $("#h_estMonthly")?.value || ""],
-      [ENTRY.estDTI,     $("#h_estDTI")?.value || ""]
+      [ENTRY.notes,      $("#notes")?.value.trim() || ""]
     ]);
 
     // Extra Google params
