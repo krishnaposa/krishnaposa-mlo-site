@@ -8,7 +8,7 @@
   // Was: /forms/u/0/d/1FMqkjaYU8LP2OwSCp_IYyN0U2K3fWr780n8ACjeRfdU/previewResponse
   // Use:
   const GOOGLE_FORM_ACTION =
-    "https://docs.google.com/forms/d/1FMqkjaYU8LP2OwSCp_IYyN0U2K3fWr780n8ACjeRfdU/formResponse";
+    "https://docs.google.com/forms/d/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse";
 
   // === Your entry IDs (unchanged) ===
   const ENTRY = {
