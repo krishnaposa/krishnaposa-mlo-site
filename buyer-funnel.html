@@ -39,54 +39,6 @@
 
   <!-- Site JS -->
   <script defer src="assets/js/script.js"></script>
-<script>
-(function(){
-  // Your E-ID form base:
-  const BASE = "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/viewform?usp=pp_url";
-
-  // Your JS ENTRY map (must match buyer-funnel.js)
-  const ENTRY = {
-    fullName:"entry.1081531616",
-    email:"entry.1665114649",
-    phone:"entry.776689893",
-    timeline:"entry.938852734",
-    occupancy:"entry.223995685",
-    source:"entry.447085241",
-    estPrice:"entry.390780263",
-    estDown:"entry.508547119",
-    employment:"entry.1791431821",
-    coBorrower:"entry.1836064847",
-    notes:"entry.1112680792",
-    estMonthly:"entry.672377788",
-    estDTI:"entry.1531234816",
-    agentName:"entry.816490105",
-    agentEmail:"entry.1411194686",
-    utm:"entry.1980121130"
-  };
-
-  window.openPrefillTest = function(){
-    const get = (id)=>document.querySelector("#"+id)?.value?.trim()||"";
-    const params = new URLSearchParams();
-    params.set(ENTRY.fullName, get("fullName"));
-    params.set(ENTRY.email, get("email"));
-    params.set(ENTRY.phone, get("phone"));
-    params.set(ENTRY.timeline, document.querySelector("#timeline")?.value||"");
-    params.set(ENTRY.occupancy, document.querySelector("#occupancy")?.value||"");
-    params.set(ENTRY.source, document.querySelector("#source")?.value||"");
-    params.set(ENTRY.estPrice, get("estPrice"));
-    params.set(ENTRY.estDown, get("estDown"));
-    params.set(ENTRY.employment, document.querySelector("#employment")?.value||"");
-    params.set(ENTRY.coBorrower, document.querySelector("#coBorrower")?.value||"");
-    params.set(ENTRY.notes, get("notes"));
-    params.set(ENTRY.estMonthly, document.querySelector("#h_estMonthly")?.value||"");
-    params.set(ENTRY.estDTI, document.querySelector("#h_estDTI")?.value||"");
-    params.set(ENTRY.agentName, document.querySelector("#h_agentName")?.value||"");
-    params.set(ENTRY.agentEmail, document.querySelector("#h_agentEmail")?.value||"");
-    params.set(ENTRY.utm, document.querySelector("#h_utm")?.value||"");
-    window.open(BASE + "&" + params.toString(), "_blank");
-  };
-})();
-</script>
 
 </head>
 <body>

@@ -24,10 +24,7 @@
     coBorrower: "entry.1836064847",
     notes:      "entry.1112680792",
     estMonthly: "entry.672377788",
-    estDTI:     "entry.1531234816",
-    agentName:  "entry.816490105",
-    agentEmail: "entry.1411194686",
-    utm:        "entry.1980121130"
+    estDTI:     "entry.1531234816"
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -156,10 +153,7 @@
       [ENTRY.coBorrower, $("#coBorrower")?.value || ""],
       [ENTRY.notes,      $("#notes")?.value.trim() || ""],
       [ENTRY.estMonthly, $("#h_estMonthly")?.value || ""],
-      [ENTRY.estDTI,     $("#h_estDTI")?.value || ""],
-      [ENTRY.agentName,  $("#h_agentName")?.value || ""],
-      [ENTRY.agentEmail, $("#h_agentEmail")?.value || ""],
-      [ENTRY.utm,        $("#h_utm")?.value || ""]
+      [ENTRY.estDTI,     $("#h_estDTI")?.value || ""]
     ]);
 
     // Extra Google params
