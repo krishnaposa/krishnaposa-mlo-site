@@ -1,29 +1,65 @@
 /* assets/js/buyer-funnel.js
-   Estimate math, agent co-brand, and Google Forms submit (top-level POST)
+   Estimate math, agent co-brand, and Google Forms submit (top-level POST + exact label mapping)
 */
 (function () {
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
 
-  // Your Google Form /formResponse endpoint
+  // Use the action exactly as your form shows (includes /u/0/ and ?hl=en)
   const GOOGLE_FORM_ACTION =
-    "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse";
+    "https://docs.google.com/forms/u/0/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse?hl=en";
 
-  // Map to your live entry IDs (from the form source)
+  // Your entry IDs (from your form)
   const ENTRY = {
     fullName:   "entry.1081531616",
     email:      "entry.1665114649",
     phone:      "entry.776689893",
-    timeline:   "entry.938852734",  // dropdown
-    occupancy:  "entry.223995685",  // dropdown
-    source:     "entry.447085241",  // dropdown
+    timeline:   "entry.938852734",   // dropdown
+    occupancy:  "entry.223995685",   // dropdown
+    source:     "entry.447085241",   // dropdown
     estPrice:   "entry.390780263",
     estDown:    "entry.508547119",
-    employment: "entry.1791431821", // dropdown
-    coBorrower: "entry.1836064847", // dropdown
+    employment: "entry.1791431821",  // dropdown
+    coBorrower: "entry.1836064847",  // dropdown
     notes:      "entry.1112680792"
   };
 
-  // For dropdown/radio questions, we also post a companion sentinel input.
+  // ===== Exact label mapping (RIGHT side must match Google exactly) =====
+  const CHOICE_MAP = {
+    [ENTRY.timeline]: {
+      "asap": "ASAP",
+      "30-60 days": "30-60 days",
+      "60-90 days": "60-90 days",
+      "3-6 months": "3-6 months",
+      "6+ months": "6+ months"
+    },
+    [ENTRY.occupancy]: {
+      "primary residence": "Primary residence", // lower 'r' per source
+      "primary": "Primary residence",
+      "second home": "Second home",
+      "investment": "Investment"
+    },
+    [ENTRY.source]: {
+      "realtor partner": "Realtor partner",     // lower 'p' per source
+      "instagram": "Instagram",
+      "facebook": "Facebook",
+      "google": "Google",
+      "friend or family": "Friend or family",   // lower 'f'
+      "other": "Other"
+    },
+    [ENTRY.employment]: {
+      "w2": "W2",
+      "self-employed": "Self-employed",         // hyphen & lower 'e'
+      "self employed": "Self-employed",
+      "1099": "1099",
+      "mixed": "Mixed"
+    },
+    [ENTRY.coBorrower]: {
+      "no": "No",
+      "yes": "Yes"
+    }
+  };
+
+  // Choice fields (we’ll also send _sentinel companions for these)
   const CHOICE_FIELDS = [
     ENTRY.timeline,
     ENTRY.occupancy,
@@ -32,17 +68,32 @@
     ENTRY.coBorrower
   ];
 
+  // --- Helpers
   const $ = (sel) => document.querySelector(sel);
   const text = (sel) => ($(sel)?.value || "").trim();
 
-  // Booking links
+  function mapChoice(entryKey, uiLabel) {
+    const raw = (uiLabel || "").trim();
+    if (!raw) return "";
+    const table = CHOICE_MAP[entryKey] || {};
+    // Exact match already?
+    for (const k in table) {
+      if (raw === table[k]) return table[k];
+    }
+    // Case-insensitive fallback
+    const l = raw.toLowerCase();
+    if (table[l]) return table[l];
+    // Last resort: pass through
+    return raw;
+  }
+
+  // --- Booking links
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
   ["#bookTop", "#bookBottom", "#bookSticky"].forEach((q) => {
-    const el = $(q);
-    if (el) el.href = BOOKING_URL;
+    const el = $(q); if (el) el.href = BOOKING_URL;
   });
 
-  // Realtor co-brand
+  // --- Realtor co-brand
   function drawAgent() {
     const data = JSON.parse(localStorage.getItem("agent") || "{}");
     $("#agentName")    && ($("#agentName").textContent  = data.name || "No agent added");
@@ -63,7 +114,7 @@
   });
   drawAgent();
 
-  // Quick Qualify calculator
+  // --- Quick Qualify
   $("#estimateBtn")?.addEventListener("click", () => {
     const price = num($("#price")?.value);
     const downInput = ($("#down")?.value || "").trim();
@@ -123,7 +174,7 @@
     localStorage.removeItem("lastEstimate");
   });
 
-  // Prefill from saved estimate + UTM
+  // --- Prefill from saved estimate + UTM
   (function () {
     try {
       const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
@@ -138,7 +189,7 @@
     $("#h_utm") && ($("#h_utm").value = utm);
   })();
 
-  // Build payload from the page (uses the currently selected text for dropdowns)
+  // --- Build payload (maps dropdown labels to Google’s exact labels)
   function buildPayloadMap() {
     const getSelectText = (sel) => {
       const el = $(sel);
@@ -147,30 +198,36 @@
       return (opt?.text || opt?.value || "").trim();
     };
 
+    const uiTimeline   = getSelectText("#timeline");
+    const uiOccupancy  = getSelectText("#occupancy");
+    const uiSource     = getSelectText("#source");
+    const uiEmployment = getSelectText("#employment");
+    const uiCoBorrower = getSelectText("#coBorrower");
+
     return new Map([
       [ENTRY.fullName,   text("#fullName")],
       [ENTRY.email,      text("#email")],
       [ENTRY.phone,      text("#phone")],
-      [ENTRY.timeline,   getSelectText("#timeline")],   // exact label text
-      [ENTRY.occupancy,  getSelectText("#occupancy")],  // exact label text
-      [ENTRY.source,     getSelectText("#source")],     // exact label text
+      [ENTRY.timeline,   mapChoice(ENTRY.timeline,   uiTimeline)],
+      [ENTRY.occupancy,  mapChoice(ENTRY.occupancy,  uiOccupancy)],
+      [ENTRY.source,     mapChoice(ENTRY.source,     uiSource)],
       [ENTRY.estPrice,   text("#estPrice")],
       [ENTRY.estDown,    text("#estDown")],
-      [ENTRY.employment, getSelectText("#employment")], // exact label text
-      [ENTRY.coBorrower, getSelectText("#coBorrower")], // exact label text
+      [ENTRY.employment, mapChoice(ENTRY.employment, uiEmployment)],
+      [ENTRY.coBorrower, mapChoice(ENTRY.coBorrower, uiCoBorrower)],
       [ENTRY.notes,      text("#notes")]
     ]);
   }
 
-  // 🔧 Debug helper: opens a GET test URL using current field values (with sensible defaults)
+  // Debug helper: open a GET test URL with current values
   window.openGoogleFormTestURL = function () {
     const p = buildPayloadMap();
 
-    // Provide fallbacks if user hasn't picked options yet
+    // Sensible defaults if not chosen yet
     const defaults = new Map([
       [ENTRY.timeline,   "ASAP"],
       [ENTRY.occupancy,  "Primary residence"],
-      [ENTRY.source,     "Google"],
+      [ENTRY.source,     "Realtor partner"],
       [ENTRY.employment, "W2"],
       [ENTRY.coBorrower, "No"]
     ]);
@@ -178,17 +235,15 @@
 
     const qs = new URLSearchParams();
     p.forEach((v, k) => qs.set(k, v));
-
-    // Minimal extras for GET test (works like your manual URL)
     qs.set("fvv", "1");
     qs.set("pageHistory", "0");
     qs.set("hl", "en");
-    qs.set("submit", "Submit");
+    qs.set("submit", "Submit"); // GET only
 
-    window.open(GOOGLE_FORM_ACTION + "?" + qs.toString(), "_blank");
+    window.open(GOOGLE_FORM_ACTION + "&" + qs.toString(), "_blank");
   };
 
-  // Submit to Google Forms with a top-level POST (avoids CORS/CSP/iframe issues)
+  // --- Submit to Google Forms (top-level POST in a new tab)
   $("#intakeForm")?.addEventListener("submit", (e) => {
     e.preventDefault();
     const formEl = e.currentTarget;
@@ -201,7 +256,7 @@
 
     const payload = buildPayloadMap();
 
-    // Extras Google expects (NO 'submit' field here to avoid shadowing .submit())
+    // Extras Google expects (no 'submit' here)
     const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
     const extra = new Map([
       ["fvv","1"],
@@ -213,7 +268,6 @@
 
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
 
-    // Build and POST a temporary form in a new tab
     const tempForm = document.createElement("form");
     tempForm.action = GOOGLE_FORM_ACTION;
     tempForm.method = "POST";
@@ -227,7 +281,7 @@
       tempForm.appendChild(i);
     });
 
-    // Sentinel companions for choice fields (prevents blank selections on some Forms)
+    // Sentinel companions for choice fields
     CHOICE_FIELDS.forEach((k) => {
       const s = document.createElement("input");
       s.type = "hidden";
@@ -244,16 +298,12 @@
     });
 
     document.body.appendChild(tempForm);
-
-    // Call the native submit (avoid any shadowing)
     HTMLFormElement.prototype.submit.call(tempForm);
-
     setTimeout(()=>tempForm.remove(), 600);
 
     if (msg) msg.textContent = "Submitted. A confirmation tab opened in your browser.";
     formEl.reset();
     window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
-
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
   });
 })();
