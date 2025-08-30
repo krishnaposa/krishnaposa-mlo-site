@@ -4,31 +4,42 @@
 (function () {
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
 
-  // Google Form action (must end with /formResponse)
+  // Your Google Form /formResponse endpoint
   const GOOGLE_FORM_ACTION =
     "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse";
 
-  // Map to your live entry IDs
+  // Map to your live entry IDs (from the form source)
   const ENTRY = {
     fullName:   "entry.1081531616",
     email:      "entry.1665114649",
     phone:      "entry.776689893",
-    timeline:   "entry.938852734",
-    occupancy:  "entry.223995685",
-    source:     "entry.447085241",
+    timeline:   "entry.938852734",  // dropdown
+    occupancy:  "entry.223995685",  // dropdown
+    source:     "entry.447085241",  // dropdown
     estPrice:   "entry.390780263",
     estDown:    "entry.508547119",
-    employment: "entry.1791431821",
-    coBorrower: "entry.1836064847",
+    employment: "entry.1791431821", // dropdown
+    coBorrower: "entry.1836064847", // dropdown
     notes:      "entry.1112680792"
   };
 
+  // For dropdown/radio questions, we also post a companion sentinel input.
+  const CHOICE_FIELDS = [
+    ENTRY.timeline,
+    ENTRY.occupancy,
+    ENTRY.source,
+    ENTRY.employment,
+    ENTRY.coBorrower
+  ];
+
   const $ = (sel) => document.querySelector(sel);
+  const text = (sel) => ($(sel)?.value || "").trim();
 
   // Booking links
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
   ["#bookTop", "#bookBottom", "#bookSticky"].forEach((q) => {
-    const el = $(q); if (el) el.href = BOOKING_URL;
+    const el = $(q);
+    if (el) el.href = BOOKING_URL;
   });
 
   // Realtor co-brand
@@ -64,7 +75,10 @@
     const income = num($("#income")?.value);
     const debts = num($("#debts")?.value || 0);
 
-    if (!price || !income) { $("#formMsg") && ($("#formMsg").textContent = "Please complete price and income (and down payment if available)."); return; }
+    if (!price || !income) {
+      $("#formMsg") && ($("#formMsg").textContent = "Please complete price and income (and down payment if available).");
+      return;
+    }
     $("#formMsg") && ($("#formMsg").textContent = "");
 
     const res = calc.totalMonthly({ price, down, ratePct, program, zip });
@@ -109,7 +123,7 @@
     localStorage.removeItem("lastEstimate");
   });
 
-  // Prefill from saved estimate + UTM (if you keep a hidden utm field)
+  // Prefill from saved estimate + UTM
   (function () {
     try {
       const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
@@ -124,32 +138,53 @@
     $("#h_utm") && ($("#h_utm").value = utm);
   })();
 
-  // Build payload from the page
+  // Build payload from the page (uses the currently selected text for dropdowns)
   function buildPayloadMap() {
+    const getSelectText = (sel) => {
+      const el = $(sel);
+      if (!el) return "";
+      const opt = el.options[el.selectedIndex];
+      return (opt?.text || opt?.value || "").trim();
+    };
+
     return new Map([
-      [ENTRY.fullName,   $("#fullName")?.value.trim() || ""],
-      [ENTRY.email,      $("#email")?.value.trim() || ""],
-      [ENTRY.phone,      $("#phone")?.value.trim() || ""],
-      [ENTRY.timeline,   $("#timeline")?.value || ""],
-      [ENTRY.occupancy,  $("#occupancy")?.value || ""],
-      [ENTRY.source,     $("#source")?.value || ""],
-      [ENTRY.estPrice,   $("#estPrice")?.value.trim() || ""],
-      [ENTRY.estDown,    $("#estDown")?.value.trim() || ""],
-      [ENTRY.employment, $("#employment")?.value || ""],
-      [ENTRY.coBorrower, $("#coBorrower")?.value || ""],
-      [ENTRY.notes,      $("#notes")?.value.trim() || ""]
+      [ENTRY.fullName,   text("#fullName")],
+      [ENTRY.email,      text("#email")],
+      [ENTRY.phone,      text("#phone")],
+      [ENTRY.timeline,   getSelectText("#timeline")],   // exact label text
+      [ENTRY.occupancy,  getSelectText("#occupancy")],  // exact label text
+      [ENTRY.source,     getSelectText("#source")],     // exact label text
+      [ENTRY.estPrice,   text("#estPrice")],
+      [ENTRY.estDown,    text("#estDown")],
+      [ENTRY.employment, getSelectText("#employment")], // exact label text
+      [ENTRY.coBorrower, getSelectText("#coBorrower")], // exact label text
+      [ENTRY.notes,      text("#notes")]
     ]);
   }
 
-  // Debug helper: open a GET test URL (works like your manual test)
+  // 🔧 Debug helper: opens a GET test URL using current field values (with sensible defaults)
   window.openGoogleFormTestURL = function () {
     const p = buildPayloadMap();
+
+    // Provide fallbacks if user hasn't picked options yet
+    const defaults = new Map([
+      [ENTRY.timeline,   "ASAP"],
+      [ENTRY.occupancy,  "Primary residence"],
+      [ENTRY.source,     "Google"],
+      [ENTRY.employment, "W2"],
+      [ENTRY.coBorrower, "No"]
+    ]);
+    defaults.forEach((v,k) => { if (!(p.get(k) || "").trim()) p.set(k, v); });
+
     const qs = new URLSearchParams();
     p.forEach((v, k) => qs.set(k, v));
+
+    // Minimal extras for GET test (works like your manual URL)
     qs.set("fvv", "1");
     qs.set("pageHistory", "0");
     qs.set("hl", "en");
-    qs.set("submit", "Submit"); // OK for GET test; we do NOT add this to POST
+    qs.set("submit", "Submit");
+
     window.open(GOOGLE_FORM_ACTION + "?" + qs.toString(), "_blank");
   };
 
@@ -166,7 +201,7 @@
 
     const payload = buildPayloadMap();
 
-    // Extra Google params (NO 'submit' here to avoid shadowing .submit())
+    // Extras Google expects (NO 'submit' field here to avoid shadowing .submit())
     const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
     const extra = new Map([
       ["fvv","1"],
@@ -185,20 +220,40 @@
     tempForm.target = "_blank";
     tempForm.style.display = "none";
 
-    payload.forEach((v,k)=>{ const i=document.createElement("input"); i.type="hidden"; i.name=k; i.value=v; tempForm.appendChild(i); });
-    extra.forEach((v,k)=>{ const i=document.createElement("input"); i.type="hidden"; i.name=k; i.value=v; tempForm.appendChild(i); });
+    // Entries
+    payload.forEach((v,k)=> {
+      const i = document.createElement("input");
+      i.type = "hidden"; i.name = k; i.value = v;
+      tempForm.appendChild(i);
+    });
+
+    // Sentinel companions for choice fields (prevents blank selections on some Forms)
+    CHOICE_FIELDS.forEach((k) => {
+      const s = document.createElement("input");
+      s.type = "hidden";
+      s.name = `${k}_sentinel`;
+      s.value = "";
+      tempForm.appendChild(s);
+    });
+
+    // Extras
+    extra.forEach((v,k)=> {
+      const i = document.createElement("input");
+      i.type = "hidden"; i.name = k; i.value = v;
+      tempForm.appendChild(i);
+    });
 
     document.body.appendChild(tempForm);
 
-    // Call the native submit in case any input is named "submit"
-    const nativeSubmit = HTMLFormElement.prototype.submit;
-    nativeSubmit.call(tempForm);
+    // Call the native submit (avoid any shadowing)
+    HTMLFormElement.prototype.submit.call(tempForm);
 
     setTimeout(()=>tempForm.remove(), 600);
 
     if (msg) msg.textContent = "Submitted. A confirmation tab opened in your browser.";
     formEl.reset();
     window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
+
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
   });
 })();
