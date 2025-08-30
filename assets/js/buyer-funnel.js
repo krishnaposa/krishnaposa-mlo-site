@@ -109,7 +109,7 @@
     localStorage.removeItem("lastEstimate");
   });
 
-  // Prefill from saved estimate + UTM
+  // Prefill from saved estimate + UTM (if you keep a hidden utm field)
   (function () {
     try {
       const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
@@ -141,7 +141,7 @@
     ]);
   }
 
-  // Debug helper: open the exact GET URL you just used manually
+  // Debug helper: open a GET test URL (works like your manual test)
   window.openGoogleFormTestURL = function () {
     const p = buildPayloadMap();
     const qs = new URLSearchParams();
@@ -149,7 +149,7 @@
     qs.set("fvv", "1");
     qs.set("pageHistory", "0");
     qs.set("hl", "en");
-    qs.set("submit", "Submit");
+    qs.set("submit", "Submit"); // OK for GET test; we do NOT add this to POST
     window.open(GOOGLE_FORM_ACTION + "?" + qs.toString(), "_blank");
   };
 
@@ -166,14 +166,13 @@
 
     const payload = buildPayloadMap();
 
-    // Extra Google params (add submit + hl like your working test URL)
+    // Extra Google params (NO 'submit' here to avoid shadowing .submit())
     const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
     const extra = new Map([
       ["fvv","1"],
       ["draftResponse","[]"],
       ["pageHistory","0"],
       ["hl","en"],
-      ["submit","Submit"],
       ["fbzx",fbzx]
     ]);
 
@@ -190,7 +189,11 @@
     extra.forEach((v,k)=>{ const i=document.createElement("input"); i.type="hidden"; i.name=k; i.value=v; tempForm.appendChild(i); });
 
     document.body.appendChild(tempForm);
-    tempForm.submit();
+
+    // Call the native submit in case any input is named "submit"
+    const nativeSubmit = HTMLFormElement.prototype.submit;
+    nativeSubmit.call(tempForm);
+
     setTimeout(()=>tempForm.remove(), 600);
 
     if (msg) msg.textContent = "Submitted. A confirmation tab opened in your browser.";
