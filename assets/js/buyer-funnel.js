@@ -226,8 +226,8 @@
     // Sensible defaults if not chosen yet
     const defaults = new Map([
       [ENTRY.timeline,   "ASAP"],
-      [ENTRY.occupancy,  "Primary residence"],
-      [ENTRY.source,     "Realtor partner"],
+      [ENTRY.occupancy,  "Primary Residence"],
+      [ENTRY.source,     "Realtor Partner"],
       [ENTRY.employment, "W2"],
       [ENTRY.coBorrower, "No"]
     ]);
