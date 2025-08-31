@@ -3,14 +3,14 @@ const POSTS = [
   // In your POSTS array (blog.js)
 {
   title: "Now Live: AI Loan Advisor",
-  url: "blog-ai-loan-advisor.html",
+  url: "blogs/blog-ai-loan-advisor.html",
   date: "2025-08-27",
   excerpt: "Instant, AI-assisted guidance on loan types and estimated rate ranges—built right into KrishPosa.com.",
   tags: ["AI", "Tools", "Rates"]
 },
   {
     title: "How My Website Tools Help Buyers and Realtors",
-    url: "blog-tools.html",
+    url: "blogs/blog-tools.html",
     date: "2025-08-27",
     excerpt:
       "A quick tour of the Buyer Funnel, mortgage calculators, and the AI Loan Advisor—and how they help clients and realtor partners.",
@@ -19,7 +19,7 @@ const POSTS = [
 
   {
     title: "Mortgage Rates Slide to 10-Month Low — What It Means for Atlanta Buyers",
-    url: "blog-mortgage-rates.html",
+    url: "blogs/blog-mortgage-rates.html",
     date: "2025-08-21",
     excerpt:
       "Mortgage rates dipped to a 10-month low. Here’s how that changes buying power and refinance math for Atlanta borrowers—and why this window may not last.",
@@ -27,7 +27,7 @@ const POSTS = [
   },
   {
     title: "The Truth About IUL: Why Design Matters More Than Anything",
-    url: "blog-iul-truth.html",
+    url: "blogs/blog-iul-truth.html",
     date: "2025-08-22",
     excerpt:
       "Indexed Universal Life (IUL) is one of the most misunderstood financial tools. Learn why most IULs fail and the 6 principles that separate strong designs from ticking time bombs.",
@@ -35,7 +35,7 @@ const POSTS = [
   },
   {
     title: "My 5-Year Experience with Prosper P2P Investing",
-    url: "blog-prosper-returns.html",
+    url: "blogs/blog-prosper-returns.html",
     date: "2025-08-23",
     excerpt:
       "After five years on Prosper, my returns tell a different story than the advertised 8–12%. Here’s how defaults, fees, and prepayments cut my net return to 3.8%.",
@@ -43,7 +43,7 @@ const POSTS = [
  },
 {
   title: "My Experience Investing in Artwork Through Masterworks",
-  url: "blog-art-investing.html",
+  url: "blogs/blog-art-investing.html",
   date: "2025-08-23",
   excerpt:
     "In 2020, I bought into a Basquiat painting on Masterworks and sold in 2024 for a 26.25% profit. Sounds good, but over four years the annualized return wasn’t as strong as it looked.",
