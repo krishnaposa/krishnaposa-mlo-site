@@ -1,21 +1,19 @@
 /* assets/js/buyer-funnel.js
-   Estimate math, agent co-brand, and Apps Script submit (JSON)
+   Estimate math, agent co-brand, and Apps Script submit (urlencoded, no-cors)
 */
 (function () {
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
 
-  // ==== YOUR APPS SCRIPT WEB APP (Deploy > New deployment > type 'Web app') ====
-  // Must allow Anyone with the link (or Anyone within domain) and return JSON.
+  // === Your Apps Script Web App URL (Deploy > New deployment > Web app > Anyone with the link) ===
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVkjSelQjFJbQc5zNAD9m8soIyPqrZ9ICCq06TmK8lT5evRB0wmLV4mkJ6sSmpbpfG/exec';
 
-  // ---------- tiny DOM helper ----------
   const $ = (sel) => document.querySelector(sel);
 
-  // ---------- booking links ----------
+  // Booking links
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
   ["#bookTop", "#bookBottom", "#bookSticky"].forEach((q) => { const el = $(q); if (el) el.href = BOOKING_URL; });
 
-  // ---------- realtor co-brand ----------
+  // Realtor co-brand
   function drawAgent() {
     const data = JSON.parse(localStorage.getItem("agent") || "{}");
     const set = (q, v, prop="textContent") => { const el=$(q); if (el) el[prop]=v; };
@@ -37,7 +35,7 @@
   });
   drawAgent();
 
-  // ---------- quick qualify calculator ----------
+  // Quick Qualify calculator
   $("#estimateBtn")?.addEventListener("click", () => {
     const price = num($("#price")?.value);
     const downInput = ($("#down")?.value || "").trim();
@@ -76,12 +74,12 @@
       }
     }
 
-    // pass to hidden fields + persist
     $("#h_estMonthly") && ($("#h_estMonthly").value = Math.round(res.total));
     $("#h_estDTI") && ($("#h_estDTI").value = `${(dti * 100).toFixed(1)}%`);
-    localStorage.setItem("lastEstimate", JSON.stringify({
-      price, down, rate: ratePct, program, monthly: Math.round(res.total), dti: (dti * 100).toFixed(1)
-    }));
+
+    localStorage.setItem("lastEstimate",
+      JSON.stringify({ price, down, rate: ratePct, program, monthly: Math.round(res.total), dti: (dti * 100).toFixed(1) })
+    );
 
     window.dataLayer && window.dataLayer.push({ event: "estimate_calculated" });
   });
@@ -94,7 +92,7 @@
     localStorage.removeItem("lastEstimate");
   });
 
-  // ---------- prefill + UTM ----------
+  // Prefill + UTM
   (function () {
     try {
       const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
@@ -109,26 +107,7 @@
     $("#h_utm") && ($("#h_utm").value = utm);
   })();
 
-  // ---------- helper: fetch with timeout ----------
-  async function postJSON(url, data, { timeoutMs = 12000 } = {}) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        signal: ctrl.signal,
-        mode: "cors",
-        credentials: "omit"
-      });
-      let json = null;
-      try { json = await res.json(); } catch(_) {}
-      return { ok: res.ok, status: res.status, json };
-    } finally { clearTimeout(t); }
-  }
-
-  // ---------- submit to Apps Script ----------
+  // ---- Submit to Apps Script (urlencoded, no-cors → no preflight/CORS headaches) ----
   $("#intakeForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
 
@@ -140,7 +119,7 @@
     if (msg) msg.textContent = "";
     if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
 
-    // Build payload (tolerant of missing fields)
+    // Collect payload (names match your Apps Script columns)
     const payload = {
       fullName:   $("#fullName")?.value.trim() || "",
       email:      $("#email")?.value.trim() || "",
@@ -153,18 +132,16 @@
       employment: $("#employment")?.value || "",
       coBorrower: $("#coBorrower")?.value || "",
       notes:      $("#notes")?.value.trim() || "",
-      // hidden/derived (send if present)
+      // hidden/derived
       estMonthly: $("#h_estMonthly")?.value || "",
       estDTI:     $("#h_estDTI")?.value || "",
       agentName:  $("#h_agentName")?.value || "",
       agentEmail: $("#h_agentEmail")?.value || "",
       utm:        $("#h_utm")?.value || "",
-      // meta
       page: location.href,
       ts: new Date().toISOString()
     };
 
-    // basic client validation
     if (!payload.fullName || !payload.email || !payload.phone) {
       if (msg) msg.textContent = "Please complete name, email, and phone.";
       return;
@@ -173,17 +150,17 @@
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
 
     try {
-      const res = await postJSON(APPS_SCRIPT_URL, payload, { timeoutMs: 12000 });
-
-      // Expect your Apps Script to return { ok: true } on success
-      if (res.ok && (res.json?.ok ?? true)) {
-        if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received. I’ll reach out shortly.";
-        formEl.reset();
-        window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
-      } else {
-        const reason = res.json?.error || `(${res.status})`;
-        if (msg) msg.textContent = `Could not submit right now ${reason}. Please try again or email me.`;
-      }
+      const body = new URLSearchParams(payload); // -> application/x-www-form-urlencoded
+      await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",                     // opaque success, avoids CORS
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body
+      });
+      // We can’t read the opaque response; optimistically show success.
+      if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received. I’ll reach out shortly.";
+      formEl.reset();
+      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
     } catch (err) {
       if (msg) msg.textContent = "Network error submitting the form. Please try again.";
     } finally {
