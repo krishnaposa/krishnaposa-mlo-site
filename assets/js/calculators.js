@@ -186,7 +186,7 @@
       <!doctype html><html><head>
         <meta charset="utf-8">
         <title>${title}</title>
-        <link rel="stylesheet" href="assets/css/styles.css">
+        <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
         <style>
           @page { size: A4; margin: 16mm; }
           body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
