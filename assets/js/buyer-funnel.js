@@ -162,7 +162,7 @@
     const utm = location.search.replace("?", "").split("&").filter(Boolean).join("&");
     $("#h_utm") && ($("#h_utm").value = utm);
   })();
-const APPS_SCRIPT_URL = 'PASTE_YOUR_WEB_APP_URL_HERE';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVkjSelQjFJbQc5zNAD9m8soIyPqrZ9ICCq06TmK8lT5evRB0wmLV4mkJ6sSmpbpfG/exec';
   // ---- Google Forms submit via top-level POST (bypasses CORS/CSP/CORB) ----
   $("#intakeForm")?.addEventListener("submit", (e) => {
     e.preventDefault();
