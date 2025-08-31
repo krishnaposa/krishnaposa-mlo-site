@@ -1,14 +1,18 @@
 /* assets/js/buyer-funnel.js
-   Estimate math, agent co-brand, and Google Forms submit (top-level POST)
+   Estimate math, agent co-brand, and submit via Apps Script (with Google Forms fallback)
 */
 (function () {
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
 
-  // === Google Form action ===
+  // ===== 0) ENDPOINTS =====
+  // Your Apps Script Web App (Deploy > New deployment > Web app > "Anyone")
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxVkjSelQjFJbQc5zNAD9m8soIyPqrZ9ICCq06TmK8lT5evRB0wmLV4mkJ6sSmpbpfG/exec";
+
+  // Your Google Form's /formResponse URL (fallback)
   const GOOGLE_FORM_ACTION =
     "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse";
 
-  // === Your entry IDs ===
+  // Map your Google Form entry IDs (keep only questions that still exist)
   const ENTRY = {
     fullName:   "entry.1081531616",
     email:      "entry.1665114649",
@@ -23,88 +27,46 @@
     notes:      "entry.1112680792"
   };
 
-  // === Choice mapping (normalize UI text → exact Form labels) ===
-  // Keys are lowercased for flexible matching.
-  const CHOICE_MAP = {
-    [ENTRY.timeline]: {
-      "asap": "ASAP",
-      "30-60 days": "30-60 days",
-      "60-90 days": "60-90 days",
-      "3-6 months": "3-6 months",
-      "6+ months": "6+ months"
-    },
-    [ENTRY.occupancy]: {
-      "primary residence": "Primary residence", // Google Form expects lower-case "residence"
-      "second home": "Second home",
-      "investment": "Investment"
-    },
-    [ENTRY.source]: {
-      "realtor partner": "Realtor partner",
-      "instagram": "Instagram",
-      "facebook": "Facebook",
-      "google": "Google",
-      "friend or family": "Friend or family",
-      "other": "Other"
-    },
-    [ENTRY.employment]: {
-      "w2": "W2",
-      "self-employed": "Self-employed",
-      "1099": "1099",
-      "mixed": "Mixed"
-    },
-    [ENTRY.coBorrower]: {
-      "yes": "Yes",
-      "no": "No"
-    }
-  };
-
-  function normalizeChoice(entryKey, rawValue) {
-    if (!rawValue) return "";
-    const map = CHOICE_MAP[entryKey] || {};
-    return map[String(rawValue).toLowerCase()] || rawValue; // fall back to original
-  }
-
-  // --- tiny DOM helper
+  // ===== 1) SMALL HELPERS =====
   const $ = (sel) => document.querySelector(sel);
+  const getVal = (q) => ($(q)?.value || "").trim();
 
   // Booking links
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
-  ["#bookTop", "#bookBottom", "#bookSticky"].forEach((q) => {
-    const el = $(q); if (el) el.href = BOOKING_URL;
-  });
+  ["#bookTop", "#bookBottom", "#bookSticky"].forEach((q) => { const el = $(q); if (el) el.href = BOOKING_URL; });
 
-  // Realtor co-brand
+  // ===== 2) REALTOR CO-BRAND (localStorage) =====
   function drawAgent() {
     const data = JSON.parse(localStorage.getItem("agent") || "{}");
-    $("#agentName")   && ($("#agentName").textContent  = data.name || "No agent added");
-    $("#agentFirm")   && ($("#agentFirm").textContent  = data.firm || "You can add one above");
-    $("#agentAvatar") && ($("#agentAvatar").src        = data.logo || "");
-    $("#h_agentName") && ($("#h_agentName").value      = data.name || "");
-    $("#h_agentEmail")&& ($("#h_agentEmail").value     = data.email || "");
+    $("#agentName")   && ($("#agentName").textContent   = data.name || "No agent added");
+    $("#agentFirm")   && ($("#agentFirm").textContent   = data.firm || "You can add one above");
+    $("#agentAvatar") && ($("#agentAvatar").src         = data.logo || "");
+    $("#h_agentName") && ($("#h_agentName").value       = data.name || "");
+    $("#h_agentEmail")&& ($("#h_agentEmail").value      = data.email || "");
   }
   $("#saveAgent")?.addEventListener("click", () => {
     const payload = {
-      name: $("#agent_name")?.value.trim() || "",
-      firm: $("#agent_firm")?.value.trim() || "",
-      email: $("#agent_email")?.value.trim() || "",
-      logo: $("#agent_logo")?.value.trim() || ""
+      name: getVal("#agent_name"),
+      firm: getVal("#agent_firm"),
+      email: getVal("#agent_email"),
+      logo: getVal("#agent_logo")
     };
     localStorage.setItem("agent", JSON.stringify(payload));
     drawAgent();
   });
   drawAgent();
 
-  // Quick Qualify calculator
+  // ===== 3) QUICK QUALIFY (estimate) =====
   $("#estimateBtn")?.addEventListener("click", () => {
-    const price = num($("#price")?.value);
-    const downInput = ($("#down")?.value || "").trim();
+    const price = num(getVal("#price"));
+    const downInput = getVal("#down");
     const down = downInput.endsWith("%") ? price * num(downInput) : num(downInput || 0);
-    const rateField = ($("#rate")?.value || cfg.defaultRatePct);
+    const rateField = (getVal("#rate") || cfg.defaultRatePct);
     const ratePct = (rateField.toString().trim().endsWith("%") ? num(rateField) * 100 : num(rateField));
-    const zip = ($("#zip")?.value || "").trim();
+    const zip = getVal("#zip");
     const program = $("#program")?.value || "conventional";
-    const income = num($("#income")?.value);
-    const debts = num($("#debts")?.value || 0);
+    const income = num(getVal("#income"));
+    const debts = num(getVal("#debts") || 0);
 
     if (!price || !income) { $("#formMsg") && ($("#formMsg").textContent = "Please complete price and income (and down payment if available)."); return; }
     $("#formMsg") && ($("#formMsg").textContent = "");
@@ -112,10 +74,10 @@
     const res = calc.totalMonthly({ price, down, ratePct, program, zip });
     const dti = calc.dti(res.total, debts, income);
 
-    $("#pAndI")         && ($("#pAndI").textContent = fmt(res.pAndI));
-    $("#taxes")         && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
-    $("#totalPay")      && ($("#totalPay").textContent = fmt(res.total));
-    $("#estimatesWrap") && ($("#estimatesWrap").style.display = "grid");
+    $("#pAndI")        && ($("#pAndI").textContent = fmt(res.pAndI));
+    $("#taxes")        && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
+    $("#totalPay")     && ($("#totalPay").textContent = fmt(res.total));
+    $("#estimatesWrap")&& ($("#estimatesWrap").style.display = "grid");
 
     const dtiEl = $("#dtiLine");
     if (dtiEl) {
@@ -133,89 +95,147 @@
       }
     }
 
-    localStorage.setItem("lastEstimate",
-      JSON.stringify({ price, down, rate: ratePct, program, monthly: Math.round(res.total), dti: (dti * 100).toFixed(1) })
-    );
+    // write derived fields for submit
+    $("#h_estMonthly") && ($("#h_estMonthly").value = Math.round(res.total));
+    $("#h_estDTI")     && ($("#h_estDTI").value     = `${(dti * 100).toFixed(1)}%`);
+
+    // cache a bit
+    localStorage.setItem("lastEstimate", JSON.stringify({
+      price, down, rate: ratePct, program,
+      monthly: Math.round(res.total), dti: (dti * 100).toFixed(1)
+    }));
 
     window.dataLayer && window.dataLayer.push({ event: "estimate_calculated" });
   });
 
   $("#resetBtn")?.addEventListener("click", () => {
     $("#estimatesWrap") && ($("#estimatesWrap").style.display = "none");
-    $("#dtiLine")       && ($("#dtiLine").style.display = "none");
-    $("#pmiLine")       && ($("#pmiLine").style.display = "none");
-    $("#formMsg")       && ($("#formMsg").textContent = "");
+    $("#dtiLine")      && ($("#dtiLine").style.display = "none");
+    $("#pmiLine")      && ($("#pmiLine").style.display = "none");
+    $("#formMsg")      && ($("#formMsg").textContent = "");
     localStorage.removeItem("lastEstimate");
   });
 
-  // Prefill from saved estimate + UTM
+  // Prefill from saved estimate + UTM chain
   (function () {
     try {
       const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
       if (saved.price) {
-        if ($("#price")) $("#price").value = saved.price;
+        if ($("#price"))   $("#price").value = saved.price;
         if (saved.down && $("#down")) $("#down").value = saved.down;
-        if ($("#rate")) $("#rate").value = isFinite(saved.rate) ? saved.rate.toFixed?.(2) + "%" : "";
+        if ($("#rate"))    $("#rate").value = isFinite(saved.rate) ? saved.rate.toFixed?.(2) + "%" : "";
         if ($("#program")) $("#program").value = saved.program || "conventional";
       }
     } catch(e){}
     const utm = location.search.replace("?", "").split("&").filter(Boolean).join("&");
     $("#h_utm") && ($("#h_utm").value = utm);
   })();
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVkjSelQjFJbQc5zNAD9m8soIyPqrZ9ICCq06TmK8lT5evRB0wmLV4mkJ6sSmpbpfG/exec';
-  // ---- Google Forms submit via top-level POST (bypasses CORS/CSP/CORB) ----
-  $("#intakeForm")?.addEventListener("submit", (e) => {
+
+  // ===== 4) SUBMIT HANDLER (Apps Script first, Forms fallback) =====
+  $("#intakeForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
-  const formEl = e.currentTarget;
-  const submitBtn = document.querySelector("#submitBtn") || formEl.querySelector('button[type="submit"]');
-  const msg = document.querySelector("#submitMsg");
-  const hp = document.querySelector("#hp"); // honeypot
+    const formEl = e.currentTarget;
+    const submitBtn = $("#submitBtn") || formEl.querySelector('button[type="submit"]');
+    const msg = $("#submitMsg");
+    const hp = $("#hp");
 
-  if (msg) msg.textContent = "";
-  if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
+    if (msg) msg.textContent = "";
+    if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
 
-  // Collect values using YOUR field ids/names
-  const payload = {
-    fullName:   document.querySelector("#fullName")?.value.trim() || "",
-    email:      document.querySelector("#email")?.value.trim() || "",
-    phone:      document.querySelector("#phone")?.value.trim() || "",
-    timeline:   document.querySelector("#timeline")?.value || "",
-    occupancy:  document.querySelector("#occupancy")?.value || "",
-    source:     document.querySelector("#source")?.value || "",
-    estPrice:   document.querySelector("#estPrice")?.value.trim() || "",
-    estDown:    document.querySelector("#estDown")?.value.trim() || "",
-    employment: document.querySelector("#employment")?.value || "",
-    coBorrower: document.querySelector("#coBorrower")?.value || "",
-    notes:      document.querySelector("#notes")?.value.trim() || "",
-    // include these if you kept the hidden fields:
-    estMonthly: document.querySelector("#h_estMonthly")?.value || "",
-    estDTI:     document.querySelector("#h_estDTI")?.value || "",
-    agentName:  document.querySelector("#h_agentName")?.value || "",
-    agentEmail: document.querySelector("#h_agentEmail")?.value || "",
-    utm:        document.querySelector("#h_utm")?.value || ""
-  };
+    // Normalize a couple of selects to match your Form choice text exactly
+    const normalize = (s) => (s || "").trim();
 
-  try {
+    // Build a clean JSON payload for Apps Script
+    const cleanPayload = {
+      fullName:   getVal("#fullName"),
+      email:      getVal("#email"),
+      phone:      getVal("#phone"),
+      timeline:   normalize($("#timeline")?.value),
+      occupancy:  normalize($("#occupancy")?.value),             // "Primary residence" | "Second home" | "Investment"
+      source:     normalize($("#source")?.value),                 // "Realtor partner" | "Instagram" | ...
+      estPrice:   getVal("#estPrice"),
+      estDown:    getVal("#estDown"),
+      employment: normalize($("#employment")?.value),            // "W2" | "Self-employed" | "1099" | "Mixed"
+      coBorrower: normalize($("#coBorrower")?.value),            // "Yes" | "No"
+      notes:      getVal("#notes"),
+      // hidden/derived (if present in DOM)
+      estMonthly: getVal("#h_estMonthly"),
+      estDTI:     getVal("#h_estDTI"),
+      agentName:  getVal("#h_agentName"),
+      agentEmail: getVal("#h_agentEmail"),
+      utm:        getVal("#h_utm"),
+      meta: {
+        userAgent: navigator.userAgent,
+        page: location.href,
+        ts: Date.now()
+      }
+    };
+
+    // Build Google Forms payload (only fields that exist in the form)
+    const gf = new FormData();
+    gf.append(ENTRY.fullName,   cleanPayload.fullName);
+    gf.append(ENTRY.email,      cleanPayload.email);
+    gf.append(ENTRY.phone,      cleanPayload.phone);
+    gf.append(ENTRY.timeline,   cleanPayload.timeline);
+    gf.append(ENTRY.occupancy,  cleanPayload.occupancy);
+    gf.append(ENTRY.source,     cleanPayload.source);
+    gf.append(ENTRY.estPrice,   cleanPayload.estPrice);
+    gf.append(ENTRY.estDown,    cleanPayload.estDown);
+    gf.append(ENTRY.employment, cleanPayload.employment);
+    gf.append(ENTRY.coBorrower, cleanPayload.coBorrower);
+    gf.append(ENTRY.notes,      cleanPayload.notes);
+    // Google likes a couple of extras; harmless if ignored
+    gf.append("fvv", "1");
+    gf.append("pageHistory", "0");
+
+    // UI state
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
 
-    // Send JSON (cleanest)
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      mode: "cors",
-      body: JSON.stringify(payload)
-    });
+    // 4a) Try Apps Script JSON (cleanest)
+    let scriptWorked = false;
+    try {
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        mode: "cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cleanPayload)
+      });
+      if (res.ok) scriptWorked = true;
+    } catch { /* network / CORS */ }
 
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+    if (scriptWorked) {
+      if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received.";
+      formEl.reset();
+      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit", via: "apps_script" });
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
+      return;
+    }
 
-    if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received.";
-    formEl.reset();
-    window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
-  } catch (err) {
-    if (msg) msg.textContent = "Could not submit right now. Please try again or email me.";
-    console.error(err);
-  } finally {
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
-  }
-});
+    // 4b) Fallback — POST to Google Forms in a new tab (bypasses CORS/CSP)
+    try {
+      const tempForm = document.createElement("form");
+      tempForm.action = GOOGLE_FORM_ACTION;
+      tempForm.method = "POST";
+      tempForm.target = "_blank";
+      tempForm.style.display = "none";
+      // copy fields
+      for (const [k, v] of gf.entries()) {
+        const i = document.createElement("input");
+        i.type = "hidden"; i.name = k; i.value = v;
+        tempForm.appendChild(i);
+      }
+      document.body.appendChild(tempForm);
+      // submit the DOM form element
+      tempForm.submit();
+      setTimeout(() => tempForm.remove(), 600);
+
+      if (msg) msg.textContent = "Submitted. A Google confirmation tab opened.";
+      formEl.reset();
+      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit", via: "google_form_fallback" });
+    } catch {
+      if (msg) msg.textContent = "Could not submit right now. Please try again or email me.";
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
+    }
+  });
+})();
