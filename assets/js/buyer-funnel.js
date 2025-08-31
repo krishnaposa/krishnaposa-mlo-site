@@ -7,7 +7,7 @@
   const $ = (sel) => document.querySelector(sel);
 
   // ---- Apps Script endpoint (your URL) ----
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVkjSelQjFJbQc5zNAD9m8soIyPqrZ9ICCq06TmK8lT5evRB0wmLV4mkJ6sSmpbpfG/exec';
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxyfF8OSwW88iUaCZ3sGDAD50aQLe55n2d297fqqakag4wq-R6uM1AjTQzNiVmWL5Tf/exec';
 
   // ---- Booking links ----
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
