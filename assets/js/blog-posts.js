@@ -9,7 +9,7 @@ const POSTS = [
   tags: ["AI", "Tools", "Rates"]
 },
  {
-    title: "The Custom ETF platform i use and its performance",
+    title: "The Custom ETF Platform I Use And Performance",
     url: "https://www.krishposa.com/blogs/blog-custom-etf.html",
     date: "2025-08-31",
     excerpt:
