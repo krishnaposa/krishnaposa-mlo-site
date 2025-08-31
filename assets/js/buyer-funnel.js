@@ -112,83 +112,73 @@
   })();
 
   // ---- Submit to Apps Script (no-cors) ----
+ ----
   $("#intakeForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const formEl   = e.currentTarget;
-    const submitBtn= $("#submitBtn") || formEl.querySelector('button[type="submit"]');
+    const submitBn = $("#submitBtn") || formEl.querySelector('button[type="submit"]');
     const msg      = $("#submitMsg");
-    const hp       = $("#hp"); // honeypot
+    const hp       = $("#hp");
 
-    if (msg) msg.textContent = "";
-    if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
+    if (hp && hp.value) { msg && (msg.textContent = "Submission blocked (spam check)."); return; }
+    msg && (msg.textContent = "");
+    submitBn && (submitBn.disabled = true, submitBn.textContent = "Submitting…");
 
-    // Read visible fields
-    const fullName   = $("#fullName")?.value.trim()   || "";
-    const email      = $("#email")?.value.trim()      || "";
-    const phone      = $("#phone")?.value.trim()      || "";
-    const timeline   = $("#timeline")?.value          || "";
-    const occupancy  = $("#occupancy")?.value         || "";
-    const source     = $("#source")?.value            || "";
-    const estPrice   = $("#estPrice")?.value.trim()   || "";
-    const estDown    = $("#estDown")?.value.trim()    || "";
-    const employment = $("#employment")?.value        || "";
-    const coBorrower = $("#coBorrower")?.value        || "";
-    const notes      = $("#notes")?.value.trim()      || "";
-
-    // Pull derived + agent data
-    let monthly = "", dti = "", program = "";
-    try {
-      const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
-      if (saved) {
-        monthly = saved.monthly ?? "";
-        dti     = saved.dti ?? "";
-        program = saved.program ?? "";
-      }
-    } catch(_) {}
-
-    const agent = JSON.parse(localStorage.getItem("agent") || "{}");
-    const agentName  = agent.name  || "";
-    const agentEmail = agent.email || "";
-
-    // UTM chain from URL
-    const utm = location.search.replace("?", "").split("&").filter(Boolean).join("&");
-
-    // Build a clean payload (column names become headers in the Sheet)
+    // Build flat key/value payload (keys become column headers in the Sheet)
     const payload = {
-      fullName, email, phone,
-      timeline, occupancy, source,
-      estPrice, estDown, employment, coBorrower, notes,
-      estMonthly: monthly, estDTI: dti, program,
-      agentName, agentEmail,
-      utm,
-      userAgent: navigator.userAgent,
-      page: location.href,
-      submittedAt: new Date().toISOString()
+      fullName:   $("#fullName")?.value.trim() || "",
+      email:      $("#email")?.value.trim() || "",
+      phone:      $("#phone")?.value.trim() || "",
+      timeline:   $("#timeline")?.value || "",
+      occupancy:  $("#occupancy")?.value || "",
+      source:     $("#source")?.value || "",
+      estPrice:   $("#estPrice")?.value.trim() || "",
+      estDown:    $("#estDown")?.value.trim() || "",
+      employment: $("#employment")?.value || "",
+      coBorrower: $("#coBorrower")?.value || "",
+      notes:      $("#notes")?.value.trim() || "",
+      // derived/hidden (if present)
+      estMonthly: $("#h_estMonthly")?.value || "",
+      estDTI:     $("#h_estDTI")?.value || "",
+      agentName:  $("#h_agentName")?.value || "",
+      agentEmail: $("#h_agentEmail")?.value || "",
+      utm:        $("#h_utm")?.value || "",
+      debug: "1" // lets you see details in Executions
     };
 
-    // Convert to x-www-form-urlencoded to avoid preflight, and send with no-cors
-    const body = new URLSearchParams();
-    Object.entries(payload).forEach(([k,v]) => body.append(k, String(v)));
+    // URL-encode once; reuse for beacon or fetch
+    const bodyStr = new URLSearchParams(payload).toString();
 
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
-
-    try {
-      await fetch(APPS_SCRIPT_URL, {
-        method: "POST",
-        mode: "no-cors", // <— key to bypass CORS block
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body
-      });
-
-      // We can’t read the response in no-cors, so we optimistically confirm.
-      if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received. I’ll reach out shortly.";
-      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
-      formEl.reset();
-    } catch (err) {
-      if (msg) msg.textContent = "❌ Sorry—couldn’t submit right now. Please try again, or email krishna.posa@gmail.com.";
-      console.error("Apps Script submit failed:", err);
-    } finally {
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
+    let sent = false;
+    // 1) Try sendBeacon (CORS-free, very reliable for simple posts)
+    if (navigator.sendBeacon) {
+      try {
+        const blob = new Blob([bodyStr], { type: "application/x-www-form-urlencoded" });
+        sent = navigator.sendBeacon(APPS_SCRIPT_URL, blob);
+      } catch (_) { sent = false; }
     }
+
+    // 2) Fallback to fetch (opaque success under no-cors is OK)
+    if (!sent) {
+      try {
+        await fetch(APPS_SCRIPT_URL, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: bodyStr
+        });
+        sent = true;
+      } catch (_) { sent = false; }
+    }
+
+    if (sent) {
+      msg && (msg.textContent = "✅ Thanks! Your pre-approval intake was received.");
+      formEl.reset();
+      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
+    } else {
+      msg && (msg.textContent = "⚠️ Couldn’t send right now. Please try again.");
+    }
+
+    submitBn && (submitBn.disabled = false, submitBn.textContent = "Submit Pre-Approval");
   });
 })();
