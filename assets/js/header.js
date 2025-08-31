@@ -9,7 +9,7 @@
     document.body.insertAdjacentElement("afterbegin", mount);
   }
 
-  const paths = ["partials/header.html", "/partials/header.html", "./partials/header.html"];
+  const paths = ["partials/header.html", "https://www.krishposa.com/partials/header.html", "./partials/header.html"];
   let html = null;
   for (const p of paths) {
     try {

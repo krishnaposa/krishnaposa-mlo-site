@@ -1,4 +1,4 @@
-fetch("partials/footer.html")
+fetch("https://www.krishposa.com/partials/footer.html")
   .then(response => response.text())
   .then(data => {
     document.getElementById("footer").innerHTML = data;
