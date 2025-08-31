@@ -1,83 +1,64 @@
 /* assets/js/buyer-funnel.js
-   Estimate math, agent co-brand, and submit via Apps Script (with Google Forms fallback)
+   Estimate math, agent co-brand, and Apps Script submit (JSON)
 */
 (function () {
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
 
-  // ===== 0) ENDPOINTS =====
-  // Your Apps Script Web App (Deploy > New deployment > Web app > "Anyone")
-  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxVkjSelQjFJbQc5zNAD9m8soIyPqrZ9ICCq06TmK8lT5evRB0wmLV4mkJ6sSmpbpfG/exec";
+  // ==== YOUR APPS SCRIPT WEB APP (Deploy > New deployment > type 'Web app') ====
+  // Must allow Anyone with the link (or Anyone within domain) and return JSON.
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVkjSelQjFJbQc5zNAD9m8soIyPqrZ9ICCq06TmK8lT5evRB0wmLV4mkJ6sSmpbpfG/exec';
 
-  // Your Google Form's /formResponse URL (fallback)
-  const GOOGLE_FORM_ACTION =
-    "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse";
-
-  // Map your Google Form entry IDs (keep only questions that still exist)
-  const ENTRY = {
-    fullName:   "entry.1081531616",
-    email:      "entry.1665114649",
-    phone:      "entry.776689893",
-    timeline:   "entry.938852734",
-    occupancy:  "entry.223995685",
-    source:     "entry.447085241",
-    estPrice:   "entry.390780263",
-    estDown:    "entry.508547119",
-    employment: "entry.1791431821",
-    coBorrower: "entry.1836064847",
-    notes:      "entry.1112680792"
-  };
-
-  // ===== 1) SMALL HELPERS =====
+  // ---------- tiny DOM helper ----------
   const $ = (sel) => document.querySelector(sel);
-  const getVal = (q) => ($(q)?.value || "").trim();
 
-  // Booking links
+  // ---------- booking links ----------
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
   ["#bookTop", "#bookBottom", "#bookSticky"].forEach((q) => { const el = $(q); if (el) el.href = BOOKING_URL; });
 
-  // ===== 2) REALTOR CO-BRAND (localStorage) =====
+  // ---------- realtor co-brand ----------
   function drawAgent() {
     const data = JSON.parse(localStorage.getItem("agent") || "{}");
-    $("#agentName")   && ($("#agentName").textContent   = data.name || "No agent added");
-    $("#agentFirm")   && ($("#agentFirm").textContent   = data.firm || "You can add one above");
-    $("#agentAvatar") && ($("#agentAvatar").src         = data.logo || "");
-    $("#h_agentName") && ($("#h_agentName").value       = data.name || "");
-    $("#h_agentEmail")&& ($("#h_agentEmail").value      = data.email || "");
+    const set = (q, v, prop="textContent") => { const el=$(q); if (el) el[prop]=v; };
+    set("#agentName", data.name || "No agent added");
+    set("#agentFirm", data.firm || "You can add one above");
+    set("#agentAvatar", data.logo || "", "src");
+    set("#h_agentName", data.name || "", "value");
+    set("#h_agentEmail", data.email || "", "value");
   }
   $("#saveAgent")?.addEventListener("click", () => {
     const payload = {
-      name: getVal("#agent_name"),
-      firm: getVal("#agent_firm"),
-      email: getVal("#agent_email"),
-      logo: getVal("#agent_logo")
+      name: $("#agent_name")?.value.trim() || "",
+      firm: $("#agent_firm")?.value.trim() || "",
+      email: $("#agent_email")?.value.trim() || "",
+      logo: $("#agent_logo")?.value.trim() || ""
     };
     localStorage.setItem("agent", JSON.stringify(payload));
     drawAgent();
   });
   drawAgent();
 
-  // ===== 3) QUICK QUALIFY (estimate) =====
+  // ---------- quick qualify calculator ----------
   $("#estimateBtn")?.addEventListener("click", () => {
-    const price = num(getVal("#price"));
-    const downInput = getVal("#down");
+    const price = num($("#price")?.value);
+    const downInput = ($("#down")?.value || "").trim();
     const down = downInput.endsWith("%") ? price * num(downInput) : num(downInput || 0);
-    const rateField = (getVal("#rate") || cfg.defaultRatePct);
+    const rateField = ($("#rate")?.value || cfg.defaultRatePct);
     const ratePct = (rateField.toString().trim().endsWith("%") ? num(rateField) * 100 : num(rateField));
-    const zip = getVal("#zip");
+    const zip = ($("#zip")?.value || "").trim();
     const program = $("#program")?.value || "conventional";
-    const income = num(getVal("#income"));
-    const debts = num(getVal("#debts") || 0);
+    const income = num($("#income")?.value);
+    const debts = num($("#debts")?.value || 0);
 
-    if (!price || !income) { $("#formMsg") && ($("#formMsg").textContent = "Please complete price and income (and down payment if available)."); return; }
-    $("#formMsg") && ($("#formMsg").textContent = "");
+    if (!price || !income) { const m=$("#formMsg"); if (m) m.textContent = "Please complete price and income (and down payment if available)."; return; }
+    const m=$("#formMsg"); if (m) m.textContent = "";
 
     const res = calc.totalMonthly({ price, down, ratePct, program, zip });
     const dti = calc.dti(res.total, debts, income);
 
-    $("#pAndI")        && ($("#pAndI").textContent = fmt(res.pAndI));
-    $("#taxes")        && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
-    $("#totalPay")     && ($("#totalPay").textContent = fmt(res.total));
-    $("#estimatesWrap")&& ($("#estimatesWrap").style.display = "grid");
+    $("#pAndI") && ($("#pAndI").textContent = fmt(res.pAndI));
+    $("#taxes") && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
+    $("#totalPay") && ($("#totalPay").textContent = fmt(res.total));
+    $("#estimatesWrap") && ($("#estimatesWrap").style.display = "grid");
 
     const dtiEl = $("#dtiLine");
     if (dtiEl) {
@@ -95,14 +76,11 @@
       }
     }
 
-    // write derived fields for submit
+    // pass to hidden fields + persist
     $("#h_estMonthly") && ($("#h_estMonthly").value = Math.round(res.total));
-    $("#h_estDTI")     && ($("#h_estDTI").value     = `${(dti * 100).toFixed(1)}%`);
-
-    // cache a bit
+    $("#h_estDTI") && ($("#h_estDTI").value = `${(dti * 100).toFixed(1)}%`);
     localStorage.setItem("lastEstimate", JSON.stringify({
-      price, down, rate: ratePct, program,
-      monthly: Math.round(res.total), dti: (dti * 100).toFixed(1)
+      price, down, rate: ratePct, program, monthly: Math.round(res.total), dti: (dti * 100).toFixed(1)
     }));
 
     window.dataLayer && window.dataLayer.push({ event: "estimate_calculated" });
@@ -110,130 +88,104 @@
 
   $("#resetBtn")?.addEventListener("click", () => {
     $("#estimatesWrap") && ($("#estimatesWrap").style.display = "none");
-    $("#dtiLine")      && ($("#dtiLine").style.display = "none");
-    $("#pmiLine")      && ($("#pmiLine").style.display = "none");
-    $("#formMsg")      && ($("#formMsg").textContent = "");
+    $("#dtiLine") && ($("#dtiLine").style.display = "none");
+    $("#pmiLine") && ($("#pmiLine").style.display = "none");
+    $("#formMsg") && ($("#formMsg").textContent = "");
     localStorage.removeItem("lastEstimate");
   });
 
-  // Prefill from saved estimate + UTM chain
+  // ---------- prefill + UTM ----------
   (function () {
     try {
       const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
       if (saved.price) {
-        if ($("#price"))   $("#price").value = saved.price;
+        if ($("#price")) $("#price").value = saved.price;
         if (saved.down && $("#down")) $("#down").value = saved.down;
-        if ($("#rate"))    $("#rate").value = isFinite(saved.rate) ? saved.rate.toFixed?.(2) + "%" : "";
+        if ($("#rate")) $("#rate").value = isFinite(saved.rate) ? saved.rate.toFixed?.(2) + "%" : "";
         if ($("#program")) $("#program").value = saved.program || "conventional";
       }
-    } catch(e){}
+    } catch(_) {}
     const utm = location.search.replace("?", "").split("&").filter(Boolean).join("&");
     $("#h_utm") && ($("#h_utm").value = utm);
   })();
 
-  // ===== 4) SUBMIT HANDLER (Apps Script first, Forms fallback) =====
+  // ---------- helper: fetch with timeout ----------
+  async function postJSON(url, data, { timeoutMs = 12000 } = {}) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        signal: ctrl.signal,
+        mode: "cors",
+        credentials: "omit"
+      });
+      let json = null;
+      try { json = await res.json(); } catch(_) {}
+      return { ok: res.ok, status: res.status, json };
+    } finally { clearTimeout(t); }
+  }
+
+  // ---------- submit to Apps Script ----------
   $("#intakeForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
+
     const formEl = e.currentTarget;
     const submitBtn = $("#submitBtn") || formEl.querySelector('button[type="submit"]');
     const msg = $("#submitMsg");
-    const hp = $("#hp");
+    const hp = $("#hp"); // honeypot
 
     if (msg) msg.textContent = "";
     if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
 
-    // Normalize a couple of selects to match your Form choice text exactly
-    const normalize = (s) => (s || "").trim();
-
-    // Build a clean JSON payload for Apps Script
-    const cleanPayload = {
-      fullName:   getVal("#fullName"),
-      email:      getVal("#email"),
-      phone:      getVal("#phone"),
-      timeline:   normalize($("#timeline")?.value),
-      occupancy:  normalize($("#occupancy")?.value),             // "Primary residence" | "Second home" | "Investment"
-      source:     normalize($("#source")?.value),                 // "Realtor partner" | "Instagram" | ...
-      estPrice:   getVal("#estPrice"),
-      estDown:    getVal("#estDown"),
-      employment: normalize($("#employment")?.value),            // "W2" | "Self-employed" | "1099" | "Mixed"
-      coBorrower: normalize($("#coBorrower")?.value),            // "Yes" | "No"
-      notes:      getVal("#notes"),
-      // hidden/derived (if present in DOM)
-      estMonthly: getVal("#h_estMonthly"),
-      estDTI:     getVal("#h_estDTI"),
-      agentName:  getVal("#h_agentName"),
-      agentEmail: getVal("#h_agentEmail"),
-      utm:        getVal("#h_utm"),
-      meta: {
-        userAgent: navigator.userAgent,
-        page: location.href,
-        ts: Date.now()
-      }
+    // Build payload (tolerant of missing fields)
+    const payload = {
+      fullName:   $("#fullName")?.value.trim() || "",
+      email:      $("#email")?.value.trim() || "",
+      phone:      $("#phone")?.value.trim() || "",
+      timeline:   $("#timeline")?.value || "",
+      occupancy:  $("#occupancy")?.value || "",
+      source:     $("#source")?.value || "",
+      estPrice:   $("#estPrice")?.value.trim() || "",
+      estDown:    $("#estDown")?.value.trim() || "",
+      employment: $("#employment")?.value || "",
+      coBorrower: $("#coBorrower")?.value || "",
+      notes:      $("#notes")?.value.trim() || "",
+      // hidden/derived (send if present)
+      estMonthly: $("#h_estMonthly")?.value || "",
+      estDTI:     $("#h_estDTI")?.value || "",
+      agentName:  $("#h_agentName")?.value || "",
+      agentEmail: $("#h_agentEmail")?.value || "",
+      utm:        $("#h_utm")?.value || "",
+      // meta
+      page: location.href,
+      ts: new Date().toISOString()
     };
 
-    // Build Google Forms payload (only fields that exist in the form)
-    const gf = new FormData();
-    gf.append(ENTRY.fullName,   cleanPayload.fullName);
-    gf.append(ENTRY.email,      cleanPayload.email);
-    gf.append(ENTRY.phone,      cleanPayload.phone);
-    gf.append(ENTRY.timeline,   cleanPayload.timeline);
-    gf.append(ENTRY.occupancy,  cleanPayload.occupancy);
-    gf.append(ENTRY.source,     cleanPayload.source);
-    gf.append(ENTRY.estPrice,   cleanPayload.estPrice);
-    gf.append(ENTRY.estDown,    cleanPayload.estDown);
-    gf.append(ENTRY.employment, cleanPayload.employment);
-    gf.append(ENTRY.coBorrower, cleanPayload.coBorrower);
-    gf.append(ENTRY.notes,      cleanPayload.notes);
-    // Google likes a couple of extras; harmless if ignored
-    gf.append("fvv", "1");
-    gf.append("pageHistory", "0");
-
-    // UI state
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
-
-    // 4a) Try Apps Script JSON (cleanest)
-    let scriptWorked = false;
-    try {
-      const res = await fetch(APPS_SCRIPT_URL, {
-        method: "POST",
-        mode: "cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(cleanPayload)
-      });
-      if (res.ok) scriptWorked = true;
-    } catch { /* network / CORS */ }
-
-    if (scriptWorked) {
-      if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received.";
-      formEl.reset();
-      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit", via: "apps_script" });
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
+    // basic client validation
+    if (!payload.fullName || !payload.email || !payload.phone) {
+      if (msg) msg.textContent = "Please complete name, email, and phone.";
       return;
     }
 
-    // 4b) Fallback — POST to Google Forms in a new tab (bypasses CORS/CSP)
-    try {
-      const tempForm = document.createElement("form");
-      tempForm.action = GOOGLE_FORM_ACTION;
-      tempForm.method = "POST";
-      tempForm.target = "_blank";
-      tempForm.style.display = "none";
-      // copy fields
-      for (const [k, v] of gf.entries()) {
-        const i = document.createElement("input");
-        i.type = "hidden"; i.name = k; i.value = v;
-        tempForm.appendChild(i);
-      }
-      document.body.appendChild(tempForm);
-      // submit the DOM form element
-      tempForm.submit();
-      setTimeout(() => tempForm.remove(), 600);
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
 
-      if (msg) msg.textContent = "Submitted. A Google confirmation tab opened.";
-      formEl.reset();
-      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit", via: "google_form_fallback" });
-    } catch {
-      if (msg) msg.textContent = "Could not submit right now. Please try again or email me.";
+    try {
+      const res = await postJSON(APPS_SCRIPT_URL, payload, { timeoutMs: 12000 });
+
+      // Expect your Apps Script to return { ok: true } on success
+      if (res.ok && (res.json?.ok ?? true)) {
+        if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received. I’ll reach out shortly.";
+        formEl.reset();
+        window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
+      } else {
+        const reason = res.json?.error || `(${res.status})`;
+        if (msg) msg.textContent = `Could not submit right now ${reason}. Please try again or email me.`;
+      }
+    } catch (err) {
+      if (msg) msg.textContent = "Network error submitting the form. Please try again.";
     } finally {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
     }
