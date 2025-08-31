@@ -162,65 +162,60 @@
     const utm = location.search.replace("?", "").split("&").filter(Boolean).join("&");
     $("#h_utm") && ($("#h_utm").value = utm);
   })();
-
+const APPS_SCRIPT_URL = 'PASTE_YOUR_WEB_APP_URL_HERE';
   // ---- Google Forms submit via top-level POST (bypasses CORS/CSP/CORB) ----
   $("#intakeForm")?.addEventListener("submit", (e) => {
     e.preventDefault();
-    const formEl = e.currentTarget;
-    const submitBtn = $("#submitBtn") || formEl.querySelector('button[type="submit"]');
-    const msg = $("#submitMsg");
-    const hp = $("#hp");
+  const formEl = e.currentTarget;
+  const submitBtn = document.querySelector("#submitBtn") || formEl.querySelector('button[type="submit"]');
+  const msg = document.querySelector("#submitMsg");
+  const hp = document.querySelector("#hp"); // honeypot
 
-    if (msg) msg.textContent = "";
-    if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
+  if (msg) msg.textContent = "";
+  if (hp && hp.value) { if (msg) msg.textContent = "Submission blocked (spam check)."; return; }
 
-    // Build payload (normalize dropdowns to exact labels)
-    const payload = new Map([
-      [ENTRY.fullName,   $("#fullName")?.value.trim() || ""],
-      [ENTRY.email,      $("#email")?.value.trim() || ""],
-      [ENTRY.phone,      $("#phone")?.value.trim() || ""],
-      [ENTRY.timeline,   normalizeChoice(ENTRY.timeline,   $("#timeline")?.value || "")],
-      [ENTRY.occupancy,  normalizeChoice(ENTRY.occupancy,  $("#occupancy")?.value || "")],
-      [ENTRY.source,     normalizeChoice(ENTRY.source,     $("#source")?.value || "")],
-      [ENTRY.estPrice,   $("#estPrice")?.value.trim() || ""],
-      [ENTRY.estDown,    $("#estDown")?.value.trim() || ""],
-      [ENTRY.employment, normalizeChoice(ENTRY.employment, $("#employment")?.value || "")],
-      [ENTRY.coBorrower, normalizeChoice(ENTRY.coBorrower, $("#coBorrower")?.value || "")],
-      [ENTRY.notes,      $("#notes")?.value.trim() || ""]
-    ]);
+  // Collect values using YOUR field ids/names
+  const payload = {
+    fullName:   document.querySelector("#fullName")?.value.trim() || "",
+    email:      document.querySelector("#email")?.value.trim() || "",
+    phone:      document.querySelector("#phone")?.value.trim() || "",
+    timeline:   document.querySelector("#timeline")?.value || "",
+    occupancy:  document.querySelector("#occupancy")?.value || "",
+    source:     document.querySelector("#source")?.value || "",
+    estPrice:   document.querySelector("#estPrice")?.value.trim() || "",
+    estDown:    document.querySelector("#estDown")?.value.trim() || "",
+    employment: document.querySelector("#employment")?.value || "",
+    coBorrower: document.querySelector("#coBorrower")?.value || "",
+    notes:      document.querySelector("#notes")?.value.trim() || "",
+    // include these if you kept the hidden fields:
+    estMonthly: document.querySelector("#h_estMonthly")?.value || "",
+    estDTI:     document.querySelector("#h_estDTI")?.value || "",
+    agentName:  document.querySelector("#h_agentName")?.value || "",
+    agentEmail: document.querySelector("#h_agentEmail")?.value || "",
+    utm:        document.querySelector("#h_utm")?.value || ""
+  };
 
-    // Extra Google params — DO NOT add a field named "submit"
-    const fbzx = (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
-    const extra = new Map([["fvv","1"],["pageHistory","0"],["fbzx",fbzx],["hl","en"]]);
-
+  try {
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
 
-    // Create a one-off form and submit it in a new tab/window
-    const tempForm = document.createElement("form");
-    tempForm.action = GOOGLE_FORM_ACTION;
-    tempForm.method = "POST";
-    tempForm.target = "_blank";
-    tempForm.style.display = "none";
+    // Send JSON (cleanest)
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      mode: "cors",
+      body: JSON.stringify(payload)
+    });
 
-    const appendHidden = (name, value) => {
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = name;
-      input.value = value;
-      tempForm.appendChild(input);
-    };
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
 
-    payload.forEach((v, k) => appendHidden(k, v));
-    extra.forEach((v, k)   => appendHidden(k, v));
-    // NOTE: intentionally *not* appending "submit=Submit" to avoid shadowing form.submit()
-
-    document.body.appendChild(tempForm);
-    tempForm.submit();                  // safe: no input named "submit" exists
-    setTimeout(() => tempForm.remove(), 600);
-
-    if (msg) msg.textContent = "Submitted. A Google confirmation tab opened in your browser.";
+    if (msg) msg.textContent = "✅ Thanks! Your pre-approval intake was received.";
     formEl.reset();
     window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
+  } catch (err) {
+    if (msg) msg.textContent = "Could not submit right now. Please try again or email me.";
+    console.error(err);
+  } finally {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval"; }
-  });
-})();
+  }
+});
