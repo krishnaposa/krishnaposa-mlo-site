@@ -33,13 +33,13 @@
       "6+ months": "6+ months"
     },
     [ENTRY.occupancy]: {
-      "primary residence": "Primary residence", // lower 'r' per source
+      "primary residence": "Primary Residence", // lower 'r' per source
       "primary": "Primary residence",
       "second home": "Second home",
       "investment": "Investment"
     },
     [ENTRY.source]: {
-      "realtor partner": "Realtor partner",     // lower 'p' per source
+      "realtor partner": "Realtor Partner",     // lower 'p' per source
       "instagram": "Instagram",
       "facebook": "Facebook",
       "google": "Google",
