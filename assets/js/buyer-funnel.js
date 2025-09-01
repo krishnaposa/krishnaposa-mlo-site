@@ -1,30 +1,9 @@
 /* assets/js/buyer-funnel.js
-   Estimate math, agent co-brand, and open Google Form (prefilled) for submission
+   Estimate math, agent co-brand, open Google Form for intake (no in-page submit)
 */
 (function () {
-  // ---- Helpers coming from your mortgage-calc.js ----
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
   const $ = (sel) => document.querySelector(sel);
-
-  // ---- Google Form (VIEW) URL + entry IDs ----
-  // Users will finish and submit on Google’s page.
-  const GOOGLE_FORM_VIEW =
-    "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/viewform";
-
-  // Your live entry IDs
-  const ENTRY = {
-    fullName:   "entry.1081531616",
-    email:      "entry.1665114649",
-    phone:      "entry.776689893",
-    timeline:   "entry.938852734",   // (e.g., ASAP)
-    occupancy:  "entry.223995685",   // (Primary residence / Second home / Investment)
-    source:     "entry.447085241",   // (Realtor partner / Instagram / …)
-    estPrice:   "entry.390780263",
-    estDown:    "entry.508547119",
-    employment: "entry.1791431821",  // (W2 / Self-employed / 1099 / Mixed)
-    coBorrower: "entry.1836064847",  // (Yes / No)
-    notes:      "entry.1112680792"
-  };
 
   // ---- Booking links ----
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
@@ -39,6 +18,9 @@
     $("#agentName")   && ($("#agentName").textContent  = data.name || "No agent added");
     $("#agentFirm")   && ($("#agentFirm").textContent  = data.firm || "You can add one above");
     $("#agentAvatar") && ($("#agentAvatar").src        = data.logo || "");
+    // If you keep hidden fields elsewhere, you can still populate them here:
+    $("#h_agentName")  && ($("#h_agentName").value  = data.name || "");
+    $("#h_agentEmail") && ($("#h_agentEmail").value = data.email || "");
   }
   $("#saveAgent")?.addEventListener("click", () => {
     const payload = {
@@ -94,12 +76,19 @@
       }
     }
 
-    // Stash derived values in case you ever want them again
+    // Save for convenience / refilling later
     localStorage.setItem("lastEstimate", JSON.stringify({
-      price, down, rate: ratePct, program,
+      price,
+      down,
+      rate: ratePct,
+      program,
       monthly: Math.round(res.total),
       dti: (dti * 100).toFixed(1)
     }));
+
+    // If you still keep hidden derived fields around:
+    $("#h_estMonthly") && ($("#h_estMonthly").value = Math.round(res.total));
+    $("#h_estDTI")     && ($("#h_estDTI").value     = `${(dti * 100).toFixed(1)}%`);
 
     window.dataLayer && window.dataLayer.push({ event: "estimate_calculated" });
   });
@@ -112,7 +101,7 @@
     localStorage.removeItem("lastEstimate");
   });
 
-  // ---- Prefill from saved estimate (for convenience) ----
+  // ---- Prefill from saved estimate ----
   (function () {
     try {
       const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
@@ -125,35 +114,33 @@
     } catch(e){}
   })();
 
-  // ---- Intake: open the Google Form (prefilled) and let user submit there ----
-  $("#intakeForm")?.addEventListener("submit", (e) => {
-    e.preventDefault();
+  // ---- Open Google Form button: keep href static, append UTM if present (optional) ----
+  (function () {
+    const btn = $("#openGoogleForm");
+    if (!btn) return;
 
-    // Collect current values from your page
-    const values = {
-      [ENTRY.fullName]:   $("#fullName")?.value.trim()          || "",
-      [ENTRY.email]:      $("#email")?.value.trim()             || "",
-      [ENTRY.phone]:      $("#phone")?.value.trim()             || "",
-      [ENTRY.timeline]:   $("#timeline")?.value                 || "",
-      [ENTRY.occupancy]:  $("#occupancy")?.value                || "",
-      [ENTRY.source]:     $("#source")?.value                   || "",
-      [ENTRY.estPrice]:   $("#estPrice")?.value.trim()          || "",
-      [ENTRY.estDown]:    $("#estDown")?.value.trim()           || "",
-      [ENTRY.employment]: $("#employment")?.value               || "",
-      [ENTRY.coBorrower]: $("#coBorrower")?.value               || "",
-      [ENTRY.notes]:      $("#notes")?.value.trim()             || ""
-    };
+    // If you want to pass current page UTM parameters along to the Form as a single "utm" param:
+    const qs = location.search.replace(/^\?/, "");
+    if (qs) {
+      try {
+        const url = new URL(btn.href || "", location.href);
+        // append utm as a single blob (you can map it to a Form field later if desired)
+        const existing = url.searchParams.get("utm");
+        url.searchParams.set("utm", existing ? `${existing}&${qs}` : qs);
+        btn.href = url.toString();
+      } catch (_) {
+        /* leave original href */
+      }
+    }
 
-    // Build a prefill URL (exact option text is already used in your selects)
-    const u = new URL(GOOGLE_FORM_VIEW);
-    const sp = new URLSearchParams();
-    Object.entries(values).forEach(([k, v]) => { if (v) sp.set(k, v); });
-    // Optional (helps Forms):
-    sp.set("fvv", "1"); sp.set("pageHistory", "0");
+    // Optional: analytics
+    btn.addEventListener("click", () => {
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({ event: "open_google_form" });
+    });
+  })();
 
-    u.search = sp.toString();
-
-    // Mobile-friendly: navigate in the same tab (won’t be blocked)
-    window.location.href = u.toString();
-  });
+  // ---- IMPORTANT: removed any submit handler for #intakeForm ----
+  // We no longer intercept nor post data from this page. Users complete
+  // and submit directly on the Google Form in a new tab.
 })();
