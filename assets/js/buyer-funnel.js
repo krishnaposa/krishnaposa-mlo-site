@@ -13,27 +13,70 @@
   });
 
   // ---- Realtor co-brand ----
-  function drawAgent() {
-    const data = JSON.parse(localStorage.getItem("agent") || "{}");
-    $("#agentName")   && ($("#agentName").textContent  = data.name || "No agent added");
-    $("#agentFirm")   && ($("#agentFirm").textContent  = data.firm || "You can add one above");
-    $("#agentAvatar") && ($("#agentAvatar").src        = data.logo || "https://www.krishposa.com/assets/img/realtor.png");
-    $("#agentAvatar") && ($("#agentAvatar").style.display = "block";
-    // If you keep hidden fields elsewhere, you can still populate them here:
-    $("#h_agentName")  && ($("#h_agentName").value  = data.name || "");
-    $("#h_agentEmail") && ($("#h_agentEmail").value = data.email || "");
+  /* ===== Realtor co-brand (robust) ===== */
+function drawAgent() {
+  const data = JSON.parse(localStorage.getItem("agent") || "{}");
+  const name = data.name || "No agent added";
+  const firm = data.firm || "You can add one above";
+  const logo = data.logo || "";
+
+  const nameEl  = document.querySelector("#agentName");
+  const firmEl  = document.querySelector("#agentFirm");
+  const avatar  = document.querySelector("#agentAvatar");
+  const hName   = document.querySelector("#h_agentName");
+  const hEmail  = document.querySelector("#h_agentEmail");
+
+  if (nameEl) nameEl.textContent = name;
+  if (firmEl) firmEl.textContent = firm;
+
+  if (avatar) {
+    // hide by default if no logo
+    if (!logo) {
+      avatar.removeAttribute("src");
+      avatar.style.display = "none";
+    } else {
+      avatar.style.display = "block";
+      avatar.src = logo;
+      // if the provided URL is bad, hide the image to avoid the broken icon
+      avatar.onerror = () => { avatar.style.display = "none"; };
+    }
   }
-  $("#saveAgent")?.addEventListener("click", () => {
-    const payload = {
-      name:  $("#agent_name")?.value.trim()  || "",
-      firm:  $("#agent_firm")?.value.trim()  || "",
-      email: $("#agent_email")?.value.trim() || "",
-      logo:  $("#agent_logo")?.value.trim()  || ""
-    };
-    localStorage.setItem("agent", JSON.stringify(payload));
+
+  if (hName)  hName.value  = data.name  || "";
+  if (hEmail) hEmail.value = data.email || "";
+}
+
+// Bind after DOM is parsed (your script is `defer`, but this keeps it bulletproof)
+document.addEventListener("DOMContentLoaded", () => {
+  // Event delegation so it still works if the button is re-rendered
+  document.addEventListener("click", (evt) => {
+    const btn = evt.target.closest("#saveAgent");
+    if (!btn) return;
+
+    // Prevent any accidental form submits
+    evt.preventDefault();
+
+    const name  = (document.querySelector("#agent_name")?.value || "").trim();
+    const firm  = (document.querySelector("#agent_firm")?.value || "").trim();
+    const email = (document.querySelector("#agent_email")?.value || "").trim();
+    const logo  = (document.querySelector("#agent_logo")?.value || "").trim();
+
+    // Save
+    localStorage.setItem("agent", JSON.stringify({ name, firm, email, logo }));
+
+    // Reflect in UI + hidden fields
     drawAgent();
+
+    // Tiny confirmation
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = "Saved ✓";
+    setTimeout(() => { btn.disabled = false; btn.textContent = original; }, 900);
   });
+
+  // First paint
   drawAgent();
+});
 
   // ---- Quick Qualify calculator ----
   $("#estimateBtn")?.addEventListener("click", () => {
