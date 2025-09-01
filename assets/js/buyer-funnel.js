@@ -18,7 +18,7 @@
     $("#agentName")   && ($("#agentName").textContent  = data.name || "No agent added");
     $("#agentFirm")   && ($("#agentFirm").textContent  = data.firm || "You can add one above");
     $("#agentAvatar") && ($("#agentAvatar").src        = data.logo || "https://www.krishposa.com/assets/img/realtor.png");
-    $("#agentAvatar") && ($("#agentAvatar").style.display = "block"
+    $("#agentAvatar") && ($("#agentAvatar").style.display = "block";
     // If you keep hidden fields elsewhere, you can still populate them here:
     $("#h_agentName")  && ($("#h_agentName").value  = data.name || "");
     $("#h_agentEmail") && ($("#h_agentEmail").value = data.email || "");
