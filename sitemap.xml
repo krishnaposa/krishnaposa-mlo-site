@@ -1,128 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <!-- Home -->
-  <url>
-    <loc>https://www.krishposa.com/</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
-  </url>
+  <url><loc>https://www.krishposa.com/</loc><lastmod>2025-08-30</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
 
   <!-- Key Journeys / Converters -->
-  <url>
-    <loc>https://www.krishposa.com/buyer-journey.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.95</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/buyer-funnel.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.90</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/loan-advisor.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.90</priority>
-  </url>
+  <url><loc>https://www.krishposa.com/buyer-journey.html</loc><lastmod>2025-08-30</lastmod><changefreq>weekly</changefreq><priority>0.95</priority></url>
+  <url><loc>https://www.krishposa.com/buyer-funnel.html</loc><lastmod>2025-08-30</lastmod><changefreq>weekly</changefreq><priority>0.90</priority></url>
+  <url><loc>https://www.krishposa.com/loan-advisor.html</loc><lastmod>2025-08-30</lastmod><changefreq>weekly</changefreq><priority>0.90</priority></url>
 
   <!-- Services / Resources -->
-  <url>
-    <loc>https://www.krishposa.com/loans.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.90</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/calculators.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.85</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/calculator-le-compare.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.80</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/resources.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.85</priority>
-  </url>
+  <url><loc>https://www.krishposa.com/loans.html</loc><lastmod>2025-08-30</lastmod><changefreq>monthly</changefreq><priority>0.90</priority></url>
+  <url><loc>https://www.krishposa.com/calculators.html</loc><lastmod>2025-08-30</lastmod><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://www.krishposa.com/calculator-le-compare.html</loc><lastmod>2025-08-30</lastmod><changefreq>monthly</changefreq><priority>0.80</priority></url>
+  <url><loc>https://www.krishposa.com/resources.html</loc><lastmod>2025-08-30</lastmod><changefreq>monthly</changefreq><priority>0.85</priority></url>
 
   <!-- Blog index -->
-  <url>
-    <loc>https://www.krishposa.com/blogs/blog.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.70</priority>
-  </url>
+  <url><loc>https://www.krishposa.com/blogs/blog.html</loc><lastmod>2025-08-30</lastmod><changefreq>weekly</changefreq><priority>0.70</priority></url>
 
-<url>
-    <loc>https://www.krishposa.com/blogs/blog-custom-etf.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.70</priority>
-  </url>
   <!-- Blog posts -->
-  <url>
-    <loc>https://www.krishposa.com/blogs/blog-mortgage-rates.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.70</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/blogs/blog-tools.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.65</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/blogs/blog-ai-loan-advisor.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.65</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/blogs/blog-iul-truth.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.65</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/blogs/blog-prosper-returns.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.60</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/blogs/blog-art-investing.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.60</priority>
-  </url>
+  <url><loc>https://www.krishposa.com/blogs/blog-custom-etf.html</loc><lastmod>2025-08-30</lastmod><changefreq>weekly</changefreq><priority>0.70</priority></url>
+  <url><loc>https://www.krishposa.com/blogs/blog-mortgage-rates.html</loc><lastmod>2025-08-30</lastmod><changefreq>monthly</changefreq><priority>0.70</priority></url>
+  <url><loc>https://www.krishposa.com/blogs/blog-tools.html</loc><lastmod>2025-08-30</lastmod><changefreq>monthly</changefreq><priority>0.65</priority></url>
+  <url><loc>https://www.krishposa.com/blogs/blog-ai-loan-advisor.html</loc><lastmod>2025-08-30</lastmod><changefreq>monthly</changefreq><priority>0.65</priority></url>
+  <url><loc>https://www.krishposa.com/blogs/blog-iul-truth.html</loc><lastmod>2025-08-30</lastmod><changefreq>monthly</changefreq><priority>0.65</priority></url>
+  <url><loc>https://www.krishposa.com/blogs/blog-prosper-returns.html</loc><lastmod>2025-08-30</lastmod><changefreq>monthly</changefreq><priority>0.60</priority></url>
+  <url><loc>https://www.krishposa.com/blogs/blog-art-investing.html</loc><lastmod>2025-08-30</lastmod><changefreq>monthly</changefreq><priority>0.60</priority></url>
 
   <!-- About / Contact / Legal -->
-  <url>
-    <loc>https://www.krishposa.com/about.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>yearly</changefreq>
-    <priority>0.60</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/contact.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>yearly</changefreq>
-    <priority>0.60</priority>
-  </url>
-  <url>
-    <loc>https://www.krishposa.com/privacy.html</loc>
-    <lastmod>2025-08-30</lastmod>
-    <changefreq>yearly</changefreq>
-    <priority>0.30</priority>
-  </url>
+  <url><loc>https://www.krishposa.com/about.html</loc><lastmod>2025-08-30</lastmod><changefreq>yearly</changefreq><priority>0.60</priority></url>
+  <url><loc>https://www.krishposa.com/contact.html</loc><lastmod>2025-08-30</lastmod><changefreq>yearly</changefreq><priority>0.60</priority></url>
+  <url><loc>https://www.krishposa.com/privacy.html</loc><lastmod>2025-08-30</lastmod><changefreq>yearly</changefreq><priority>0.30</priority></url>
 </urlset>
