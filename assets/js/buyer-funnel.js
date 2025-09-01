@@ -1,13 +1,30 @@
 /* assets/js/buyer-funnel.js
-   Estimate math, agent co-brand, and Apps Script submit (no-cors to avoid CORS)
+   Estimate math, agent co-brand, and open Google Form (prefilled) for submission
 */
 (function () {
   // ---- Helpers coming from your mortgage-calc.js ----
   const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
   const $ = (sel) => document.querySelector(sel);
 
-  // ---- Apps Script endpoint (your URL) ----
+  // ---- Google Form (VIEW) URL + entry IDs ----
+  // Users will finish and submit on Google’s page.
+  const GOOGLE_FORM_VIEW =
+    "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/viewform";
 
+  // Your live entry IDs
+  const ENTRY = {
+    fullName:   "entry.1081531616",
+    email:      "entry.1665114649",
+    phone:      "entry.776689893",
+    timeline:   "entry.938852734",   // (e.g., ASAP)
+    occupancy:  "entry.223995685",   // (Primary residence / Second home / Investment)
+    source:     "entry.447085241",   // (Realtor partner / Instagram / …)
+    estPrice:   "entry.390780263",
+    estDown:    "entry.508547119",
+    employment: "entry.1791431821",  // (W2 / Self-employed / 1099 / Mixed)
+    coBorrower: "entry.1836064847",  // (Yes / No)
+    notes:      "entry.1112680792"
+  };
 
   // ---- Booking links ----
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
@@ -19,12 +36,9 @@
   // ---- Realtor co-brand ----
   function drawAgent() {
     const data = JSON.parse(localStorage.getItem("agent") || "{}");
-    const name = data.name || "No agent added";
-    const firm = data.firm || "You can add one above";
-    const logo = data.logo || "";
-    $("#agentName")  && ($("#agentName").textContent  = name);
-    $("#agentFirm")  && ($("#agentFirm").textContent  = firm);
-    $("#agentAvatar")&& ($("#agentAvatar").src        = logo);
+    $("#agentName")   && ($("#agentName").textContent  = data.name || "No agent added");
+    $("#agentFirm")   && ($("#agentFirm").textContent  = data.firm || "You can add one above");
+    $("#agentAvatar") && ($("#agentAvatar").src        = data.logo || "");
   }
   $("#saveAgent")?.addEventListener("click", () => {
     const payload = {
@@ -59,10 +73,10 @@
     const res = calc.totalMonthly({ price, down, ratePct, program, zip });
     const dti = calc.dti(res.total, debts, income);
 
-    $("#pAndI")        && ($("#pAndI").textContent = fmt(res.pAndI));
-    $("#taxes")        && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
-    $("#totalPay")     && ($("#totalPay").textContent = fmt(res.total));
-    $("#estimatesWrap")&& ($("#estimatesWrap").style.display = "grid");
+    $("#pAndI")         && ($("#pAndI").textContent = fmt(res.pAndI));
+    $("#taxes")         && ($("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi));
+    $("#totalPay")      && ($("#totalPay").textContent = fmt(res.total));
+    $("#estimatesWrap") && ($("#estimatesWrap").style.display = "grid");
 
     const dtiEl = $("#dtiLine");
     if (dtiEl) {
@@ -80,7 +94,7 @@
       }
     }
 
-    // stash derived values so we can send them
+    // Stash derived values in case you ever want them again
     localStorage.setItem("lastEstimate", JSON.stringify({
       price, down, rate: ratePct, program,
       monthly: Math.round(res.total),
@@ -98,7 +112,7 @@
     localStorage.removeItem("lastEstimate");
   });
 
-  // ---- Prefill from saved estimate + UTM chain ----
+  // ---- Prefill from saved estimate (for convenience) ----
   (function () {
     try {
       const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
@@ -111,60 +125,35 @@
     } catch(e){}
   })();
 
-  // ---- Submit to Apps Script (no-cors) ----
- ----
-// Drop-in submit handler
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVkjSelQjFJbQc5zNAD9m8soIyPqrZ9ICCq06TmK8lT5evRB0wmLV4mkJ6sSmpbpfG/exec';
+  // ---- Intake: open the Google Form (prefilled) and let user submit there ----
+  $("#intakeForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
 
-document.querySelector("#intakeForm")?.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const formEl   = e.currentTarget;
-  const submitBn = document.querySelector("#submitBtn");
-  const msg      = document.querySelector("#submitMsg");
-  const hp       = document.querySelector("#hp");
+    // Collect current values from your page
+    const values = {
+      [ENTRY.fullName]:   $("#fullName")?.value.trim()          || "",
+      [ENTRY.email]:      $("#email")?.value.trim()             || "",
+      [ENTRY.phone]:      $("#phone")?.value.trim()             || "",
+      [ENTRY.timeline]:   $("#timeline")?.value                 || "",
+      [ENTRY.occupancy]:  $("#occupancy")?.value                || "",
+      [ENTRY.source]:     $("#source")?.value                   || "",
+      [ENTRY.estPrice]:   $("#estPrice")?.value.trim()          || "",
+      [ENTRY.estDown]:    $("#estDown")?.value.trim()           || "",
+      [ENTRY.employment]: $("#employment")?.value               || "",
+      [ENTRY.coBorrower]: $("#coBorrower")?.value               || "",
+      [ENTRY.notes]:      $("#notes")?.value.trim()             || ""
+    };
 
-  if (hp && hp.value) { msg && (msg.textContent = "Submission blocked (spam check)."); return; }
-  msg && (msg.textContent = "");
-  submitBn && (submitBn.disabled = true, submitBn.textContent = "Submitting…");
+    // Build a prefill URL (exact option text is already used in your selects)
+    const u = new URL(GOOGLE_FORM_VIEW);
+    const sp = new URLSearchParams();
+    Object.entries(values).forEach(([k, v]) => { if (v) sp.set(k, v); });
+    // Optional (helps Forms):
+    sp.set("fvv", "1"); sp.set("pageHistory", "0");
 
-  const tempForm = document.createElement("form");
-  tempForm.action = APPS_SCRIPT_URL;   // your /exec URL
-  tempForm.method = "POST";            // simple form post ⇒ no preflight
-  tempForm.target = "_self";           // stay on page (or "_blank" if you prefer)
-  tempForm.style.display = "none";
+    u.search = sp.toString();
 
-  // Helper to add hidden fields
-  const add = (name, value) => {
-    const i = document.createElement("input");
-    i.type = "hidden"; i.name = name; i.value = value ?? "";
-    tempForm.appendChild(i);
-  };
-
-  // Send clean, flat keys (these become Sheet headers)
-  add("fullName",   document.querySelector("#fullName")?.value.trim());
-  add("email",      document.querySelector("#email")?.value.trim());
-  add("phone",      document.querySelector("#phone")?.value.trim());
-  add("timeline",   document.querySelector("#timeline")?.value);
-  add("occupancy",  document.querySelector("#occupancy")?.value);
-  add("source",     document.querySelector("#source")?.value);
-  add("estPrice",   document.querySelector("#estPrice")?.value.trim());
-  add("estDown",    document.querySelector("#estDown")?.value.trim());
-  add("employment", document.querySelector("#employment")?.value);
-  add("coBorrower", document.querySelector("#coBorrower")?.value);
-  add("notes",      document.querySelector("#notes")?.value.trim());
-  add("estMonthly", document.querySelector("#h_estMonthly")?.value);
-  add("estDTI",     document.querySelector("#h_estDTI")?.value);
-  add("agentName",  document.querySelector("#h_agentName")?.value);
-  add("agentEmail", document.querySelector("#h_agentEmail")?.value);
-  add("utm",        document.querySelector("#h_utm")?.value);
-  add("debug",      "1");
-
-  document.body.appendChild(tempForm);
-  tempForm.submit();                    // works as long as no input named "submit"
-  setTimeout(() => tempForm.remove(), 500);
-
-  // Optimistic UI (the Sheet append happens server-side)
-  msg && (msg.textContent = "✅ Thanks! Your info was sent.");
-  formEl.reset();
-  submitBn && (submitBn.disabled = false, submitBn.textContent = "Submit Pre-Approval");
-});
+    // Mobile-friendly: navigate in the same tab (won’t be blocked)
+    window.location.href = u.toString();
+  });
+})();
