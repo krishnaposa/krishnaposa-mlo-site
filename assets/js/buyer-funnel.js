@@ -7,7 +7,7 @@
   const $ = (sel) => document.querySelector(sel);
 
   // ---- Apps Script endpoint (your URL) ----
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzt4DK41hW-N8ig4r8NrWyRFNUQi4yQDSAciz3Dchm1Xfm3BeNprN3IPMULWVZemzXl/exec';
+
 
   // ---- Booking links ----
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
@@ -113,72 +113,58 @@
 
   // ---- Submit to Apps Script (no-cors) ----
  ----
-  $("#intakeForm")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const formEl   = e.currentTarget;
-    const submitBn = $("#submitBtn") || formEl.querySelector('button[type="submit"]');
-    const msg      = $("#submitMsg");
-    const hp       = $("#hp");
+// Drop-in submit handler
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxVkjSelQjFJbQc5zNAD9m8soIyPqrZ9ICCq06TmK8lT5evRB0wmLV4mkJ6sSmpbpfG/exec';
 
-    if (hp && hp.value) { msg && (msg.textContent = "Submission blocked (spam check)."); return; }
-    msg && (msg.textContent = "");
-    submitBn && (submitBn.disabled = true, submitBn.textContent = "Submitting…");
+document.querySelector("#intakeForm")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const formEl   = e.currentTarget;
+  const submitBn = document.querySelector("#submitBtn");
+  const msg      = document.querySelector("#submitMsg");
+  const hp       = document.querySelector("#hp");
 
-    // Build flat key/value payload (keys become column headers in the Sheet)
-    const payload = {
-      fullName:   $("#fullName")?.value.trim() || "",
-      email:      $("#email")?.value.trim() || "",
-      phone:      $("#phone")?.value.trim() || "",
-      timeline:   $("#timeline")?.value || "",
-      occupancy:  $("#occupancy")?.value || "",
-      source:     $("#source")?.value || "",
-      estPrice:   $("#estPrice")?.value.trim() || "",
-      estDown:    $("#estDown")?.value.trim() || "",
-      employment: $("#employment")?.value || "",
-      coBorrower: $("#coBorrower")?.value || "",
-      notes:      $("#notes")?.value.trim() || "",
-      // derived/hidden (if present)
-      estMonthly: $("#h_estMonthly")?.value || "",
-      estDTI:     $("#h_estDTI")?.value || "",
-      agentName:  $("#h_agentName")?.value || "",
-      agentEmail: $("#h_agentEmail")?.value || "",
-      utm:        $("#h_utm")?.value || "",
-      debug: "1" // lets you see details in Executions
-    };
+  if (hp && hp.value) { msg && (msg.textContent = "Submission blocked (spam check)."); return; }
+  msg && (msg.textContent = "");
+  submitBn && (submitBn.disabled = true, submitBn.textContent = "Submitting…");
 
-    // URL-encode once; reuse for beacon or fetch
-    const bodyStr = new URLSearchParams(payload).toString();
+  const tempForm = document.createElement("form");
+  tempForm.action = APPS_SCRIPT_URL;   // your /exec URL
+  tempForm.method = "POST";            // simple form post ⇒ no preflight
+  tempForm.target = "_self";           // stay on page (or "_blank" if you prefer)
+  tempForm.style.display = "none";
 
-    let sent = false;
-    // 1) Try sendBeacon (CORS-free, very reliable for simple posts)
-    if (navigator.sendBeacon) {
-      try {
-        const blob = new Blob([bodyStr], { type: "application/x-www-form-urlencoded" });
-        sent = navigator.sendBeacon(APPS_SCRIPT_URL, blob);
-      } catch (_) { sent = false; }
-    }
+  // Helper to add hidden fields
+  const add = (name, value) => {
+    const i = document.createElement("input");
+    i.type = "hidden"; i.name = name; i.value = value ?? "";
+    tempForm.appendChild(i);
+  };
 
-    // 2) Fallback to fetch (opaque success under no-cors is OK)
-    if (!sent) {
-      try {
-        await fetch(APPS_SCRIPT_URL, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: bodyStr
-        });
-        sent = true;
-      } catch (_) { sent = false; }
-    }
+  // Send clean, flat keys (these become Sheet headers)
+  add("fullName",   document.querySelector("#fullName")?.value.trim());
+  add("email",      document.querySelector("#email")?.value.trim());
+  add("phone",      document.querySelector("#phone")?.value.trim());
+  add("timeline",   document.querySelector("#timeline")?.value);
+  add("occupancy",  document.querySelector("#occupancy")?.value);
+  add("source",     document.querySelector("#source")?.value);
+  add("estPrice",   document.querySelector("#estPrice")?.value.trim());
+  add("estDown",    document.querySelector("#estDown")?.value.trim());
+  add("employment", document.querySelector("#employment")?.value);
+  add("coBorrower", document.querySelector("#coBorrower")?.value);
+  add("notes",      document.querySelector("#notes")?.value.trim());
+  add("estMonthly", document.querySelector("#h_estMonthly")?.value);
+  add("estDTI",     document.querySelector("#h_estDTI")?.value);
+  add("agentName",  document.querySelector("#h_agentName")?.value);
+  add("agentEmail", document.querySelector("#h_agentEmail")?.value);
+  add("utm",        document.querySelector("#h_utm")?.value);
+  add("debug",      "1");
 
-    if (sent) {
-      msg && (msg.textContent = "✅ Thanks! Your pre-approval intake was received.");
-      formEl.reset();
-      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
-    } else {
-      msg && (msg.textContent = "⚠️ Couldn’t send right now. Please try again.");
-    }
+  document.body.appendChild(tempForm);
+  tempForm.submit();                    // works as long as no input named "submit"
+  setTimeout(() => tempForm.remove(), 500);
 
-    submitBn && (submitBn.disabled = false, submitBn.textContent = "Submit Pre-Approval");
-  });
-})();
+  // Optimistic UI (the Sheet append happens server-side)
+  msg && (msg.textContent = "✅ Thanks! Your info was sent.");
+  formEl.reset();
+  submitBn && (submitBn.disabled = false, submitBn.textContent = "Submit Pre-Approval");
+});
