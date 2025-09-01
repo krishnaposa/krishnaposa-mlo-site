@@ -39,7 +39,6 @@
 
   <!-- Site JS -->
   <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
-
 </head>
 <body>
   <!-- Google Tag Manager (noscript) -->
@@ -188,96 +187,23 @@
     <section id="preapproval" class="container wide">
       <div class="card">
         <h2 style="margin:0 0 .25rem">Pre-Approval Intake</h2>
-        <p class="small" style="margin:.25rem 0 1rem">Five minute form. Secure. I will follow up with next steps and a document checklist.</p>
+        <p class="small" style="margin:.25rem 0 1rem">Tap the button below to open the secure Google Form and submit your details.</p>
 
-        <!-- JS handles Google Forms submit; keep action="#" so page doesn't navigate -->
-        <form id="intakeForm" action="#" method="POST" novalidate>
-          <!-- Honeypot anti-spam -->
-          <input type="text" name="_gotcha" id="hp" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+        <div class="cta" style="gap:.75rem;margin-top:.5rem;flex-wrap:wrap">
+          <!-- Opens Google Form (mobile friendly) -->
+          <a
+            class="btn btn-blue"
+            id="openGoogleForm"
+            href="https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/viewform?hl=en"
+            target="_blank"
+            rel="noopener"
+            style="min-width:240px;text-align:center"
+            >Open Pre-Approval Form</a>
 
-          <div class="grid-3">
-            <div class="field">
-              <label for="fullName">Full Name</label>
-              <input id="fullName" name="fullName" placeholder="Your name" required autocomplete="name">
-            </div>
-            <div class="field">
-              <label for="email">Email</label>
-              <input id="email" name="email" type="email" placeholder="you@email.com" required autocomplete="email">
-            </div>
-            <div class="field">
-              <label for="phone">Phone</label>
-              <input id="phone" name="phone" inputmode="tel" placeholder="(###) ###-####" required autocomplete="tel">
-            </div>
-          </div>
+          <a class="btn-outline btn-green" id="bookBottom" target="_blank" rel="noopener">Book a Call</a>
+        </div>
 
-          <div class="grid-3" style="margin-top:.75rem">
-            <div class="field">
-              <label for="timeline">Buying Timeline</label>
-              <select id="timeline" name="timeline" autocomplete="off">
-                <option>ASAP</option><option>30-60 days</option><option>60-90 days</option><option>3-6 months</option><option>6+ months</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="occupancy">Occupancy</label>
-              <select id="occupancy" name="occupancy" autocomplete="off">
-                <option>Primary residence</option><option>Second home</option><option>Investment</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="source">How did you hear about me</label>
-              <select id="source" name="source" autocomplete="off">
-                <option>Realtor partner</option><option>Instagram</option><option>Facebook</option><option>Google</option><option>Friend or family</option><option>Other</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="grid-3" style="margin-top:.75rem">
-            <div class="field">
-              <label for="estPrice">Target Price</label>
-              <input id="estPrice" name="estPrice" inputmode="decimal" placeholder="400000" autocomplete="off">
-            </div>
-            <div class="field">
-              <label for="estDown">Down Payment</label>
-              <input id="estDown" name="estDown" placeholder="80000 or 20%" autocomplete="off">
-            </div>
-            <div class="field">
-              <label for="employment">Employment</label>
-              <select id="employment" name="employment" autocomplete="off">
-                <option>W2</option><option>Self-employed</option><option>1099</option><option>Mixed</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="grid-3" style="margin-top:.75rem">
-            <div class="field">
-              <label for="coBorrower">Co-Borrower</label>
-              <select id="coBorrower" name="coBorrower" autocomplete="off">
-                <option>No</option><option>Yes</option>
-              </select>
-            </div>
-            <div class="field" aria-hidden="true"></div>
-            <div class="field" aria-hidden="true"></div>
-          </div>
-
-          <div class="field" style="margin-top:.75rem">
-            <label for="notes">Notes</label>
-            <textarea id="notes" name="notes" rows="4" placeholder="Anything I should know" autocomplete="off"></textarea>
-          </div>
-
-          <!-- Hidden fields auto-filled -->
-          <input type="hidden" name="estMonthly" id="h_estMonthly" autocomplete="off">
-          <input type="hidden" name="estDTI" id="h_estDTI" autocomplete="off">
-          <input type="hidden" name="agentName" id="h_agentName" autocomplete="off">
-          <input type="hidden" name="agentEmail" id="h_agentEmail" autocomplete="off">
-          <input type="hidden" name="utm" id="h_utm" autocomplete="off">
-
-          <div class="cta" style="gap:.5rem;margin-top:1rem">
-            <button class="btn btn-blue" type="submit" id="submitBtn">Submit Pre-Approval</button>
-            <a class="btn-outline btn-green" id="bookBottom" target="_blank" rel="noopener">Book a Call</a>
-          </div>
-
-          <p id="submitMsg" class="small" style="margin-top:.5rem"></p>
-        </form>
+        <p class="tiny" style="margin-top:.5rem">Opens in a new tab. Works great on mobile.</p>
       </div>
     </section>
 
