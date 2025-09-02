@@ -277,11 +277,7 @@ document.querySelector("#intakeForm")?.addEventListener("submit", async (e) => {
     employment: document.querySelector("#employment")?.value,
     coBorrower: document.querySelector("#coBorrower")?.value,
     notes:      document.querySelector("#notes")?.value?.trim(),
-    estMonthly: document.querySelector("#h_estMonthly")?.value,
-    estDTI:     document.querySelector("#h_estDTI")?.value,
-    agentName:  document.querySelector("#h_agentName")?.value,
-    agentEmail: document.querySelector("#h_agentEmail")?.value,
-    utm:        document.querySelector("#h_utm")?.value
+
   };
 
   try {
