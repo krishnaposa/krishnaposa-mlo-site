@@ -1,7 +1,7 @@
 {
   "bindings": [
     { "authLevel": "function", "type": "httpTrigger", "direction": "in", "name": "req",
-      "methods": ["post", "options"], "route": "intake/submit" },
+      "methods": ["post", "options"], "route": "intakeSubmit" },
     { "type": "http", "direction": "out", "name": "res" }
   ]
 }

@@ -41,13 +41,7 @@ module.exports = async function (context, req) {
       estDown:    (b.estDown || "").trim(),
       employment: (b.employment || "").trim(),
       coBorrower: (b.coBorrower || "").trim(),
-      notes:      (b.notes || "").trim(),
-      estMonthly: b.estMonthly || "",
-      estDTI:     b.estDTI || "",
-      agentName:  b.agentName || "",
-      agentEmail: b.agentEmail || "",
-      utm:        b.utm || "",
-      userAgent:  req.headers["user-agent"] || ""
+      notes:      (b.notes || "").trim()
     };
 
     // Table create (idempotent) + insert

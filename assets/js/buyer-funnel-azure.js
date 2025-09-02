@@ -256,7 +256,7 @@
 
 
 // Replace with your function URL + ?code=<function-key>
-const INTAKE_URL = "https://realtors-func-app-XXXX.azurewebsites.net/api/intake/submit?code=YOUR_FUNCTION_KEY";
+const INTAKE_URL = "https://intake-func-app-d3cbf4achrcxdndt.eastus2-01.azurewebsites.net/api/intakeSubmit";
 
 document.querySelector("#intakeForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
