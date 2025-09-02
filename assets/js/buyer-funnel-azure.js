@@ -1,4 +1,4 @@
-/* assets/js/buyer-funnel.js
+/* assets/js/buyer-funnel-azure.js
    Estimate math, agent co-brand list, open Google Form, and Azure submit
 */
 (function () {
