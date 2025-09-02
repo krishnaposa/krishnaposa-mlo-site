@@ -254,6 +254,56 @@
   // Initial draw
   drawAgents();
 
+
+// Replace with your function URL + ?code=<function-key>
+const INTAKE_URL = "https://realtors-func-app-XXXX.azurewebsites.net/api/intake/submit?code=YOUR_FUNCTION_KEY";
+
+document.querySelector("#intakeForm")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.querySelector("#submitBtn");
+  const msg = document.querySelector("#submitMsg");
+  btn && (btn.disabled = true, btn.textContent = "Submitting…");
+  msg && (msg.textContent = "");
+
+  const payload = {
+    fullName:   document.querySelector("#fullName")?.value?.trim(),
+    email:      document.querySelector("#email")?.value?.trim(),
+    phone:      document.querySelector("#phone")?.value?.trim(),
+    timeline:   document.querySelector("#timeline")?.value,
+    occupancy:  document.querySelector("#occupancy")?.value,
+    source:     document.querySelector("#source")?.value,
+    estPrice:   document.querySelector("#estPrice")?.value?.trim(),
+    estDown:    document.querySelector("#estDown")?.value?.trim(),
+    employment: document.querySelector("#employment")?.value,
+    coBorrower: document.querySelector("#coBorrower")?.value,
+    notes:      document.querySelector("#notes")?.value?.trim(),
+    estMonthly: document.querySelector("#h_estMonthly")?.value,
+    estDTI:     document.querySelector("#h_estDTI")?.value,
+    agentName:  document.querySelector("#h_agentName")?.value,
+    agentEmail: document.querySelector("#h_agentEmail")?.value,
+    utm:        document.querySelector("#h_utm")?.value
+  };
+
+  try {
+    const res = await fetch(INTAKE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      mode: "cors",
+      cache: "no-store",
+      credentials: "omit"
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+    msg && (msg.textContent = "✅ Thanks! I’ll follow up shortly.");
+    e.currentTarget.reset();
+  } catch (err) {
+    console.error(err);
+    msg && (msg.textContent = "Sorry—there was a problem sending your info. Please try again or call/text.");
+  } finally {
+    btn && (btn.disabled = false, btn.textContent = "Submit Pre-Approval");
+  }
+});
   // ==========================================================
   // ESTIMATE CALCULATOR (gracefully no-op if calc helpers missing)
   // ==========================================================
