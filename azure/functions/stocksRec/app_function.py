@@ -3,8 +3,8 @@ import azure.functions as func
 from openai import AzureOpenAI
 
 # ---- Env vars (App Settings) ----
-GITHUB_REPO   = os.getenv("GITHUB_REPO", "github.com/YourOrg/wb4u_stock_analysis.git")
-GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
+GITHUB_REPO   = os.getenv("GITHUB_REPO", "github.com/krishnaposa/wb4u_stock_analysis.git")
+GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "master")
 WB4U_ENTRY    = os.getenv("WB4U_ENTRY", "wb4u_main.py")
 GITHUB_TOKEN  = os.getenv("GITHUB_TOKEN")  # read-only PAT
 
