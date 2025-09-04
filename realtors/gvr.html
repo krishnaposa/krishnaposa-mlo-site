@@ -4,83 +4,243 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b5fff">
-  <title>Krish Posa & GVR Realty | Helping Families in Georgia</title>
+
+  <title>Georgia Mortgages | Krish Posa + GVR Realty LLC</title>
+  <meta name="description" content="Co-branded with GVR Realty LLC. Work with Krish Posa, trusted Mortgage Loan Officer in Georgia. Fast pre-approvals, clear loan options, and on-time closings.">
+
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://www.krishposa.com/realtors/index-gvr.html">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Georgia Mortgages | Krish Posa + GVR Realty LLC">
+  <meta property="og:description" content="Fast pre-approvals, clear options, and on-time closings across Georgia.">
+  <meta property="og:url" content="https://www.krishposa.com/realtors/index-gvr.html">
+  <meta property="og:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Georgia Mortgages | Krish Posa + GVR Realty LLC">
+  <meta name="twitter:description" content="Fast pre-approvals, clear options, and on-time closings across Georgia.">
+  <meta name="twitter:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
+
+  <!-- Realtor Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "RealEstateAgent",
+    "name": "GVR Realty LLC",
+    "url": "https://www.loopnet.com/company/gvr-realty-llc/alpharetta-ga/bf9svh9l/",
+    "telephone": "+18586994384",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "5470 McGinnis Village Pl Suite 102",
+      "addressLocality": "Alpharetta",
+      "addressRegion": "GA",
+      "postalCode": "30005"
+    }
+  }
+  </script>
+
+  <!-- Site CSS and header styles -->
+  <link rel="stylesheet" href="/assets/css/styles.css">
+  <link rel="stylesheet" href="/assets/css/header-nav.css?v=final1">
+  <link rel="icon" href="/assets/img/favicon.png" type="image/png">
+
   <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f9f9f9;
-      color: #333;
-      text-align: center;
+    /* Co-brand strip across page */
+    .cobrand-strip { background:#0b5fff; color:#fff; }
+    .cobrand-strip .inner {
+      display:flex; align-items:center; gap:.75rem; justify-content:center;
+      padding:.5rem 1rem; flex-wrap:wrap;
     }
-    .tagline {
-      background: #0b5fff;
-      color: white;
-      font-size: 1.2rem;
-      font-weight: 500;
-      padding: 1rem;
-      margin-bottom: 1rem;
+    .cobrand-strip img { height:36px; width:auto; border-radius:4px; object-fit:cover; }
+
+    /* Side-by-side partner panels under the strip */
+    .partner-panels { padding:1rem 0; }
+    .partner-panels .container {
+      display:grid; grid-template-columns: 1fr; gap:16px;
     }
-    .partners {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 1rem;
-      padding: 1rem;
+    @media (min-width: 820px) {
+      .partner-panels .container { grid-template-columns: 1fr 1fr; }
     }
-    .panel {
-      background: white;
-      padding: 1.5rem;
-      border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      flex: 1 1 300px;
-      max-width: 400px;
+    .partner-card {
+      background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:12px;
+      box-shadow:0 4px 16px rgba(0,0,0,.06); padding:1rem;
     }
-    .panel h2 {
-      margin-top: 0;
-      color: #0b5fff;
+    .partner-card .row { display:flex; gap:12px; align-items:center; }
+    .partner-card img.avatar {
+      width:64px; height:64px; object-fit:cover; border-radius:50%;
     }
-    .panel img {
-      max-width: 120px;
-      border-radius: 50%;
-      margin-bottom: 1rem;
+    .partner-card .meta { font-size:.9rem; color:#666; }
+
+    /* Smaller, subdued Krish button */
+    .btn-subtle {
+      display:inline-block; padding:.35rem .8rem; font-size:.85rem;
+      background:#e9efff; color:#0b5fff; border-radius:6px; text-decoration:none;
+      border:1px solid #d7e2ff;
     }
-    .btn {
-      display: inline-block;
-      margin-top: 1rem;
-      padding: 0.4rem 1rem; /* reduced size */
-      font-size: 0.85rem;
-      background: #0b5fff;
-      color: white;
-      border-radius: 4px;
-      text-decoration: none;
-    }
-    .btn:hover {
-      background: #084ccc;
-    }
+    .btn-subtle:hover { background:#dfe7ff; }
+
+    /* Keep your existing hero and sections working with minimal overrides */
+    .hero .hero-inner { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
+    .hero .hero-copy { flex:1 1 360px; }
+    .hero-partner { flex:1 1 320px; }
+
+    .home-tools .card { border-radius:12px; }
+    .sticky-cta { position:sticky; bottom:0; display:flex; gap:8px; justify-content:center; padding:.5rem; background:#fff; border-top:1px solid #eee; }
   </style>
 </head>
 <body>
-  <div class="tagline">
-    Helping families in Georgia achieve homeownership
-  </div>
+  <!-- Header include uses absolute paths so it works from /realtors/ -->
+  <div id="header"></div>
+  <script defer src="/assets/js/header.js?v=final1"></script>
 
-  <div class="partners">
-    <!-- Krish Panel -->
-    <div class="panel">
-      <img src="images/krish-headshot.jpg" alt="Krish Posa">
-      <h2>Krish Posa</h2>
-      <p>Mortgage Loan Officer<br>NMLS #123456</p>
-      <a href="https://www.krishposa.com" class="btn">Visit Krish’s Site</a>
-    </div>
-
-    <!-- GVR Realty Panel -->
-    <div class="panel">
-      <img src="images/gvr-logo.jpg" alt="GVR Realty">
-      <h2>GVR Realty</h2>
-      <p>Trusted Real Estate Partner<br>Alpharetta, GA</p>
-      <a href="https://www.loopnet.com/company/gvr-realty-llc/alpharetta-ga/bf9svh9l/" class="btn">Visit GVR Realty</a>
+  <!-- Shared tagline across both panels -->
+  <div class="cobrand-strip">
+    <div class="inner">
+      <img src="/assets/img/headshot.jpg" alt="Krish Posa">
+      <span>Mortgage by <strong>Krish Posa</strong></span>
+      <span>|</span>
+      <img src="/assets/img/brokerages/gvr.JPG" alt="GVR Realty LLC logo">
+      <span>In partnership with <strong>GVR Realty LLC</strong></span>
     </div>
   </div>
+
+  <!-- Two panels side by side: Krish and GVR -->
+  <section class="partner-panels">
+    <div class="container">
+      <!-- Krish Panel -->
+      <article class="partner-card">
+        <div class="row">
+          <img class="avatar" src="/assets/img/headshot.jpg" alt="Krish Posa">
+          <div>
+            <div style="font-weight:700">Krish Posa</div>
+            <div class="meta">Mortgage Loan Officer • NMLS #2533287</div>
+          </div>
+        </div>
+        <p class="meta" style="margin:.75rem 0 0">Georgia • Purchase and Refinance • Equal Housing Lender</p>
+        <p style="margin:.75rem 0 0">
+          <a class="btn-subtle" href="https://www.krishposa.com/" target="_blank" rel="noopener">Visit Krish’s Site</a>
+        </p>
+      </article>
+
+      <!-- GVR Panel -->
+      <article class="partner-card">
+        <div class="row">
+          <img class="avatar" src="/assets/img/brokerages/gvr.JPG" alt="GVR Realty LLC">
+          <div>
+            <div style="font-weight:700">GVR Realty LLC</div>
+            <div class="meta">5470 McGinnis Village Pl Suite 102, Alpharetta, GA</div>
+          </div>
+        </div>
+        <p class="meta" style="margin:.75rem 0 0">
+          Phone: <a href="tel:+18586994384">(858) 699-4384</a><br>
+          <a href="https://www.loopnet.com/company/gvr-realty-llc/alpharetta-ga/bf9svh9l/" target="_blank" rel="noopener">Visit GVR Realty</a>
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <main>
+    <!-- Existing hero content kept intact -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <h1>Helping Families in Georgia Find Their Home With the Right Loan</h1>
+          <p>Co-branded with GVR Realty LLC to deliver fast pre-approvals, clear options, and on-time closings.</p>
+          <div class="cta">
+            <a class="btn" href="https://www.myperfectlending.com/" target="_blank" rel="noopener">Get Pre-Approved</a>
+            <a class="btn-outline btn-green" href="https://wa.me/16784818252?text=Hi%20Krish" target="_blank" rel="noopener">Chat on WhatsApp</a>
+            <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book a Call</a>
+          </div>
+          <ul class="trust">
+            <li>Georgia • Purchase and Refinance</li>
+            <li>NMLS #2533287 • Equal Housing Lender</li>
+          </ul>
+        </div>
+
+        <!-- Realtor partner card for the hero sidebar -->
+        <aside class="hero-partner">
+          <div class="partner-card">
+            <div class="row">
+              <img class="avatar" src="/assets/img/brokerages/gvr.JPG" alt="GVR Realty LLC">
+              <div>
+                <div style="font-weight:700">GVR Realty LLC</div>
+                <div class="meta">5470 McGinnis Village Pl Suite 102, Alpharetta, GA</div>
+              </div>
+            </div>
+            <div class="meta" style="margin-top:.5rem">
+              Phone: <a href="tel:+18586994384">(858) 699-4384</a><br>
+              <a href="https://www.loopnet.com/company/gvr-realty-llc/alpharetta-ga/bf9svh9l/" target="_blank" rel="noopener">Visit GVR Realty</a>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="home-intro container narrow">
+      <p>I am excited to partner with my good friend Vijay <strong>GVR Realty LLC</strong>. Please visit <strong>GVR Realty</strong>, for maximum buyer rebates.</p>
+      <p class="cta-row">Let’s connect and explore how we can help you achieve your <strong>homeownership and investment goals</strong>.</p>
+    </section>
+
+    <section class="benefits">
+      <div class="container grid-3">
+        <div class="card">
+          <h4>Same-Day Pre-Approvals</h4>
+          <p>Apply online and get a fast, accurate pre-approval so you can shop with confidence.</p>
+        </div>
+        <div class="card">
+          <h4>Clear Options</h4>
+          <p>I compare multiple programs to fit your ideal payment and cash-to-close.</p>
+        </div>
+        <div class="card">
+          <h4>On-Time Closings</h4>
+          <p>Consistent communication with you and your agent through closing.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="home-tools">
+      <div class="container">
+        <div class="card" style="display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+          <div>
+            <h2 style="margin:0">AI Loan Advisor</h2>
+            <p style="margin:.35rem 0 0">Get a personalized loan type suggestion and an estimated rate range in under a minute.</p>
+          </div>
+          <p style="margin:0">
+            <a class="btn btn-blue" href="/loan-advisor.html"
+               onclick="window.dataLayer=window.dataLayer||[];window.dataLayer.push({event:'ai_home_cta_click'});">
+              Try it now
+            </a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ for AEO -->
+    <section class="faq container narrow">
+      <h2>Mortgage FAQs</h2>
+      <div>
+        <h3>How fast can I get pre-approved?</h3>
+        <p>Most pre-approvals are completed the same day with clear loan options provided.</p>
+      </div>
+      <div>
+        <h3>Do you work with first-time homebuyers?</h3>
+        <p>Yes, I guide first-time buyers through every step, from pre-approval to closing.</p>
+      </div>
+    </section>
+
+    <!-- Sticky mobile CTA -->
+    <div class="sticky-cta" role="region" aria-label="Quick actions">
+      <a class="btn" href="tel:+16784818252">Call</a>
+      <a class="btn" href="sms:+16784818252">Text</a>
+      <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book</a>
+    </div>
+  </main>
+
+  <!-- Footer include with absolute path -->
+  <div id="footer"></div>
+  <script src="/assets/js/footer.js"></script>
 </body>
 </html>
