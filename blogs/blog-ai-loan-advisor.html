@@ -37,6 +37,9 @@
 
   <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
   <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
+
+<link rel="stylesheet" href="https://www.krishposa.com/assets/css/comments.css">
+<script defer src="https://www.krishposa.com/assets/js/comments.js"></script>
 </head>
 <body>
   <!-- Google Tag Manager (noscript) -->
@@ -86,12 +89,13 @@
     </div>
   </main>
 <div id="comments-container"></div>
+<div id="comments-container"></div>
 <script>
   fetch('/partials/comments.html')
     .then(r => r.text())
     .then(html => {
       document.getElementById('comments-container').innerHTML = html;
-      // Init widget after partial loads
+      // comments.js is already loaded globally, so this works:
       CommentWidget.init();
     });
 </script>
