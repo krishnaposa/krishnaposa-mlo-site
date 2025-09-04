@@ -1,0 +1,13 @@
+{
+    "name": "blog-comments",
+    "version": "1.0.0",
+    "description": "Blog comments API with Azure Functions + Table Storage",
+    "main": "index.js",
+    "license": "MIT",
+    "type": "commonjs",
+    "dependencies": {
+        "@azure/data-tables": "^13.3.0",
+        "@azure/functions": "^4.5.0",
+        "uuid": "^9.0.1"
+    }
+}

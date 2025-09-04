@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Comments Admin</title>
+    <link rel="stylesheet" href="https://www.krishposa.com/assets/css/admin.css">
+</head>
+
+<body>
+    <h1>Pending Comments</h1>
+    <div>
+        <label>API Base <input id="apiBase" value="https://blog-comments-ffd9fae6hmcta7e4.eastus2-01.azurewebsites.net/comments"></label>
+        <label>Function Key <input id="fnKey" placeholder="moderate-comment key"></label>
+        <label>Path <input id="path" placeholder="https://www.krishposa.com/blogs/blog-custom-etf.html"></label>
+        <button id="load">Load Pending</button>
+    </div>
+    <div id="list" style="margin-top:1rem"></div>
+    <script src="https://www.krishposa.com/assets/js/admin.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,7 @@
+#comments { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; }
+#comments h2 { margin-bottom: 1rem; font-size: 1.25rem; }
+#comment-list .card { padding: .75rem 1rem; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; margin-bottom: .75rem; }
+#comment-form input, #comment-form textarea { width: 100%; }
+#comment-form .row { display:flex; gap:.5rem; flex-wrap:wrap; }
+#comment-form .row > * { flex: 1 1 220px; }
+#c-status { color:#555; }

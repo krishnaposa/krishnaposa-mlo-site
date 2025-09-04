@@ -1,0 +1,19 @@
+<link rel="stylesheet" href="https://www.krishposa.com/assets/css/comments.css"> <!-- or adjust path -->
+<section id="comments" class="container narrow">
+    <h2>Comments</h2>
+    <div id="comment-list"></div>
+
+    <form id="comment-form" style="margin-top:1rem">
+        <div class="row">
+            <input id="c-name" type="text" placeholder="Name" required>
+            <input id="c-email" type="email" placeholder="Email (optional)">
+        </div>
+        <textarea id="c-message" placeholder="Write your comment…" rows="4" required></textarea>
+        <button type="submit" class="btn btn-blue" style="margin-top:.5rem">Post Comment</button>
+        <div id="c-status" class="small" style="margin-top:.5rem"></div>
+    </form>
+</section>
+
+<!-- Load widget JS at the end of body -->
+<script src="https://www.krishposa.com/assets/js/comments.js"></script>
+<script> CommentWidget.init(); </script>
