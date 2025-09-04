@@ -1,13 +1,30 @@
 <section id="comments" class="container narrow">
-  <h2>Comments</h2>
-  <div id="comment-list"></div>
-  <form id="comment-form" style="margin-top:1rem">
+  <h2 class="comments-title">Comments</h2>
+
+  <!-- list -->
+  <div id="comment-list" class="comments-list"></div>
+
+  <!-- form -->
+  <form id="comment-form" class="comments-form" novalidate>
     <div class="row">
-      <input id="c-name" type="text" placeholder="Name" required>
-      <input id="c-email" type="email" placeholder="Email (optional)">
+      <label class="field">
+        <span class="label">Name</span>
+        <input id="c-name" type="text" required autocomplete="name">
+      </label>
+      <label class="field">
+        <span class="label">Email <span class="muted">(optional)</span></span>
+        <input id="c-email" type="email" autocomplete="email">
+      </label>
     </div>
-    <textarea id="c-message" placeholder="Write your comment…" rows="4" required></textarea>
-    <button type="submit" class="btn btn-blue" style="margin-top:.5rem">Post Comment</button>
-    <div id="c-status" class="small" style="margin-top:.5rem"></div>
+
+    <label class="field">
+      <span class="label">Your comment</span>
+      <textarea id="c-message" rows="4" required></textarea>
+    </label>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-blue">Post comment</button>
+      <span id="c-status" class="status" aria-live="polite"></span>
+    </div>
   </form>
 </section>
