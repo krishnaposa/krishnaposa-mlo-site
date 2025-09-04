@@ -1,0 +1,3 @@
+azure-functions
+openai>=1.43.0
+gitpython==3.1.43        # optional if you prefer GitPython; not used above
