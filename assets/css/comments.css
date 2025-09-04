@@ -1,7 +1,89 @@
-#comments { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; }
-#comments h2 { margin-bottom: 1rem; font-size: 1.25rem; }
-#comment-list .card { padding: .75rem 1rem; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; margin-bottom: .75rem; }
-#comment-form input, #comment-form textarea { width: 100%; }
-#comment-form .row { display:flex; gap:.5rem; flex-wrap:wrap; }
-#comment-form .row > * { flex: 1 1 220px; }
-#c-status { color:#555; }
+/* Section layout = match site rhythm */
+#comments {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+#comments .comments-title {
+  margin: 0 0 1rem;
+  font-size: clamp(1.15rem, 1.1vw + 1rem, 1.35rem);
+  line-height: 1.25;
+}
+
+/* List styles (reuse your card look) */
+#comments .comments-list .card {
+  padding: .9rem 1rem;
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0,0,0,.04);
+  margin-bottom: .75rem;
+}
+#comments .comment-head {
+  display: flex; align-items: baseline; gap: .5rem;
+}
+#comments .comment-name {
+  font-weight: 700;
+}
+#comments .comment-date {
+  font-size: .85rem; color: #6b7280;
+}
+#comments .comment-body {
+  margin: .45rem 0 0; white-space: pre-wrap;
+}
+
+/* Form */
+#comments .comments-form {
+  margin-top: 1.25rem;
+}
+#comments .comments-form .row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+}
+@media (max-width: 720px) {
+  #comments .comments-form .row { grid-template-columns: 1fr; }
+}
+
+#comments .field { display: block; }
+#comments .label {
+  display: inline-block;
+  font-size: .9rem;
+  color: #374151;
+  margin-bottom: .35rem;
+}
+#comments .muted { color: #6b7280; font-weight: 400; }
+
+#comments input[type="text"],
+#comments input[type="email"],
+#comments textarea {
+  width: 100%;
+  padding: .65rem .75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font: inherit;
+  background: #fff;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+#comments textarea { min-height: 120px; }
+#comments input:focus,
+#comments textarea:focus {
+  outline: none;
+  border-color: #0b5fff;
+  box-shadow: 0 0 0 3px rgba(11,95,255,.12);
+}
+
+/* Actions row aligns with your buttons */
+#comments .actions {
+  display: flex; align-items: center; gap: .75rem;
+  margin-top: .75rem;
+}
+#comments .status {
+  font-size: .9rem; color: #374151;
+}
+
+/* Light message for empty state */
+#comments .empty {
+  font-size: .95rem; color: #6b7280;
+  padding: .5rem 0;
+}
