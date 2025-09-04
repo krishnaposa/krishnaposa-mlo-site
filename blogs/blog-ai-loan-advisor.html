@@ -85,7 +85,16 @@
       <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book</a>
     </div>
   </main>
-
+<div id="comments-container"></div>
+<script>
+  fetch('/partials/comments.html')
+    .then(r => r.text())
+    .then(html => {
+      document.getElementById('comments-container').innerHTML = html;
+      // Init widget after partial loads
+      CommentWidget.init();
+    });
+</script>
   <div id="footer"></div>
   <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 </body>
