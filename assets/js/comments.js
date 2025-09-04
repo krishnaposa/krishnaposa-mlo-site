@@ -31,7 +31,7 @@
             email: document.getElementById("c-email").value.trim(),
             message: document.getElementById("c-message").value.trim()
         };
-        const res = await fetch(`${API_BASE}/comments`, {
+        const res = await fetch(`${API_BASE}/comments/post`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)

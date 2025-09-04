@@ -1,4 +1,5 @@
 {
+    "scriptFile": "index.js",
     "bindings": [
         {
             "authLevel": "anonymous",
@@ -9,7 +10,7 @@
                 "post",
                 "options"
             ],
-            "route": "comments"
+            "route": "comments/post"
         },
         {
             "type": "http",
