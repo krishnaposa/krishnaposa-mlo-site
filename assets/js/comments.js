@@ -1,6 +1,6 @@
 (function () {
     // ----- CONFIG -----
-    const API_BASE = "https://blog-comments-ffd9fae6hmcta7e4.eastus2-01.azurewebsites.net/comments"; // set your app URL
+    const API_BASE = "https://blog-comments-ffd9fae6hmcta7e4.eastus2-01.azurewebsites.net"; // set your app URL
     const PATH = location.pathname;
 
     async function loadComments() {
