@@ -103,24 +103,44 @@ def stocks_http(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Python HTTP trigger function processed a request.')
 
     try:
-        # Try to parse JSON body
+        # Parse request body
         try:
             body = req.get_json()
         except ValueError:
             body = {}
 
-        # Pull params from query string if not in body
         strategy = body.get("strategy") or req.params.get("strategy") or "long_term"
         horizon = int(body.get("horizon_years") or req.params.get("horizon_years") or "3")
+        tickers = body.get("tickers") or ["AAPL","MSFT","NVDA"]
 
-        tickers = body.get("tickers")
-        if tickers:
-            tickers = [str(t).upper().strip() for t in tickers]
-        else:
-            tickers = ["AAPL","MSFT","NVDA"]  # fallback or call your wb4u_main.py here
+        # Initialize Azure OpenAI client
+        client = AzureOpenAI(
+            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+        )
+
+        # Build prompt
+        system = "You are a stock analyst. Return JSON ranking of tickers."
+        user = {
+            "strategy": strategy,
+            "horizon_years": horizon,
+            "tickers": tickers
+        }
+
+        # Call Azure OpenAI
+        resp = client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+            messages=[
+                {"role":"system","content":system},
+                {"role":"user","content":json.dumps(user)}
+            ],
+            temperature=0.3,
+            response_format={"type":"json_object"}
+        )
 
         return func.HttpResponse(
-            json.dumps({"ok": True, "strategy": strategy, "tickers": tickers}),
+            resp.choices[0].message.content,
             mimetype="application/json"
         )
 
