@@ -1,3 +1,9 @@
 azure-functions
 openai>=1.43.0
-dulwich>=0.21.6
+finviz @ git+https://github.com/RiverRo/finviz.git@2a2f8138ccd2dd17b5299e51f7808ecd8fcddf92
+jsonpath-rw==1.4.0
+jsonpath-rw-ext==1.2.2
+numpy==2.2.6
+requests==2.32.4
+yahooquery==2.4.1
+yfinance==0.2.65
