@@ -103,22 +103,30 @@ def stocks_http(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Python HTTP trigger function processed a request.')
 
     try:
-        payload = req.get_json(silent=True) or {}
-        strategy = (payload.get("strategy") or req.params.get("strategy") or "long_term").strip()
-        horizon  = int(payload.get("horizon_years") or req.params.get("horizon_years") or "3")
+        # Try to parse JSON body
+        try:
+            body = req.get_json()
+        except ValueError:
+            body = {}
 
-        tickers = payload.get("tickers")
+        # Pull params from query string if not in body
+        strategy = body.get("strategy") or req.params.get("strategy") or "long_term"
+        horizon = int(body.get("horizon_years") or req.params.get("horizon_years") or "3")
+
+        tickers = body.get("tickers")
         if tickers:
             tickers = [str(t).upper().strip() for t in tickers]
         else:
-            tickers = _clone_and_run()
+            tickers = ["AAPL","MSFT","NVDA"]  # fallback or call your wb4u_main.py here
 
-        result = _score_with_azure_openai(tickers, strategy, horizon)
         return func.HttpResponse(
-            json.dumps({"ok": True, "strategy": strategy, "result": result}, ensure_ascii=False),
-            status_code=200, mimetype="application/json"
+            json.dumps({"ok": True, "strategy": strategy, "tickers": tickers}),
+            mimetype="application/json"
         )
+
     except Exception as e:
-        logging.exception("wb4u error")
-        return func.HttpResponse(json.dumps({"ok": False, "error": str(e)}),
-                                 status_code=500, mimetype="application/json")
+        return func.HttpResponse(
+            json.dumps({"ok": False, "error": str(e)}),
+            status_code=500,
+            mimetype="application/json"
+        )
