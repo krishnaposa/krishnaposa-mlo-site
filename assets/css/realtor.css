@@ -1,0 +1,46 @@
+/* Co-brand strip across page */
+.cobrand-strip { background:#0b5fff; color:#fff; }
+.cobrand-strip .inner {
+  display:flex; align-items:center; gap:.75rem; justify-content:center;
+  padding:.5rem 1rem; flex-wrap:wrap;
+}
+.cobrand-strip img { height:36px; width:auto; border-radius:4px; object-fit:cover; }
+
+/* HERO: two columns side-by-side */
+.hero .hero-grid {
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:24px;
+  align-items:start;
+}
+@media (min-width: 900px) {
+  .hero .hero-grid { grid-template-columns: 1fr 1fr; }
+}
+.hero-card {
+  background:#fff;
+  border:1px solid rgba(0,0,0,.06);
+  border-radius:12px;
+  box-shadow:0 4px 16px rgba(0,0,0,.06);
+  padding:1.25rem;
+}
+.hero-card h1 { margin-top:0 }
+.hero-card .hero-photo-card img {
+  width:100%; max-width:420px; height:auto; border-radius:10px;
+}
+.hero-card .avatar { width:80px; height:80px; border-radius:8px; object-fit:cover; }
+.hero-card .meta { font-size:.9rem; color:#666; }
+
+/* Smaller, subdued Krish button */
+.btn-subtle {
+  display:inline-block; padding:.35rem .8rem; font-size:.85rem;
+  background:#e9efff; color:#0b5fff; border-radius:6px; text-decoration:none;
+  border:1px solid #d7e2ff;
+}
+.btn-subtle:hover { background:#dfe7ff; }
+
+.home-tools .card { border-radius:12px; }
+.sticky-cta {
+  position:sticky; bottom:0;
+  display:flex; gap:8px; justify-content:center;
+  padding:.5rem; background:#fff; border-top:1px solid #eee;
+}
