@@ -110,7 +110,7 @@ def stocks_http(req: func.HttpRequest) -> func.HttpResponse:
             body = {}
 
         strategy = body.get("strategy") or req.params.get("strategy") or "long_term"
-        horizon = int(body.get("horizon_years") or req.params.get("horizon_years") or "3")
+        horizon = body.get("horizon") or req.params.get("horizon") or "3 years"
         tickers = body.get("tickers") or ["AAPL","MSFT","NVDA"]
 
         # Initialize Azure OpenAI client
@@ -124,7 +124,7 @@ def stocks_http(req: func.HttpRequest) -> func.HttpResponse:
         system = "You are a stock analyst. Return JSON ranking of tickers."
         user = {
             "strategy": strategy,
-            "horizon_years": horizon,
+            "horizon": horizon,
             "tickers": tickers
         }
 
