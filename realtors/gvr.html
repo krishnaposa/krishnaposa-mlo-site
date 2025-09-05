@@ -8,9 +8,6 @@
   <title>Georgia Mortgages | Krish Posa + GVR Realty LLC</title>
   <meta name="description" content="Co-branded with GVR Realty LLC. Work with Krish Posa, trusted Mortgage Loan Officer in Georgia. Fast pre-approvals, clear loan options, and on-time closings.">
 
-  <!-- Canonical URL -->
-  <link rel="canonical" href="https://www.krishposa.com/realtors/index-gvr.html">
-
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="Georgia Mortgages | Krish Posa + GVR Realty LLC">
@@ -24,7 +21,7 @@
   <meta name="twitter:description" content="Fast pre-approvals, clear options, and on-time closings across Georgia.">
   <meta name="twitter:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
 
-  <!-- Realtor Structured Data -->
+  <!-- Realtor Structured Data (keep inline for SEO) -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -45,51 +42,8 @@
   <!-- Site CSS and header styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/realtor.css?v=1">
   <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
-
-  <style>
-    /* Co-brand strip across page */
-    .cobrand-strip { background:#0b5fff; color:#fff; }
-    .cobrand-strip .inner {
-      display:flex; align-items:center; gap:.75rem; justify-content:center;
-      padding:.5rem 1rem; flex-wrap:wrap;
-    }
-    .cobrand-strip img { height:36px; width:auto; border-radius:4px; object-fit:cover; }
-
-    /* Side-by-side partner panels under the strip */
-    .partner-panels { padding:1rem 0; }
-    .partner-panels .container {
-      display:grid; grid-template-columns: 1fr; gap:16px;
-    }
-    @media (min-width: 820px) {
-      .partner-panels .container { grid-template-columns: 1fr 1fr; }
-    }
-    .partner-card {
-      background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:12px;
-      box-shadow:0 4px 16px rgba(0,0,0,.06); padding:1rem;
-    }
-    .partner-card .row { display:flex; gap:12px; align-items:center; }
-    .partner-card img.avatar {
-      width:64px; height:64px; object-fit:cover; border-radius:50%;
-    }
-    .partner-card .meta { font-size:.9rem; color:#666; }
-
-    /* Smaller, subdued Krish button */
-    .btn-subtle {
-      display:inline-block; padding:.35rem .8rem; font-size:.85rem;
-      background:#e9efff; color:#0b5fff; border-radius:6px; text-decoration:none;
-      border:1px solid #d7e2ff;
-    }
-    .btn-subtle:hover { background:#dfe7ff; }
-
-    /* Keep your existing hero and sections working with minimal overrides */
-    .hero .hero-inner { display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap; }
-    .hero .hero-copy { flex:1 1 360px; }
-    .hero-partner { flex:1 1 320px; }
-
-    .home-tools .card { border-radius:12px; }
-    .sticky-cta { position:sticky; bottom:0; display:flex; gap:8px; justify-content:center; padding:.5rem; background:#fff; border-top:1px solid #eee; }
-  </style>
 </head>
 <body>
   <!-- Header include uses absolute paths so it works from /realtors/ -->
@@ -107,39 +61,43 @@
     </div>
   </div>
 
-  
-
   <main>
-    <!-- Existing hero content kept intact -->
+    <!-- HERO (side-by-side) -->
     <section class="hero">
-      <div class="container hero-inner">
-        <div class="hero-copy">
-          <h1>Helping Families in Georgia Find Their Home With the Right Loan</h1>
-          <p>Co-branded with GVR Realty LLC to deliver fast pre-approvals, clear options, and on-time closings.</p>
-          <div class="hero-photo-card">
-          <img src="https://www.krishposa.com/assets/img/headshot.jpg" alt="Krish Posa" width="600" height="600" loading="lazy" decoding="async">
-          <p class="small center">Your mortgage guide in Atlanta, GA</p>
+      <div class="container hero-grid">
+        <!-- Left panel: Krish -->
+        <div class="hero-card">
+          <div class="hero-copy">
+            <h1>Helping Families in Georgia Find Their Home With the Right Loan</h1>
+            <p>Co-branded with GVR Realty LLC to deliver fast pre-approvals, clear options, and on-time closings.</p>
+            <div class="hero-photo-card">
+              <img src="https://www.krishposa.com/assets/img/headshot.jpg" alt="Krish Posa" width="600" height="600" loading="lazy" decoding="async">
+              <p class="small center">Your mortgage guide in Atlanta, GA</p>
+            </div>
+            <ul class="trust">
+              <li>Georgia • Purchase and Refinance</li>
+              <li>NMLS #2533287 • Equal Housing Lender</li>
+            </ul>
+          </div>
         </div>
-          <ul class="trust">
-            <li>Georgia • Purchase and Refinance</li>
-            <li>NMLS #2533287 • Equal Housing Lender</li>
-          </ul>
-        </div>
-      </div>
-      <div class="container hero-inner">
-        <div class="hero-copy">
-          <h1>GVR Realty LLC</h1>
-          <p>Co-branded with GVR Realty LLC for maximum buyer rebates.</p>
-          <img class="avatar" src="https://www.krishposa.com/assets/img/brokerages/gvr.JPG" alt="GVR Realty LLC">
-              <div>
-                <div style="font-weight:700">GVR Realty LLC</div>
-                <div class="meta">5470 McGinnis Village Pl Suite 102, Alpharetta, GA</div>
-              </div>
+
+        <!-- Right panel: GVR -->
+        <div class="hero-card">
+          <div class="hero-copy">
+            <h1>GVR Realty LLC</h1>
+            <p>Co-branded with GVR Realty LLC for maximum buyer rebates.</p>
+            <img class="avatar" src="https://www.krishposa.com/assets/img/brokerages/gvr.JPG" alt="GVR Realty LLC">
+            <div style="margin-top:.5rem">
+              <div style="font-weight:700">GVR Realty LLC</div>
+              <div class="meta">5470 McGinnis Village Pl Suite 102, Alpharetta, GA</div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="home-intro container narrow">
+    <!-- Full-width section spanning both -->
+    <section class="home-intro container">
       <p>I am excited to partner with my good friend Vijay <strong>GVR Realty LLC</strong>. Please visit <strong>GVR Realty</strong>, for maximum buyer rebates.</p>
       <p class="cta-row">Let’s connect and explore how we can help you achieve your <strong>homeownership and investment goals</strong>.</p>
     </section>
@@ -169,8 +127,7 @@
             <p style="margin:.35rem 0 0">Get a personalized loan type suggestion and an estimated rate range in under a minute.</p>
           </div>
           <p style="margin:0">
-            <a class="btn btn-blue" href="https://www.krishposa.com/loan-advisor.html"
-               onclick="window.dataLayer=window.dataLayer||[];window.dataLayer.push({event:'ai_home_cta_click'});">
+            <a class="btn btn-blue" href="https://www.krishposa.com/loan-advisor.html">
               Try it now
             </a>
           </p>
@@ -178,7 +135,7 @@
       </div>
     </section>
 
-    <!-- FAQ for AEO -->
+    <!-- FAQ -->
     <section class="faq container narrow">
       <h2>Mortgage FAQs</h2>
       <div>
@@ -199,7 +156,7 @@
     </div>
   </main>
 
-  <!-- Footer include with absolute path -->
+  <!-- Footer include -->
   <div id="footer"></div>
   <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 </body>
