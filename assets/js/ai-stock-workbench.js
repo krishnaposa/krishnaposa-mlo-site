@@ -1,39 +1,60 @@
-// Hard-wired endpoints (you can still override in the UI settings box)
-const DEFAULTS = {
-  API_BASE: "https://stocks-func-app.azurewebsites.net",
-  UNIVERSE_PATH: "/api/universe",
-  RANK_PATH: "/api/rank"
-};
+// === Hard-wired endpoints (Anonymous auth, no key needed) ===
+const API_BASE = "https://stocks-func-app.azurewebsites.net";
+const UNIVERSE_URL = `${API_BASE}/api/universe`;
+const RANK_URL     = `${API_BASE}/api/rank`;
 
+// ---- Elements ----
 const els = {
-  apiBase: document.getElementById('apiBase'),
-  fnKey: document.getElementById('fnKey'),
-  btnUniverse: document.getElementById('btnUniverse'),
+  btnUniverse:  document.getElementById('btnUniverse'),
   statusUniverse: document.getElementById('statusUniverse'),
-  tickers: document.getElementById('tickers'),
-  strategy: document.getElementById('strategy'),
-  horizon: document.getElementById('horizon'),
-  btnRank: document.getElementById('btnRank'),
-  statusRank: document.getElementById('statusRank'),
+  tickers:      document.getElementById('tickers'),
+  strategy:     document.getElementById('strategy'),
+  horizonText:  document.getElementById('horizonText'),
+  btnRank:      document.getElementById('btnRank'),
+  statusRank:   document.getElementById('statusRank'),
   resultsTable: document.getElementById('resultsTable'),
-  resultsBody: document.getElementById('resultsBody'),
-  emptyMsg: document.getElementById('emptyMsg'),
+  resultsBody:  document.getElementById('resultsBody'),
+  emptyMsg:     document.getElementById('emptyMsg'),
 };
 
-// Prefill API base
-if (els.apiBase) els.apiBase.value = DEFAULTS.API_BASE;
-
-function buildUrl(path){
-  const base = (els.apiBase?.value || DEFAULTS.API_BASE || "").trim().replace(/\/+$/,'');
-  const keyRaw = (els.fnKey?.value || "").trim();
-  const suffix = keyRaw ? (path.includes('?') ? '&' : '?') + 'code=' + encodeURIComponent(keyRaw) : '';
-  return base + path + suffix;
-}
-
+// ---- Helpers ----
 function parseTickers(text){
   const raw = (text || "").toUpperCase();
   const parts = raw.split(/[\s,]+/).map(s => s.replace(/[^A-Z0-9.\-]/g,'').trim()).filter(Boolean);
   return [...new Set(parts)];
+}
+
+// Normalize common abbreviations into canonical strings the API will accept
+function normalizeHorizon(h){
+  if(!h || !h.trim()) return ""; // backend can default
+  let s = h.trim().toLowerCase();
+
+  // Abbreviations -> canonical
+  s = s
+    .replace(/\byrs?\b/g, "years")
+    .replace(/\by\b/g, "years")
+    .replace(/\byears?\b/g, "years")
+    .replace(/\bmos?\b/g, "months")
+    .replace(/\bmon(?:ths?)?\b/g, "months")
+    .replace(/\bm\b/g, "months")
+    .replace(/\bd(?:ays?)?\b/g, "days")
+    .replace(/\bday\b/g, "days");
+
+  s = s.replace(/\s{2,}/g, " ").trim();
+
+  // "3years" -> "3 years"
+  const m2 = s.match(/^(\d+(?:\.\d+)?)(years|months|days)$/);
+  if(m2) return `${m2[1]} ${m2[2]}`;
+
+  // "3 years" / "8 months" / "30 days"
+  const m = s.match(/^(\d+(?:\.\d+)?)\s*(years|months|days)$/);
+  if(m) return `${m[1]} ${m[2]}`;
+
+  // Just a number? default to years.
+  if(/^\d+(?:\.\d+)?$/.test(s)) return `${s} years`;
+
+  // Otherwise pass through
+  return s;
 }
 
 function renderRank(result){
@@ -60,12 +81,12 @@ function renderRank(result){
   els.resultsTable.style.display = 'table';
 }
 
+// ---- Actions ----
 async function runUniverse(){
-  const url = buildUrl(DEFAULTS.UNIVERSE_PATH);
   els.statusUniverse.textContent = 'Fetching universe…';
   els.btnUniverse.disabled = true;
   try{
-    const res = await fetch(url, { method: 'GET' });
+    const res = await fetch(UNIVERSE_URL, { method: 'GET' });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if(!data.ok) throw new Error(data.error || 'Universe error');
@@ -80,30 +101,34 @@ async function runUniverse(){
 }
 
 async function runRank(){
-  const url = buildUrl(DEFAULTS.RANK_PATH);
   const tickers = parseTickers(els.tickers.value);
   if(!tickers.length){ alert('Please provide at least one ticker.'); return; }
 
   const strategy = els.strategy.value;
-  const horizon = parseInt(els.horizon.value || '3', 10);
+  const horizonInput = normalizeHorizon(els.horizonText.value || "");
+  if(!horizonInput) els.horizonText.value = "3 years"; // UI default if blank
 
   els.statusRank.textContent = 'Ranking with AI…';
   els.btnRank.disabled = true;
   try{
-    const res = await fetch(url, {
+    const res = await fetch(RANK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ strategy, horizon_years: horizon, tickers })
+      body: JSON.stringify({
+        strategy,
+        horizon: horizonInput || "3 years",
+        tickers
+      })
     });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    // Support both shapes: { ok:true, result:{...} } or direct { ranked:[...] }
-    const payload = data.result || data;
+
+    const payload = data.result || data; // support either shape
     if(!(payload && (payload.ranked || (data.ok && data.result)))){
       throw new Error(data.error || 'Unexpected response format');
     }
     renderRank(payload);
-    els.statusRank.textContent = `Ranked by ${payload.strategy || strategy}.`;
+    els.statusRank.textContent = `Ranked by ${payload.strategy || strategy}${(payload.horizon || horizonInput) ? ` (horizon: ${payload.horizon || horizonInput})` : ""}.`;
   }catch(err){
     console.error(err);
     els.statusRank.textContent = `Error: ${err.message}`;
@@ -112,6 +137,6 @@ async function runRank(){
   }
 }
 
-// Wire buttons
+// ---- Wire buttons ----
 document.getElementById('btnUniverse')?.addEventListener('click', runUniverse);
 document.getElementById('btnRank')?.addEventListener('click', runRank);
