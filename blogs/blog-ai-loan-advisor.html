@@ -33,13 +33,14 @@
   <meta name="twitter:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
 
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
-    <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
+
+  <!-- Comments UI tweaks -->
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/comments.css?v=2">
 
   <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
   <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
-
-<link rel="stylesheet" href="https://www.krishposa.com/assets/css/comments.css">
-<script defer src="https://www.krishposa.com/assets/js/comments.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/comments.js"></script>
 </head>
 <body>
   <!-- Google Tag Manager (noscript) -->
@@ -47,8 +48,8 @@
   height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <!-- End Google Tag Manager (noscript) -->
 
-<div id="header"></div>
-<script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
+  <div id="header"></div>
+  <script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
 
   <main>
     <section class="page-hero">
@@ -81,6 +82,18 @@
       </div>
     </section>
 
+    <!-- Comments block -->
+    <section class="comments-block">
+      <div class="container">
+        <h2 class="comments-title" id="comments">Comments</h2>
+
+        <!-- If your partial renders a table or list, this wrapper constrains height -->
+        <div class="comments-scroll">
+          <div id="comments-container" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- Sticky CTA -->
     <div class="sticky-cta" role="region" aria-label="Quick actions">
       <a class="btn" href="tel:+16784818252">Call</a>
@@ -88,17 +101,19 @@
       <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book</a>
     </div>
   </main>
-<div id="comments-container"></div>
-<div id="comments-container"></div>
-<script>
-  fetch('https://www.krishposa.com/partials/comments.html')
-    .then(r => r.text())
-    .then(html => {
-      document.getElementById('comments-container').innerHTML = html;
-      // comments.js is already loaded globally, so this works:
-      CommentWidget.init();
-    });
-</script>
+
+  <script>
+    fetch('https://www.krishposa.com/partials/comments.html')
+      .then(r => r.text())
+      .then(html => {
+        document.getElementById('comments-container').innerHTML = html;
+        if (window.CommentWidget && typeof CommentWidget.init === 'function') {
+          CommentWidget.init();
+        }
+      })
+      .catch(console.error);
+  </script>
+
   <div id="footer"></div>
   <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 </body>
