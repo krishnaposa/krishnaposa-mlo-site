@@ -1,0 +1,117 @@
+// Hard-wired endpoints (you can still override in the UI settings box)
+const DEFAULTS = {
+  API_BASE: "https://stocks-func-app.azurewebsites.net",
+  UNIVERSE_PATH: "/api/universe",
+  RANK_PATH: "/api/rank"
+};
+
+const els = {
+  apiBase: document.getElementById('apiBase'),
+  fnKey: document.getElementById('fnKey'),
+  btnUniverse: document.getElementById('btnUniverse'),
+  statusUniverse: document.getElementById('statusUniverse'),
+  tickers: document.getElementById('tickers'),
+  strategy: document.getElementById('strategy'),
+  horizon: document.getElementById('horizon'),
+  btnRank: document.getElementById('btnRank'),
+  statusRank: document.getElementById('statusRank'),
+  resultsTable: document.getElementById('resultsTable'),
+  resultsBody: document.getElementById('resultsBody'),
+  emptyMsg: document.getElementById('emptyMsg'),
+};
+
+// Prefill API base
+if (els.apiBase) els.apiBase.value = DEFAULTS.API_BASE;
+
+function buildUrl(path){
+  const base = (els.apiBase?.value || DEFAULTS.API_BASE || "").trim().replace(/\/+$/,'');
+  const keyRaw = (els.fnKey?.value || "").trim();
+  const suffix = keyRaw ? (path.includes('?') ? '&' : '?') + 'code=' + encodeURIComponent(keyRaw) : '';
+  return base + path + suffix;
+}
+
+function parseTickers(text){
+  const raw = (text || "").toUpperCase();
+  const parts = raw.split(/[\s,]+/).map(s => s.replace(/[^A-Z0-9.\-]/g,'').trim()).filter(Boolean);
+  return [...new Set(parts)];
+}
+
+function renderRank(result){
+  const data = result && result.ranked ? result.ranked : [];
+  if(!data.length){
+    els.resultsTable.style.display = 'none';
+    els.emptyMsg.textContent = 'No results returned.';
+    els.emptyMsg.style.display = 'block';
+    return;
+  }
+  els.resultsBody.innerHTML = '';
+  data.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    const td = (t)=>{ const x=document.createElement('td'); x.textContent=(t ?? ''); return x; };
+    tr.appendChild(td(i+1));
+    tr.appendChild(td(row.ticker));
+    tr.appendChild(td(typeof row.score === 'number' ? row.score.toFixed(2) : row.score));
+    tr.appendChild(td(row.thesis));
+    tr.appendChild(td(row.risks));
+    tr.appendChild(td(row.suggested_action));
+    els.resultsBody.appendChild(tr);
+  });
+  els.emptyMsg.style.display = 'none';
+  els.resultsTable.style.display = 'table';
+}
+
+async function runUniverse(){
+  const url = buildUrl(DEFAULTS.UNIVERSE_PATH);
+  els.statusUniverse.textContent = 'Fetching universe…';
+  els.btnUniverse.disabled = true;
+  try{
+    const res = await fetch(url, { method: 'GET' });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'Universe error');
+    els.tickers.value = (data.tickers || []).join(', ');
+    els.statusUniverse.textContent = `Loaded ${data.tickers.length} tickers. You can edit below.`;
+  }catch(err){
+    console.error(err);
+    els.statusUniverse.textContent = `Error: ${err.message}`;
+  }finally{
+    els.btnUniverse.disabled = false;
+  }
+}
+
+async function runRank(){
+  const url = buildUrl(DEFAULTS.RANK_PATH);
+  const tickers = parseTickers(els.tickers.value);
+  if(!tickers.length){ alert('Please provide at least one ticker.'); return; }
+
+  const strategy = els.strategy.value;
+  const horizon = parseInt(els.horizon.value || '3', 10);
+
+  els.statusRank.textContent = 'Ranking with AI…';
+  els.btnRank.disabled = true;
+  try{
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ strategy, horizon_years: horizon, tickers })
+    });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    // Support both shapes: { ok:true, result:{...} } or direct { ranked:[...] }
+    const payload = data.result || data;
+    if(!(payload && (payload.ranked || (data.ok && data.result)))){
+      throw new Error(data.error || 'Unexpected response format');
+    }
+    renderRank(payload);
+    els.statusRank.textContent = `Ranked by ${payload.strategy || strategy}.`;
+  }catch(err){
+    console.error(err);
+    els.statusRank.textContent = `Error: ${err.message}`;
+  }finally{
+    els.btnRank.disabled = false;
+  }
+}
+
+// Wire buttons
+document.getElementById('btnUniverse')?.addEventListener('click', runUniverse);
+document.getElementById('btnRank')?.addEventListener('click', runRank);
