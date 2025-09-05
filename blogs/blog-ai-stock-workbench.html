@@ -14,7 +14,7 @@
   <meta name="theme-color" content="#0b5fff">
 
   <title>AI Stock Workbench | Universe + Strategy Ranking</title>
-  <meta name="description" content="Run the universe builder (Finviz-based screen + ETF top holdings), edit the ticker list, and get an AI ranking by strategy like Long Term or LEAP options.">
+  <meta name="description" content="Run the universe builder, edit the tickers, then send to AI for strategy-based ranking (Long Term, LEAPs, Swing).">
 
   <!-- Canonical -->
   <link rel="canonical" href="https://www.krishposa.com/blogs/blog-ai-stock-workbench.html">
@@ -34,8 +34,8 @@
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/comments.css?v=2">
 
-  <!-- New page-specific CSS -->
-  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/ai-stock-workbench.css?v=1">
+  <!-- Page-specific CSS -->
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/ai-stock-workbench.css?v=3">
 
   <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
   <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
@@ -59,68 +59,54 @@
 
     <section class="content">
       <div class="container narrow workbench">
-        <div class="card">
+        <div class="card dark">
           <h2>How the picks are built</h2>
           <p class="muted">
-            The universe starts with a Python screen that uses Finviz-style filters to emphasize large and mega cap liquidity.
+            The universe starts with a Python screen using Finviz-style filters to emphasize large &amp; mega cap liquidity.
             It then finds strong ETFs and pulls their top two holdings. A final quality pass trims noise.
             The resulting symbols are sent to AI, which ranks them by the strategy you pick (Long Term, LEAP options, or Swing).
           </p>
           <p class="note tiny">Education only. Not investment advice. Data and trademarks belong to their respective owners.</p>
         </div>
 
-        <div class="card">
+        <div class="card dark">
           <h2>Run & edit</h2>
-          <div class="controls">
-            <div class="row">
-              <span class="pill">1</span>
-              <button id="btnUniverse" class="btn btn-blue">Run Universe API</button>
-              <span id="statusUniverse" class="status"></span>
-            </div>
 
-            <div class="row">
-              <label for="strategy"><strong>Strategy</strong></label>
-              <select id="strategy">
+          <!-- Step 1 -->
+          <div class="row gap">
+            <span class="pill">1</span>
+            <button id="btnUniverse" class="btn btn-blue">Run Universe API</button>
+            <span id="statusUniverse" class="status"></span>
+          </div>
+
+          <div class="row">
+            <label for="tickers"><strong>Editable tickers</strong> <span class="tiny muted">(comma or newline separated)</span></label>
+          </div>
+          <textarea id="tickers" class="tickers" placeholder="AAPL, MSFT, NVDA"></textarea>
+
+          <!-- Step 2 -->
+          <div class="row gap align-center stack-on-mobile" style="margin-top:10px">
+            <span class="pill">2</span>
+
+            <div class="inline-controls">
+              <label for="strategy" class="inline-label">Strategy</label>
+              <select id="strategy" class="inline-field">
                 <option value="long_term">Long Term</option>
                 <option value="leaps">LEAP Options</option>
                 <option value="swing">Swing (1–8 weeks)</option>
               </select>
-              <label for="horizon" class="tiny">Horizon (years)</label>
-              <input id="horizon" type="number" min="1" max="10" value="3" style="width:80px">
+
+              <label for="horizonText" class="inline-label">Horizon</label>
+              <input id="horizonText" class="inline-field long" type="text"
+                     placeholder="e.g., 3 years • 8 months • 30 days">
             </div>
 
-            <div class="row">
-              <label for="tickers"><strong>Editable tickers</strong> <span class="tiny muted">(comma or newline separated)</span></label>
-            </div>
-            <textarea id="tickers" class="tickers" placeholder="AAPL, MSFT, NVDA"></textarea>
-
-            <div class="row">
-              <span class="pill">2</span>
-              <button id="btnRank" class="btn btn-blue">Rank with AI</button>
-              <span id="statusRank" class="status"></span>
-            </div>
+            <button id="btnRank" class="btn btn-blue">Rank with AI</button>
+            <span id="statusRank" class="status"></span>
           </div>
-
-          <details class="tiny" style="margin-top:10px">
-            <summary>API settings (advanced)</summary>
-            <div class="grid-2" style="margin-top:8px">
-              <div>
-                <label>API Base (pre-filled)</label>
-                <input id="apiBase" type="text" value="https://stocks-func-app.azurewebsites.net" style="width:100%">
-              </div>
-              <div>
-                <label>Function Key (if required)</label>
-                <input id="fnKey" type="text" placeholder="Paste function key only (no '?code=')" style="width:100%">
-              </div>
-            </div>
-            <p class="tiny muted" style="margin-top:6px">
-              If your endpoints are set to <span class="kbd">auth_level=Function</span>, paste the function key.
-              Enable CORS on your Function App for <span class="kbd">https://www.krishposa.com</span>.
-            </p>
-          </details>
         </div>
 
-        <div class="card">
+        <div class="card dark">
           <h2>Ranked results</h2>
           <div id="resultsWrap">
             <table class="rank" id="resultsTable" style="display:none">
@@ -138,10 +124,6 @@
             </table>
             <p id="emptyMsg" class="muted">Run the universe, edit tickers if you want, then click <em>Rank with AI</em>.</p>
           </div>
-        </div>
-
-        <div class="note tiny">
-          Tip: You can paste tickers separated by commas or line breaks. We’ll clean duplicates and spacing.
         </div>
       </div>
     </section>
@@ -163,8 +145,8 @@
     </div>
   </main>
 
-  <!-- New page-specific JS -->
-  <script defer src="https://www.krishposa.com/assets/js/ai-stock-workbench.js?v=1"></script>
+  <!-- Page-specific JS -->
+  <script defer src="https://www.krishposa.com/assets/js/ai-stock-workbench.js?v=3"></script>
 
   <div id="footer"></div>
   <script src="https://www.krishposa.com/assets/js/footer.js"></script>
