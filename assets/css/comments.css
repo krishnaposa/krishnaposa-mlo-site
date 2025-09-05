@@ -1,89 +1,101 @@
-/* Section layout = match site rhythm */
-#comments {
-  margin-top: 2.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
+/* Heading pop */
+.comments-block { padding: 2rem 0; }
+.comments-title {
+  margin: 0 0 1rem 0;
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: .2px;
+  position: relative;
+  color: #0b5fff;
 }
-#comments .comments-title {
-  margin: 0 0 1rem;
-  font-size: clamp(1.15rem, 1.1vw + 1rem, 1.35rem);
-  line-height: 1.25;
-}
-
-/* List styles (reuse your card look) */
-#comments .comments-list .card {
-  padding: .9rem 1rem;
-  border: 1px solid rgba(0,0,0,.08);
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 4px 16px rgba(0,0,0,.04);
-  margin-bottom: .75rem;
-}
-#comments .comment-head {
-  display: flex; align-items: baseline; gap: .5rem;
-}
-#comments .comment-name {
-  font-weight: 700;
-}
-#comments .comment-date {
-  font-size: .85rem; color: #6b7280;
-}
-#comments .comment-body {
-  margin: .45rem 0 0; white-space: pre-wrap;
+.comments-title::after {
+  content: "";
+  display: block;
+  width: 56px;
+  height: 3px;
+  background: linear-gradient(90deg, #0b5fff, #6ea0ff);
+  border-radius: 2px;
+  margin-top: .4rem;
 }
 
-/* Form */
-#comments .comments-form {
-  margin-top: 1.25rem;
-}
-#comments .comments-form .row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: .75rem;
-}
-@media (max-width: 720px) {
-  #comments .comments-form .row { grid-template-columns: 1fr; }
-}
-
-#comments .field { display: block; }
-#comments .label {
-  display: inline-block;
-  font-size: .9rem;
-  color: #374151;
-  margin-bottom: .35rem;
-}
-#comments .muted { color: #6b7280; font-weight: 400; }
-
-#comments input[type="text"],
-#comments input[type="email"],
-#comments textarea {
-  width: 100%;
-  padding: .65rem .75rem;
-  border: 1px solid #d1d5db;
+/* Keep existing comments list/table compact */
+.comments-scroll {
+  max-height: 420px;      /* keeps it from getting too tall */
+  overflow: auto;
+  border: 1px solid #eee;
   border-radius: 10px;
-  font: inherit;
   background: #fff;
-  transition: border-color .15s ease, box-shadow .15s ease;
-}
-#comments textarea { min-height: 120px; }
-#comments input:focus,
-#comments textarea:focus {
-  outline: none;
-  border-color: #0b5fff;
-  box-shadow: 0 0 0 3px rgba(11,95,255,.12);
+  padding: .5rem;
 }
 
-/* Actions row aligns with your buttons */
-#comments .actions {
-  display: flex; align-items: center; gap: .75rem;
+/* If your partial uses a table */
+.comments-scroll table {
+  width: 100%;
+  table-layout: fixed;   /* make columns respect width and ellipsis */
+  border-collapse: collapse;
+}
+.comments-scroll thead th {
+  font-size: .9rem;
+  font-weight: 700;
+  color: #333;
+  background: #f7f9ff;
+  border-bottom: 1px solid #e9eefc;
+  padding: .6rem .5rem;
+}
+.comments-scroll tbody td {
+  font-size: .92rem;
+  color: #222;
+  padding: .55rem .5rem;
+  border-bottom: 1px solid #f0f2f7;
+  vertical-align: top;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;   /* trims long text; remove if you prefer wrap */
+}
+.comments-scroll tbody tr:last-child td { border-bottom: 0; }
+
+/* Suggested column width helpers if you have classes on <th>/<td> */
+.comments-col-author { width: 22%; }
+.comments-col-date   { width: 18%; }
+.comments-col-body   { width: 60%; }
+
+/* If your partial uses cards/divs instead of a table */
+#comment-list {            /* your existing widget target */
+  display: grid;
+  gap: 10px;
+  max-height: 420px;       /* double safety */
+  overflow: auto;
+}
+.comment-card {
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: .65rem .75rem;
+  background: #fff;
+}
+.comment-card .name { font-weight: 700; }
+.comment-card .date { color: #666; font-size: .85rem; }
+
+/* Keep forms tidy */
+#comment-form, .comment-form {
   margin-top: .75rem;
+  padding: .75rem;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  background: #fafbff;
 }
-#comments .status {
-  font-size: .9rem; color: #374151;
+#comment-form h3, .comment-form h3 {
+  margin: 0 0 .5rem 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0b5fff;
 }
 
-/* Light message for empty state */
-#comments .empty {
-  font-size: .95rem; color: #6b7280;
-  padding: .5rem 0;
+/* Mobile polish */
+@media (max-width: 480px) {
+  .comments-scroll { max-height: 360px; }
+  .comments-scroll thead { display: none; }           /* optional: minimalist on mobile */
+  .comments-scroll table, .comments-scroll tbody, 
+  .comments-scroll tr, .comments-scroll td { display: block; width: 100%; }
+  .comments-scroll td { white-space: normal; overflow: visible; text-overflow: clip; }
 }
