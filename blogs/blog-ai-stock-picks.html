@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-KJZPQKBM');</script>
+  <!-- End Google Tag Manager -->
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5fff">
+
+  <title>How My AI Stock Picks Work | Krish Posa Blog</title>
+  <meta name="description" content="My pipeline uses Finviz filters to find large and mega cap stocks, surfaces the best ETFs and their top holdings, applies additional quality screens, and then sends the list to AI to rank by strategy like long term or LEAP options.">
+
+  <!-- Canonical -->
+  <link rel="canonical" href="https://www.krishposa.com/blogs/blog-ai-stock-picks.html">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="How My AI Stock Picks Work">
+  <meta property="og:description" content="Finviz screens + ETF top holdings + quality filters + AI ranking for long term, LEAP options, or swing strategies.">
+  <meta property="og:url" content="https://www.krishposa.com/blogs/blog-ai-stock-picks.html">
+  <meta property="og:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="How My AI Stock Picks Work">
+  <meta name="twitter:description" content="Finviz screens + ETF top holdings + quality filters + AI ranking for long term, LEAP options, or swing strategies.">
+  <meta name="twitter:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
+
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
+
+  <!-- Comments UI tweaks -->
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/comments.css?v=2">
+
+  <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
+  <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/comments.js"></script>
+
+  <!-- Optional: simple inline styles to render the flow nicely -->
+  <style>
+    .flow { display:grid; gap:16px; margin:24px 0 }
+    .flow .step { background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:12px; padding:16px; box-shadow:0 4px 16px rgba(0,0,0,.06) }
+    .pill { display:inline-block; padding:.2rem .6rem; border-radius:999px; font-size:.8rem; background:#eef3ff; color:#0b5fff; margin-right:.4rem }
+    .note { background:#fff7e6; border:1px solid #ffe0a3; border-radius:8px; padding:.8rem; }
+    .checklist { margin:.5rem 0 0 0; padding-left:1rem }
+    .checklist li { margin:.25rem 0 }
+    .muted { color:#555 }
+    .divider { height:1px; background:rgba(0,0,0,.08); margin:24px 0 }
+    .btn-row { display:flex; gap:.75rem; flex-wrap:wrap }
+  </style>
+
+  <!-- Article schema -->
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"TechArticle",
+    "headline":"How My AI Stock Picks Work",
+    "author":{"@type":"Person","name":"Krish Posa"},
+    "about":["Stock screening","ETFs","AI ranking","LEAP options","Long term investing"],
+    "dateModified":"2025-09-05",
+    "publisher":{"@type":"Person","name":"Krish Posa"},
+    "mainEntityOfPage":"https://www.krishposa.com/blogs/blog-ai-stock-picks.html",
+    "image":"https://www.krishposa.com/assets/img/headshot.jpg",
+    "description":"Pipeline: Finviz large and mega cap filters, best ETF discovery with top two holdings extraction, quality screens, then AI ranks by chosen strategy."
+  }
+  </script>
+</head>
+<body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
+
+  <div id="header"></div>
+  <script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
+
+  <main>
+    <section class="page-hero">
+      <div class="container">
+        <h1>How My AI Stock Picks Work</h1>
+        <p class="small">From Finviz filters to AI ranked outputs. Clear steps. Clear decisions.</p>
+      </div>
+    </section>
+
+    <section class="content">
+      <div class="container narrow">
+        <p>Here is the simple idea. Start with a strong universe, apply smart screens, include ETF leadership, and then use AI to rank everything based on your strategy. The result is a concise ranked list that fits how you want to invest.</p>
+
+        <h2>The pipeline</h2>
+
+        <div class="flow">
+          <div class="step">
+            <div class="pill">Step 1</div>
+            <h3>Universe by Finviz filters</h3>
+            <p class="muted">Use Finviz filters to find large and mega cap companies, then layer in basic criteria to avoid noise.</p>
+            <ul class="checklist">
+              <li>Market cap: Large and Mega</li>
+              <li>Liquidity: high average volume</li>
+              <li>Quality signals: stable margins, earnings consistency</li>
+              <li>Optional: sector or industry focus</li>
+            </ul>
+            <p class="note">Finviz is a third-party screener. Names and trademarks belong to their owners.</p>
+          </div>
+
+          <div class="step">
+            <div class="pill">Step 2</div>
+            <h3>Best ETFs and top two holdings</h3>
+            <p class="muted">Identify strong ETFs in relevant sectors or factors. From each selected ETF, pull the top two holdings.</p>
+            <ul class="checklist">
+              <li>Find leading ETFs by performance and assets</li>
+              <li>Extract top two holdings per ETF</li>
+              <li>Add unique holdings to the candidate list</li>
+            </ul>
+          </div>
+
+          <div class="step">
+            <div class="pill">Step 3</div>
+            <h3>Additional quality filter for all stocks</h3>
+            <p class="muted">Apply an extra pass to surface the best names only.</p>
+            <ul class="checklist">
+              <li>Liquidity and spread sanity checks</li>
+              <li>Earnings date awareness</li>
+              <li>Basic momentum or trend strength</li>
+              <li>Outlier risk notes if any</li>
+            </ul>
+          </div>
+
+          <div class="step">
+            <div class="pill">Step 4</div>
+            <h3>AI ranking by strategy</h3>
+            <p class="muted">Send the final list to AI and ask it to rank strictly by the strategy you pick.</p>
+            <ul class="checklist">
+              <li><strong>Long term</strong>: durability, compounding, downside resilience</li>
+              <li><strong>LEAP options</strong>: catalysts, trend, IV and liquidity</li>
+              <li><strong>Swing</strong>: 1 to 8 week potential and risk control</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <h2>What you get</h2>
+        <ul>
+          <li>A ranked list of tickers with a score and one line thesis</li>
+          <li>Short risk notes to set expectations</li>
+          <li>Suggested action phrased for the selected strategy</li>
+        </ul>
+
+        <h2>Why this flow</h2>
+        <p>Large and mega cap companies offer better liquidity and cleaner data. ETF leaders point at what capital already prefers. A second quality pass trims the list. AI then ranks the finalists through a single strategy lens so your next step is simple.</p>
+
+        <h2>Try the AI ranking</h2>
+        <p>Pick a strategy and let the model do the ranking. Use it as a starting point, not a promise.</p>
+
+        <div class="btn-row" style="margin:1rem 0 1.5rem">
+          <a class="btn btn-blue" href="/tools/stock-ranker.html">Launch Stock Ranker</a>
+          <a class="btn" href="/blogs/index.html">Back to Blogs</a>
+        </div>
+
+        <p class="note">Education only. Not investment advice. Markets involve risk, including loss of principal.</p>
+      </div>
+    </section>
+
+    <!-- Comments block -->
+    <section class="comments-block">
+      <div class="container">
+        <div class="comments-scroll">
+          <div id="comments-container" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sticky CTA -->
+    <div class="sticky-cta" role="region" aria-label="Quick actions">
+      <a class="btn" href="tel:+16784818252">Call</a>
+      <a class="btn" href="sms:+16784818252">Text</a>
+      <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book</a>
+    </div>
+  </main>
+
+  <script>
+    fetch('https://www.krishposa.com/partials/comments.html')
+      .then(r => r.text())
+      .then(html => {
+        document.getElementById('comments-container').innerHTML = html;
+        if (window.CommentWidget && typeof CommentWidget.init === 'function') {
+          CommentWidget.init();
+        }
+      })
+      .catch(console.error);
+  </script>
+
+  <div id="footer"></div>
+  <script src="https://www.krishposa.com/assets/js/footer.js"></script>
+</body>
+</html>
