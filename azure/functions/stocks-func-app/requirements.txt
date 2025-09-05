@@ -1,5 +1,6 @@
 azure-functions
 openai>=1.43.0
+azure-storage-blob>=12.20.0
 finviz @ git+https://github.com/RiverRo/finviz.git@2a2f8138ccd2dd17b5299e51f7808ecd8fcddf92
 jsonpath-rw==1.4.0
 jsonpath-rw-ext==1.2.2
