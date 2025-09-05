@@ -1,8 +1,6 @@
-import os, json, sys, subprocess, logging, pathlib, importlib.util, datetime
+import os, json, sys, subprocess, logging, pathlib, importlib.util, datetime, shlex
 import azure.functions as func
 from openai import AzureOpenAI
-
-# Blob SDK for cache
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
 app = func.FunctionApp()
@@ -10,10 +8,14 @@ app = func.FunctionApp()
 # ---------- Settings ----------
 WB4U_ENTRY = os.getenv("WB4U_ENTRY", "wb4u_main.py")
 
-# Cached universe location
+# Universe caching (Blob)
 UNIVERSE_CONTAINER = os.getenv("UNIVERSE_CONTAINER", "cache")
 UNIVERSE_BLOB_NAME = os.getenv("UNIVERSE_BLOB_NAME", "universe.json")
-UNIVERSE_TTL_MIN   = int(os.getenv("UNIVERSE_TTL_MIN", "720"))  # 12h for freshness checks in /api/universe
+UNIVERSE_TTL_MIN   = int(os.getenv("UNIVERSE_TTL_MIN", "720"))   # 12h staleness flag
+UNIVERSE_MAX_SECONDS = int(os.getenv("UNIVERSE_MAX_SECONDS", "60"))  # hard budget
+
+# Manual refresh protection
+REFRESH_SHARED_KEY = os.getenv("REFRESH_SHARED_KEY")  # set a strong random string
 
 # Azure OpenAI
 AZURE_OPENAI_ENDPOINT   = os.getenv("AZURE_OPENAI_ENDPOINT")
@@ -21,75 +23,33 @@ AZURE_OPENAI_API_KEY    = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 AZURE_OPENAI_API_VER    = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
 
-# Blob client (uses AzureWebJobsStorage automatically)
+# Blob client (uses AzureWebJobsStorage)
 _BLOB_SVC = BlobServiceClient.from_connection_string(os.getenv("AzureWebJobsStorage"))
 
-# ---------- Helpers ----------
+# ---------- Small utils ----------
 def _parse_json_body(req: func.HttpRequest) -> dict:
     try:
         return req.get_json()
     except ValueError:
         return {}
 
-def _load_module_from_path(module_name: str, file_path: str):
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if not spec or not spec.loader:
-        raise ImportError(f"Could not load spec for {file_path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[attr-defined]
-    return mod
-
-def _compute_universe_local() -> list[str]:
-    """
-    Runs your local wb4u_main.py to build the ticker list.
-    Prefers a callable (get_universe/run_universe/build_universe/main), else runs as a script and parses stdout.
-    """
-    script_path = (pathlib.Path(__file__).parent / WB4U_ENTRY).resolve()
-    if not script_path.exists():
-        raise FileNotFoundError(f"WB4U entry not found at {script_path}")
-
-    # Try to import and call
-    try:
-        mod = _load_module_from_path("wb4u_main_dynamic", str(script_path))
-        for fn_name in ("get_universe", "run_universe", "build_universe", "main"):
-            fn = getattr(mod, fn_name, None)
-            if callable(fn):
-                tickers = fn()
-                break
-        else:
-            raise AttributeError("No exported universe function found; falling back to script exec")
-    except Exception as e:
-        logging.info(f"[universe] Import/call path not used ({e}); executing script.")
-        run = subprocess.run([sys.executable, str(script_path)], check=True, capture_output=True, text=True)
-        out = run.stdout.strip()
-        try:
-            tickers = json.loads(out)
-        except json.JSONDecodeError:
-            tickers = eval(out, {"__builtins__": {}}, {})
-
-    if not isinstance(tickers, (list, tuple)):
-        raise ValueError("wb4u_main must return/print a list/JSON array of tickers")
-
-    cleaned = [str(t).upper().strip() for t in tickers if str(t).strip()]
-    if not cleaned:
-        raise ValueError("Universe computation returned an empty list")
-    return cleaned
-
 def _blob_container():
     cont = _BLOB_SVC.get_container_client(UNIVERSE_CONTAINER)
     try:
-        cont.create_container()  # idempotent
+        cont.create_container()
     except Exception:
         pass
     return cont
 
-def _write_universe_blob(tickers: list[str]) -> None:
+def _write_universe_blob(tickers: list[str], meta: dict | None = None) -> None:
     cont = _blob_container()
     payload = {
         "ok": True,
         "tickers": tickers,
         "updated_utc": datetime.datetime.utcnow().isoformat() + "Z"
     }
+    if isinstance(meta, dict):
+        payload.update(meta)
     cont.upload_blob(
         UNIVERSE_BLOB_NAME,
         data=json.dumps(payload).encode("utf-8"),
@@ -106,6 +66,60 @@ def _read_universe_blob() -> dict | None:
     except Exception:
         return None
 
+# ---------- Universe computation (budgeted) ----------
+def _load_module_from_path(module_name: str, file_path: str):
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if not spec or not spec.loader:
+        raise ImportError(f"Could not load spec for {file_path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[attr-defined]
+    return mod
+
+def _compute_universe_budgeted(max_seconds: int) -> list[str]:
+    """
+    Prefer calling a function in wb4u_main.py: get_universe(max_seconds: int|None)
+    Fallback: execute script with --max-seconds and parse stdout.
+    This guarantees a hard wall-clock cap via subprocess timeout.
+    """
+    script_path = (pathlib.Path(__file__).parent / WB4U_ENTRY).resolve()
+    if not script_path.exists():
+        raise FileNotFoundError(f"WB4U entry not found at {script_path}")
+
+    # Try import & call first (fast path)
+    try:
+        mod = _load_module_from_path("wb4u_main_dynamic", str(script_path))
+        fn = getattr(mod, "get_universe", None)
+        if callable(fn):
+            # Soft budget via function arg; still enforce a hard cap with subprocess if desired.
+            tickers = fn(max_seconds=max_seconds)
+            if not isinstance(tickers, (list, tuple)):
+                raise TypeError("get_universe() must return a list/tuple")
+            cleaned = [str(t).upper().strip() for t in tickers if str(t).strip()]
+            if not cleaned:
+                raise ValueError("Universe function returned empty list")
+            return cleaned
+    except Exception as e:
+        logging.info(f"[universe] import path skipped: {e}")
+
+    # Fallback: run as script with a hard timeout
+    cmd = f"{shlex.quote(sys.executable)} {shlex.quote(str(script_path))} --max-seconds {int(max_seconds)}"
+    proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=max_seconds+5)
+    out = (proc.stdout or "").strip()
+
+    try:
+        tickers = json.loads(out)
+    except json.JSONDecodeError:
+        tickers = eval(out, {"__builtins__": {}}, {})
+
+    if not isinstance(tickers, (list, tuple)):
+        raise ValueError("Entry script must print a list/JSON array")
+
+    cleaned = [str(t).upper().strip() for t in tickers if str(t).strip()]
+    if not cleaned:
+        raise ValueError("No tickers produced by entry script")
+    return cleaned
+
+# ---------- OpenAI ranking ----------
 def _make_prompt(tickers, strategy: str, horizon_text: str):
     system = (
         "You are an equity analyst. Return ONLY JSON. "
@@ -149,7 +163,6 @@ def _make_prompt(tickers, strategy: str, horizon_text: str):
 def _score_with_azure_openai(tickers, strategy: str, horizon_text: str) -> dict:
     if not (AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY and AZURE_OPENAI_DEPLOYMENT):
         raise RuntimeError("Azure OpenAI settings missing (endpoint/key/deployment).")
-
     client = AzureOpenAI(
         api_key=AZURE_OPENAI_API_KEY,
         api_version=AZURE_OPENAI_API_VER,
@@ -167,53 +180,72 @@ def _score_with_azure_openai(tickers, strategy: str, horizon_text: str) -> dict:
     )
     return json.loads(resp.choices[0].message.content)
 
-# ---------- Timer Trigger: refresh universe cache ----------
-# Every 6 hours (CRON: {sec} {min} {hour} {day} {month} {day-of-week})
+# ---------- Timer: refresh cache ----------
 @app.schedule(schedule="0 0 */6 * * *", arg_name="myTimer", run_on_startup=True, use_monitor=True)
 def refresh_universe(myTimer: func.TimerRequest) -> None:
-    """
-    Precompute and cache the universe on a cadence so HTTP is fast.
-    run_on_startup=True warms the cache right after deployment.
-    """
     try:
-        tickers = _compute_universe_local()
-        _write_universe_blob(tickers)
-        logging.info(f"[refresh_universe] Cached {len(tickers)} tickers at {UNIVERSE_CONTAINER}/{UNIVERSE_BLOB_NAME}")
+        tickers = _compute_universe_budgeted(UNIVERSE_MAX_SECONDS)
+        _write_universe_blob(tickers, {"budget_seconds": UNIVERSE_MAX_SECONDS})
+        logging.info(f"[refresh_universe] Cached {len(tickers)} tickers")
+    except subprocess.TimeoutExpired:
+        logging.exception("[refresh_universe] universe computation timed out")
     except Exception as e:
         logging.exception(f"[refresh_universe] Failed: {e}")
 
-# ---------- HTTP: health ----------
+# ---------- Health ----------
 @app.function_name(name="health")
 @app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def health(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse('{"ok": true}', mimetype="application/json")
 
-# ---------- HTTP: universe (reads the cache) ----------
+# ---------- Universe (read cache, fallback compute once) ----------
 @app.function_name(name="universe")
 @app.route(route="universe", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def get_universe(req: func.HttpRequest) -> func.HttpResponse:
     try:
         cached = _read_universe_blob()
         if not cached:
-            # If cache is empty (first minute after deploy), compute once synchronously as a fallback
-            tickers = _compute_universe_local()
-            _write_universe_blob(tickers)
+            tickers = _compute_universe_budgeted(UNIVERSE_MAX_SECONDS)
+            _write_universe_blob(tickers, {"budget_seconds": UNIVERSE_MAX_SECONDS})
             cached = {"ok": True, "tickers": tickers, "updated_utc": datetime.datetime.utcnow().isoformat() + "Z"}
-        else:
-            # optional TTL warning flag
-            try:
-                ts = datetime.datetime.fromisoformat(cached.get("updated_utc","").replace("Z",""))
-                age_min = (datetime.datetime.utcnow() - ts).total_seconds() / 60.0
-                cached["stale"] = age_min > UNIVERSE_TTL_MIN
-            except Exception:
-                cached["stale"] = False
+
+        # stale flag
+        try:
+            ts = datetime.datetime.fromisoformat(cached.get("updated_utc", "").replace("Z", ""))
+            age_min = (datetime.datetime.utcnow() - ts).total_seconds() / 60.0
+            cached["stale"] = age_min > UNIVERSE_TTL_MIN
+        except Exception:
+            cached["stale"] = False
 
         return func.HttpResponse(json.dumps(cached, ensure_ascii=False), mimetype="application/json")
+
+    except subprocess.TimeoutExpired:
+        return func.HttpResponse(json.dumps({"ok": False, "error": "Universe build timed out"}), status_code=504, mimetype="application/json")
     except Exception as e:
         logging.exception("universe error")
         return func.HttpResponse(json.dumps({"ok": False, "error": str(e)}), status_code=500, mimetype="application/json")
 
-# ---------- HTTP: rank (uses Azure OpenAI) ----------
+# ---------- Manual refresh (shared-key protected) ----------
+@app.function_name(name="refresh")
+@app.route(route="refresh", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
+def manual_refresh(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        if not REFRESH_SHARED_KEY:
+            return func.HttpResponse(json.dumps({"ok": False, "error": "REFRESH_SHARED_KEY not set"}), status_code=500, mimetype="application/json")
+        supplied = req.headers.get("x-refresh-key") or req.params.get("key")
+        if supplied != REFRESH_SHARED_KEY:
+            return func.HttpResponse(json.dumps({"ok": False, "error": "Forbidden"}), status_code=403, mimetype="application/json")
+
+        tickers = _compute_universe_budgeted(UNIVERSE_MAX_SECONDS)
+        _write_universe_blob(tickers, {"manual": True, "budget_seconds": UNIVERSE_MAX_SECONDS})
+        return func.HttpResponse(json.dumps({"ok": True, "count": len(tickers)}), mimetype="application/json")
+    except subprocess.TimeoutExpired:
+        return func.HttpResponse(json.dumps({"ok": False, "error": "Universe build timed out"}), status_code=504, mimetype="application/json")
+    except Exception as e:
+        logging.exception("manual refresh error")
+        return func.HttpResponse(json.dumps({"ok": False, "error": str(e)}), status_code=500, mimetype="application/json")
+
+# ---------- Rank ----------
 @app.function_name(name="rank")
 @app.route(route="rank", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def rank(req: func.HttpRequest) -> func.HttpResponse:
@@ -230,10 +262,8 @@ def rank(req: func.HttpRequest) -> func.HttpResponse:
                                      status_code=400, mimetype="application/json")
 
         strategy = (body.get("strategy") or "long_term").strip()
-
         horizon_text = body.get("horizon")
         if not horizon_text:
-            # Back-compat: horizon_years -> "X years"
             hy = body.get("horizon_years")
             if hy is not None:
                 try:
