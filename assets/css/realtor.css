@@ -44,7 +44,7 @@
   display:block;
 }
 
-.hero-card .avatar { width:80px; height:80px; border-radius:8px; object-fit:cover; }
+.hero-card .avatar { width:160px; height:160px; border-radius:8px; object-fit:cover; }
 .hero-card .meta { font-size:.9rem; color:#666; }
 
 /* Smaller, subdued Krish button */
