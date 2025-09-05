@@ -1,10 +1,12 @@
-<section id="comments" class="container narrow">
+<section id="comments" class="container narrow comments-block">
   <h2 class="comments-title">Comments</h2>
 
-  <!-- list -->
-  <div id="comment-list" class="comments-list"></div>
+  <!-- Existing comments (height constrained + scroll) -->
+  <div class="comments-scroll" aria-live="polite">
+    <div id="comment-list" class="comments-list"></div>
+  </div>
 
-  <!-- form -->
+  <!-- Form -->
   <form id="comment-form" class="comments-form" novalidate>
     <div class="row">
       <label class="field">
