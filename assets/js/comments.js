@@ -1,4 +1,3 @@
-<script>
 (function () {
   const API_BASE = "https://blog-comments-ffd9fae6hmcta7e4.eastus2-01.azurewebsites.net";
   const PATH = location.pathname;
@@ -76,4 +75,3 @@
     }
   };
 })();
-</script>
