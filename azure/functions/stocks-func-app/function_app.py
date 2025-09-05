@@ -1,18 +1,28 @@
-import os, json, sys, tempfile, subprocess, shutil, logging, pathlib, importlib.util
+import os, json, sys, subprocess, logging, pathlib, importlib.util, datetime
 import azure.functions as func
 from openai import AzureOpenAI
 
+# Blob SDK for cache
+from azure.storage.blob import BlobServiceClient, ContentSettings
+
 app = func.FunctionApp()
 
-# ---------- App Settings ----------
-# If your main file or helpers live in a subfolder, set WB4U_ENTRY accordingly (e.g., "src/wb4u_main.py").
+# ---------- Settings ----------
 WB4U_ENTRY = os.getenv("WB4U_ENTRY", "wb4u_main.py")
 
+# Cached universe location
+UNIVERSE_CONTAINER = os.getenv("UNIVERSE_CONTAINER", "cache")
+UNIVERSE_BLOB_NAME = os.getenv("UNIVERSE_BLOB_NAME", "universe.json")
+UNIVERSE_TTL_MIN   = int(os.getenv("UNIVERSE_TTL_MIN", "720"))  # 12h for freshness checks in /api/universe
+
+# Azure OpenAI
 AZURE_OPENAI_ENDPOINT   = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_KEY    = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 AZURE_OPENAI_API_VER    = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
 
+# Blob client (uses AzureWebJobsStorage automatically)
+_BLOB_SVC = BlobServiceClient.from_connection_string(os.getenv("AzureWebJobsStorage"))
 
 # ---------- Helpers ----------
 def _parse_json_body(req: func.HttpRequest) -> dict:
@@ -22,9 +32,6 @@ def _parse_json_body(req: func.HttpRequest) -> dict:
         return {}
 
 def _load_module_from_path(module_name: str, file_path: str):
-    """
-    Dynamically import a module from an absolute file path (no need for packages).
-    """
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     if not spec or not spec.loader:
         raise ImportError(f"Could not load spec for {file_path}")
@@ -32,22 +39,12 @@ def _load_module_from_path(module_name: str, file_path: str):
     spec.loader.exec_module(mod)  # type: ignore[attr-defined]
     return mod
 
-def _run_local_universe() -> list[str]:
+def _compute_universe_local() -> list[str]:
     """
-    Execute your local wb4u_main.py (shipped with this Function App).
-    We try to import and call a function if available; otherwise we run it as a script and parse stdout.
-    Accepted function names (first one found is used):
-      - get_universe()
-      - run_universe()
-      - build_universe()
-      - main()
-    If no function is found, we execute the script and expect it to PRINT either:
-      - a JSON array  e.g., ["AAPL","MSFT"]
-      - a Python list e.g., ['AAPL','MSFT']
+    Runs your local wb4u_main.py to build the ticker list.
+    Prefers a callable (get_universe/run_universe/build_universe/main), else runs as a script and parses stdout.
     """
-    wwwroot = pathlib.Path(__file__).parent  # /site/wwwroot
-    script_path = (wwwroot / WB4U_ENTRY).resolve()
-
+    script_path = (pathlib.Path(__file__).parent / WB4U_ENTRY).resolve()
     if not script_path.exists():
         raise FileNotFoundError(f"WB4U entry not found at {script_path}")
 
@@ -58,37 +55,58 @@ def _run_local_universe() -> list[str]:
             fn = getattr(mod, fn_name, None)
             if callable(fn):
                 tickers = fn()
-                if not isinstance(tickers, (list, tuple)):
-                    raise TypeError(f"{fn_name}() must return a list/tuple of tickers")
-                cleaned = [str(t).upper().strip() for t in tickers if str(t).strip()]
-                if not cleaned:
-                    raise ValueError("Universe function returned an empty list")
-                return cleaned
+                break
+        else:
+            raise AttributeError("No exported universe function found; falling back to script exec")
     except Exception as e:
-        # Fall back to executing as a script that prints the list
-        logging.info(f"Import path failed or no function found; falling back to subprocess run. Reason: {e}")
-
-    # Fallback: run as a script and parse stdout
-    run = subprocess.run([sys.executable, str(script_path)], check=True, capture_output=True, text=True)
-    out = run.stdout.strip()
-    try:
-        tickers = json.loads(out)
-    except json.JSONDecodeError:
-        # accept Python list literal
-        tickers = eval(out, {"__builtins__": {}}, {})
+        logging.info(f"[universe] Import/call path not used ({e}); executing script.")
+        run = subprocess.run([sys.executable, str(script_path)], check=True, capture_output=True, text=True)
+        out = run.stdout.strip()
+        try:
+            tickers = json.loads(out)
+        except json.JSONDecodeError:
+            tickers = eval(out, {"__builtins__": {}}, {})
 
     if not isinstance(tickers, (list, tuple)):
-        raise ValueError("Entry script must print a list/JSON array of tickers")
+        raise ValueError("wb4u_main must return/print a list/JSON array of tickers")
 
     cleaned = [str(t).upper().strip() for t in tickers if str(t).strip()]
     if not cleaned:
-        raise ValueError("No tickers produced by entry script")
+        raise ValueError("Universe computation returned an empty list")
     return cleaned
 
+def _blob_container():
+    cont = _BLOB_SVC.get_container_client(UNIVERSE_CONTAINER)
+    try:
+        cont.create_container()  # idempotent
+    except Exception:
+        pass
+    return cont
+
+def _write_universe_blob(tickers: list[str]) -> None:
+    cont = _blob_container()
+    payload = {
+        "ok": True,
+        "tickers": tickers,
+        "updated_utc": datetime.datetime.utcnow().isoformat() + "Z"
+    }
+    cont.upload_blob(
+        UNIVERSE_BLOB_NAME,
+        data=json.dumps(payload).encode("utf-8"),
+        overwrite=True,
+        content_settings=ContentSettings(content_type="application/json")
+    )
+
+def _read_universe_blob() -> dict | None:
+    cont = _blob_container()
+    try:
+        blob = cont.get_blob_client(UNIVERSE_BLOB_NAME)
+        data = blob.download_blob().readall()
+        return json.loads(data)
+    except Exception:
+        return None
+
 def _make_prompt(tickers, strategy: str, horizon_text: str):
-    """
-    horizon_text is a free-form string like '3 years', '8 months', '30 days'.
-    """
     system = (
         "You are an equity analyst. Return ONLY JSON. "
         "Rank the provided tickers for the chosen strategy with concise reasoning."
@@ -149,60 +167,74 @@ def _score_with_azure_openai(tickers, strategy: str, horizon_text: str) -> dict:
     )
     return json.loads(resp.choices[0].message.content)
 
+# ---------- Timer Trigger: refresh universe cache ----------
+# Every 6 hours (CRON: {sec} {min} {hour} {day} {month} {day-of-week})
+@app.schedule(schedule="0 0 */6 * * *", arg_name="myTimer", run_on_startup=True, use_monitor=True)
+def refresh_universe(myTimer: func.TimerRequest) -> None:
+    """
+    Precompute and cache the universe on a cadence so HTTP is fast.
+    run_on_startup=True warms the cache right after deployment.
+    """
+    try:
+        tickers = _compute_universe_local()
+        _write_universe_blob(tickers)
+        logging.info(f"[refresh_universe] Cached {len(tickers)} tickers at {UNIVERSE_CONTAINER}/{UNIVERSE_BLOB_NAME}")
+    except Exception as e:
+        logging.exception(f"[refresh_universe] Failed: {e}")
 
-# ---------- Function 0: Health ----------
+# ---------- HTTP: health ----------
 @app.function_name(name="health")
 @app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def health(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse('{"ok": true, "msg": "host running"}', mimetype="application/json")
+    return func.HttpResponse('{"ok": true}', mimetype="application/json")
 
-
-# ---------- Function 1: Universe (run local wb4u_main.py) ----------
+# ---------- HTTP: universe (reads the cache) ----------
 @app.function_name(name="universe")
-@app.route(route="universe", methods=["GET", "POST"], auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="universe", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def get_universe(req: func.HttpRequest) -> func.HttpResponse:
     try:
-        tickers = _run_local_universe()
-        return func.HttpResponse(
-            json.dumps({"ok": True, "tickers": tickers}, ensure_ascii=False),
-            mimetype="application/json"
-        )
+        cached = _read_universe_blob()
+        if not cached:
+            # If cache is empty (first minute after deploy), compute once synchronously as a fallback
+            tickers = _compute_universe_local()
+            _write_universe_blob(tickers)
+            cached = {"ok": True, "tickers": tickers, "updated_utc": datetime.datetime.utcnow().isoformat() + "Z"}
+        else:
+            # optional TTL warning flag
+            try:
+                ts = datetime.datetime.fromisoformat(cached.get("updated_utc","").replace("Z",""))
+                age_min = (datetime.datetime.utcnow() - ts).total_seconds() / 60.0
+                cached["stale"] = age_min > UNIVERSE_TTL_MIN
+            except Exception:
+                cached["stale"] = False
+
+        return func.HttpResponse(json.dumps(cached, ensure_ascii=False), mimetype="application/json")
     except Exception as e:
         logging.exception("universe error")
-        return func.HttpResponse(
-            json.dumps({"ok": False, "error": str(e)}),
-            status_code=500,
-            mimetype="application/json"
-        )
+        return func.HttpResponse(json.dumps({"ok": False, "error": str(e)}), status_code=500, mimetype="application/json")
 
-
-# ---------- Function 2: Rank (Azure OpenAI) ----------
+# ---------- HTTP: rank (uses Azure OpenAI) ----------
 @app.function_name(name="rank")
-@app.route(route="rank", methods=["POST", "GET"], auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="rank", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def rank(req: func.HttpRequest) -> func.HttpResponse:
     try:
         body = _parse_json_body(req)
-
-        # tickers from body or query (?tickers=AAPL,MSFT)
         tickers = body.get("tickers")
         if not tickers:
-            qp = req.params.get("tickers")
-            if qp:
-                tickers = [t.strip().upper() for t in qp.split(",") if t.strip()]
-        if not tickers:
-            return func.HttpResponse(
-                json.dumps({"ok": False, "error": "Provide 'tickers' as JSON array or comma-separated query param."}),
-                status_code=400,
-                mimetype="application/json"
-            )
+            return func.HttpResponse(json.dumps({"ok": False, "error": "Provide 'tickers' as JSON array."}),
+                                     status_code=400, mimetype="application/json")
+
         tickers = [str(t).upper().strip() for t in tickers if str(t).strip()]
+        if not tickers:
+            return func.HttpResponse(json.dumps({"ok": False, "error": "No valid tickers supplied."}),
+                                     status_code=400, mimetype="application/json")
 
-        strategy = (body.get("strategy") or req.params.get("strategy") or "long_term").strip()
+        strategy = (body.get("strategy") or "long_term").strip()
 
-        # Free-form horizon string (back-compat with horizon_years)
-        horizon_text = body.get("horizon") or req.params.get("horizon")
+        horizon_text = body.get("horizon")
         if not horizon_text:
-            hy = body.get("horizon_years") or req.params.get("horizon_years")
+            # Back-compat: horizon_years -> "X years"
+            hy = body.get("horizon_years")
             if hy is not None:
                 try:
                     horizon_text = f"{int(hy)} years"
@@ -218,8 +250,4 @@ def rank(req: func.HttpRequest) -> func.HttpResponse:
         )
     except Exception as e:
         logging.exception("rank error")
-        return func.HttpResponse(
-            json.dumps({"ok": False, "error": str(e)}),
-            status_code=500,
-            mimetype="application/json"
-        )
+        return func.HttpResponse(json.dumps({"ok": False, "error": str(e)}), status_code=500, mimetype="application/json")
