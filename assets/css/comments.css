@@ -43,18 +43,35 @@
   padding: 0.6rem 0.75rem;
   background: #fff;
   font-size: 0.9rem;
+  transition: background 0.2s ease;
 }
+.comment-card:hover {
+  background: #f9faff; /* faint highlight on hover */
+}
+
+/* Name stronger */
 .comment-card .name {
-  font-weight: 600;
+  font-weight: 700;
   color: #0b5fff;
+  font-size: 0.95rem;
+  margin-bottom: 0.2rem;
 }
+
+/* Timestamp subtle */
 .comment-card .date {
   font-size: 0.8rem;
   color: #666;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.4rem;
+  display: block;
 }
-.comment-card p {
-  margin: 0.4rem 0 0;
+
+/* Comment body clearer */
+.comment-card p,
+.comment-card .body {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: #222;
 }
 
 /* Form styling */
