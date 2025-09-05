@@ -16,17 +16,35 @@
 @media (min-width: 900px) {
   .hero .hero-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* Softer panel background + lighter border/shadow */
 .hero-card {
-  background:#fff;
-  border:1px solid rgba(0,0,0,.06);
-  border-radius:12px;
-  box-shadow:0 4px 16px rgba(0,0,0,.06);
-  padding:1.25rem;
+  background:#f9fbff;                 /* was #fff */
+  border:1px solid #e0e6f0;           /* softer border */
+  border-radius:10px;                  /* slightly tighter radius */
+  box-shadow:0 3px 10px rgba(0,0,0,.05); /* subtler shadow */
+  padding:1rem;                        /* a bit tighter */
 }
-.hero-card h1 { margin-top:0 }
+
+/* Smaller hero heading */
+.hero-card h1 {
+  margin-top:0;
+  font-size:clamp(1.25rem, 2vw, 1.6rem);  /* was default; now smaller & responsive */
+  line-height:1.2;
+  font-weight:700;
+  margin-bottom:.5rem;
+}
+
+/* Krish photo smaller */
 .hero-card .hero-photo-card img {
-  width:100%; max-width:420px; height:auto; border-radius:10px;
+  width:100%;
+  max-width:300px;    /* was 420px */
+  height:auto;
+  border-radius:10px;
+  margin:0 auto;      /* center image */
+  display:block;
 }
+
 .hero-card .avatar { width:80px; height:80px; border-radius:8px; object-fit:cover; }
 .hero-card .meta { font-size:.9rem; color:#666; }
 
