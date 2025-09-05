@@ -4,7 +4,6 @@
   font-size: 0.95rem;
   margin: 2rem auto;
   padding: 1rem;
-  background: #fafafa;        /* subtle background card */
   border: 1px solid #eee;
   border-radius: 10px;
 }
@@ -116,7 +115,6 @@
 
 /* Form layout row */
 #comment-form .row {
-  display: flex;
   gap: 1rem;
   flex-wrap: wrap;
 }
