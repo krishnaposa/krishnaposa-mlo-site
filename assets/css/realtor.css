@@ -19,7 +19,6 @@
 
 /* Softer panel background + lighter border/shadow */
 .hero-card {
-  background:#f9fbff;                 /* was #fff */
   border:1px solid #e0e6f0;           /* softer border */
   border-radius:10px;                  /* slightly tighter radius */
   box-shadow:0 3px 10px rgba(0,0,0,.05); /* subtler shadow */
