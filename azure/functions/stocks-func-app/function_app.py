@@ -1,8 +1,9 @@
-import os, json, sys, tempfile, subprocess, shutil, logging
 import azure.functions as func
+import datetime
+import json
+import logging
+import os, json, sys, tempfile, subprocess, shutil, logging
 from openai import AzureOpenAI
-
-# ---- Env vars (App Settings) ----
 GITHUB_REPO   = os.getenv("GITHUB_REPO", "github.com/krishnaposa/wb4u_stock_analysis.git")
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "master")
 WB4U_ENTRY    = os.getenv("WB4U_ENTRY", "wb4u_main.py")
@@ -96,9 +97,11 @@ def _score_with_azure_openai(tickers, strategy: str, horizon_years: int) -> dict
     )
     return json.loads(resp.choices[0].message.content)
 
-@app.function_name(name="wb4u_http")
-@app.route(route="run", methods=["POST","GET"], auth_level=func.AuthLevel.FUNCTION)
-def wb4u_http(req: func.HttpRequest) -> func.HttpResponse:
+
+@app.route(route="stocks_http", auth_level=func.AuthLevel.FUNCTION)
+def stocks_http(req: func.HttpRequest) -> func.HttpResponse:
+    logging.info('Python HTTP trigger function processed a request.')
+
     try:
         payload = req.get_json(silent=True) or {}
         strategy = (payload.get("strategy") or req.params.get("strategy") or "long_term").strip()
