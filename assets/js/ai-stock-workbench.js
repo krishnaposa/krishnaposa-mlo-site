@@ -1,35 +1,44 @@
-// === Hard-wired endpoints (Anonymous auth, no key needed) ===
-const API_BASE = "https://stocks-func-app.azurewebsites.net";
+// === Endpoints (Anonymous auth) ===
+const API_BASE     = "https://stocks-func-app.azurewebsites.net";
 const UNIVERSE_URL = `${API_BASE}/api/universe`;
 const RANK_URL     = `${API_BASE}/api/rank`;
+const REFRESH_URL  = `${API_BASE}/api/refresh`;
+
+// === Refresh key (for /api/refresh) ===
+// If you rotate the key in App Settings (REFRESH_SHARED_KEY), update it here:
+const REFRESH_KEY  = "Xc9v#4pLm2!b7QzR1t8w";
 
 // ---- Elements ----
 const els = {
-  btnUniverse:  document.getElementById('btnUniverse'),
+  btnUniverse:    document.getElementById('btnUniverse'),
   statusUniverse: document.getElementById('statusUniverse'),
-  tickers:      document.getElementById('tickers'),
-  strategy:     document.getElementById('strategy'),
-  horizonText:  document.getElementById('horizonText'),
-  btnRank:      document.getElementById('btnRank'),
-  statusRank:   document.getElementById('statusRank'),
-  resultsTable: document.getElementById('resultsTable'),
-  resultsBody:  document.getElementById('resultsBody'),
-  emptyMsg:     document.getElementById('emptyMsg'),
+  tickers:        document.getElementById('tickers'),
+  strategy:       document.getElementById('strategy'),
+  horizonText:    document.getElementById('horizonText'),
+  btnRank:        document.getElementById('btnRank'),
+  statusRank:     document.getElementById('statusRank'),
+  resultsTable:   document.getElementById('resultsTable'),
+  resultsBody:    document.getElementById('resultsBody'),
+  emptyMsg:       document.getElementById('emptyMsg'),
+  // refresh UI (optional, safe if not present)
+  btnRefresh:     document.getElementById('btnRefresh'),
+  statusRefresh:  document.getElementById('statusRefresh'),
 };
 
 // ---- Helpers ----
 function parseTickers(text){
   const raw = (text || "").toUpperCase();
-  const parts = raw.split(/[\s,]+/).map(s => s.replace(/[^A-Z0-9.\-]/g,'').trim()).filter(Boolean);
+  const parts = raw.split(/[\s,]+/)
+                   .map(s => s.replace(/[^A-Z0-9.\-]/g,'').trim())
+                   .filter(Boolean);
   return [...new Set(parts)];
 }
 
-// Normalize common abbreviations into canonical strings
+// Horizon is OPTIONAL; normalize common shorthands
 function normalizeHorizon(h){
-  if(!h || !h.trim()) return ""; // OPTIONAL now
+  if(!h || !h.trim()) return "";
   let s = h.trim().toLowerCase();
 
-  // Abbreviations -> canonical
   s = s
     .replace(/\byrs?\b/g, "years")
     .replace(/\by\b/g, "years")
@@ -42,18 +51,14 @@ function normalizeHorizon(h){
 
   s = s.replace(/\s{2,}/g, " ").trim();
 
-  // "3years" -> "3 years"
   const m2 = s.match(/^(\d+(?:\.\d+)?)(years|months|days)$/);
   if(m2) return `${m2[1]} ${m2[2]}`;
 
-  // "3 years" / "8 months" / "30 days"
   const m = s.match(/^(\d+(?:\.\d+)?)\s*(years|months|days)$/);
   if(m) return `${m[1]} ${m[2]}`;
 
-  // Just a number? interpret as years
   if(/^\d+(?:\.\d+)?$/.test(s)) return `${s} years`;
 
-  // Otherwise pass through
   return s;
 }
 
@@ -83,36 +88,36 @@ function renderRank(result){
 
 // ---- Actions ----
 async function runUniverse(){
-  els.statusUniverse.textContent = 'Fetching universe…';
-  els.btnUniverse.disabled = true;
+  if(els.statusUniverse) els.statusUniverse.textContent = 'Fetching universe…';
+  if(els.btnUniverse) els.btnUniverse.disabled = true;
   try{
     const res = await fetch(UNIVERSE_URL, { method: 'GET' });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const list = data.tickers || [];
-    els.tickers.value = list.join(', ');
-    els.statusUniverse.textContent = `Loaded ${list.length} tickers. You can edit below.`;
+    if(els.tickers) els.tickers.value = list.join(', ');
+    if(els.statusUniverse) els.statusUniverse.textContent = `Loaded ${list.length} tickers. You can edit below.`;
   }catch(err){
     console.error(err);
-    els.statusUniverse.textContent = `Error: ${err.message}`;
+    if(els.statusUniverse) els.statusUniverse.textContent = `Error: ${err.message}`;
   }finally{
-    els.btnUniverse.disabled = false;
+    if(els.btnUniverse) els.btnUniverse.disabled = false;
   }
 }
 
 async function runRank(){
-  const tickers = parseTickers(els.tickers.value);
+  const tickers = parseTickers(els.tickers?.value || "");
   if(!tickers.length){ alert('Please provide at least one ticker.'); return; }
 
-  const strategy = els.strategy.value;
-  const horizonInput = normalizeHorizon(els.horizonText.value || ""); // OPTIONAL
+  const strategy = els.strategy?.value || 'long_term';
+  const horizonInput = normalizeHorizon(els.horizonText?.value || ""); // OPTIONAL
 
   // Build payload; include horizon ONLY if provided
   const body = { strategy, tickers };
   if(horizonInput) body.horizon = horizonInput;
 
-  els.statusRank.textContent = 'Ranking with AI…';
-  els.btnRank.disabled = true;
+  if(els.statusRank) els.statusRank.textContent = 'Ranking with AI…';
+  if(els.btnRank) els.btnRank.disabled = true;
   try{
     const res = await fetch(RANK_URL, {
       method: 'POST',
@@ -122,7 +127,7 @@ async function runRank(){
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    const payload = data.result || data; // support either shape
+    const payload = data.result || data;
     if(!(payload && (payload.ranked || (data.ok && data.result)))){
       throw new Error(data.error || 'Unexpected response format');
     }
@@ -130,15 +135,38 @@ async function runRank(){
 
     const strat = payload.strategy || strategy;
     const hz = payload.horizon || horizonInput || '';
-    els.statusRank.textContent = `Ranked by ${strat}${hz ? ` (horizon: ${hz})` : ''}.`;
+    if(els.statusRank) els.statusRank.textContent = `Ranked by ${strat}${hz ? ` (horizon: ${hz})` : ''}.`;
   }catch(err){
     console.error(err);
-    els.statusRank.textContent = `Error: ${err.message}`;
+    if(els.statusRank) els.statusRank.textContent = `Error: ${err.message}`;
   }finally{
-    els.btnRank.disabled = false;
+    if(els.btnRank) els.btnRank.disabled = false;
+  }
+}
+
+async function runRefresh(){
+  if(!els.btnRefresh) return; // button not present on page
+  if(els.statusRefresh) els.statusRefresh.textContent = 'Refreshing…';
+  els.btnRefresh.disabled = true;
+  try{
+    const res = await fetch(REFRESH_URL, {
+      method: 'POST',
+      headers: { 'x-refresh-key': REFRESH_KEY }
+    });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json().catch(()=>({ ok:true }));
+    if(els.statusRefresh) els.statusRefresh.textContent = data.ok ? 'Refresh complete.' : (data.message || 'Refreshed.');
+    // Auto-fetch the new universe after a successful refresh:
+    await runUniverse();
+  }catch(err){
+    console.error(err);
+    if(els.statusRefresh) els.statusRefresh.textContent = `Error: ${err.message}`;
+  }finally{
+    els.btnRefresh.disabled = false;
   }
 }
 
 // ---- Wire buttons ----
-document.getElementById('btnUniverse')?.addEventListener('click', runUniverse);
-document.getElementById('btnRank')?.addEventListener('click', runRank);
+els.btnUniverse?.addEventListener('click', runUniverse);
+els.btnRank?.addEventListener('click', runRank);
+els.btnRefresh?.addEventListener('click', runRefresh);
