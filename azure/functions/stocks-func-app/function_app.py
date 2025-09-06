@@ -120,44 +120,97 @@ def _compute_universe_budgeted(max_seconds: int) -> list[str]:
     return cleaned
 
 # ---------- OpenAI ranking ----------
-def _make_prompt(tickers, strategy: str, horizon_text: str):
+def _make_prompt(tickers, strategy: str, horizon_text: str | None = None):
+    """
+    Builds the system+user messages for Azure OpenAI.
+    Horizon is optional. If omitted, prompt/schema won’t include it.
+    """
     system = (
-        "You are an equity analyst. Return ONLY JSON. "
-        "Rank the provided tickers for the chosen strategy with concise reasoning."
+        "You are an equity analyst. Return ONLY JSON.\n"
+        "Rank the provided tickers for the chosen strategy with concise reasoning.\n"
+        "Scores should be on a 0–10 scale (higher is better)."
     )
+
+    # --- Strategy-specific instructions ---
+    STRAT_INSTRUCTIONS = {
+        "long_term":        "Emphasize durable moats, compounding, FCF quality, and drawdown resilience.",
+        "medium_term":      "Focus on 6–24 month setup quality: earnings trend, margin trajectory, valuation re-rate potential.",
+        "swing":            "Evaluate 1–8 week momentum/mean-reversion setups: trend strength, volume, risk areas.",
+        "leaps":            "Suitability for long-dated options: catalysts pipeline, trend quality, IV/liquidity, macro sensitivity.",
+        "short_term_options": "Weeklies/monthlies: near-term catalysts, IV crush risk, liquidity, technicals.",
+        "covered_calls":    "Underlying stability for call writing: dividend safety, beta, pullback risk, implied yield.",
+        "protective_puts":  "Hedge candidates: drawdown risk profile, tail risk factors, correlation benefits.",
+        "value":            "Undervaluation: low P/E/P/B/EV/EBITDA vs peers, FCF yield, balance sheet strength.",
+        "growth":           "Secular growth: revenue/EPS acceleration, TAM expansion, reinvestment runway, unit economics.",
+        "dividend_income":  "Income stability: dividend yield, payout ratio safety, growth history, balance sheet.",
+        "quality":          "Quality bias: high ROE/ROIC, stable margins, low leverage, consistent execution.",
+        "momentum":         "Relative/absolute strength: new highs, breadth, volume confirmation, trend persistence.",
+        "contrarian":       "Mean-reversion asymmetry: oversold extremes, improving revisions, identifiable catalysts.",
+        "tech_innovation":  "AI/semis/software leadership: product velocity, R&D moat, platform effects.",
+        "energy_transition":"Renewables/EV/infrastructure: policy tailwinds, cost curves, supply chains.",
+        "defensive":        "Defensive posture: staples/utilities/healthcare with stable cash flows and low beta.",
+        "cyclical":         "Economic leverage: operating leverage, order books, inventory cycles, sensitivity to PMI/rates.",
+        "earnings_play":    "Earnings skew: revision trends, surprise history, positioning/IV, post-earnings drift.",
+        "merger_arbitrage": "Announced deals: spread, deal risk, regulatory odds, timeline—expected outcome.",
+        "catalyst_trading": "Near-term discrete events: product launches, FDA/regulatory, investor days, macro prints.",
+        "short_squeeze":    "High short interest dynamics: borrow cost, days to cover, rel-vol, technical triggers."
+    }
+
+    base_instruction = STRAT_INSTRUCTIONS.get(
+        strategy,
+        f"Evaluate the '{strategy}' approach with clear, investable reasoning."
+    )
+
+    # Append horizon only if provided
+    if horizon_text:
+        instruction = f"{base_instruction} Horizon: {horizon_text}."
+    else:
+        instruction = base_instruction
+
+    # --- Output schema ---
+    schema_props = {
+        "strategy": {"type": "string"},
+        "ranked": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string"},
+                    "score": {"type": "number"},
+                    "thesis": {"type": "string"},
+                    "risks": {"type": "string"},
+                    "suggested_action": {"type": "string"}
+                },
+                "required": ["ticker", "score", "thesis"]
+            }
+        },
+        "notes": {"type": "string"}
+    }
+    required_fields = ["strategy", "ranked"]
+
+    if horizon_text:  # only include horizon if present
+        schema_props["horizon"] = {"type": "string"}
+        required_fields.append("horizon")
+
     user = {
         "strategy": strategy,
-        "horizon": horizon_text,
         "tickers": tickers,
+        "instructions": instruction,
         "output_format": {
             "type": "object",
-            "properties": {
-                "strategy": {"type": "string"},
-                "horizon": {"type": "string"},
-                "ranked": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "ticker": {"type": "string"},
-                            "score": {"type": "number"},
-                            "thesis": {"type": "string"},
-                            "risks": {"type": "string"},
-                            "suggested_action": {"type": "string"}
-                        },
-                        "required": ["ticker", "score", "thesis"]
-                    }
-                },
-                "notes": {"type": "string"}
-            },
-            "required": ["strategy", "horizon", "ranked"]
+            "properties": schema_props,
+            "required": required_fields
         },
-        "instructions": {
-            "long_term": f"Evaluate long-term durability, compounding and drawdown resilience for the horizon: {horizon_text}.",
-            "leaps": f"Evaluate suitability for LEAP calls over the horizon '{horizon_text}': catalysts, trend quality, IV + liquidity, macro sensitivity.",
-            "swing": f"Evaluate 1–8 week setups relative to the stated horizon '{horizon_text}' with emphasis on momentum and risk control."
-        }.get(strategy, f"Evaluate strategy: {strategy} over horizon '{horizon_text}'.")
+        "scoring_guidance": {
+            "scale": "0-10",
+            "rough_buckets": {"excellent": "8-10", "good": "6-7.9", "ok": "4-5.9", "weak": "<4"}
+        },
+        "format_expectations": "Return valid JSON that matches the schema. Keep theses/risks concise (1-3 lines)."
     }
+
+    if horizon_text:
+        user["horizon"] = horizon_text  # provide context to the model
+
     return system, user
 
 def _score_with_azure_openai(tickers, strategy: str, horizon_text: str) -> dict:
