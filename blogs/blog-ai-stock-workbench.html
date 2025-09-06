@@ -62,9 +62,11 @@
         <div class="card dark">
           <h2>How the picks are built</h2>
           <p class="muted">
-            The universe starts with a Python screen using Finviz-style filters to emphasize large &amp; mega cap liquidity.
+            The universe starts with a Finviz screen filters to emphasize large &amp; mega cap liquidity.
             It then finds strong ETFs and pulls their top two holdings. A final quality pass trims noise.
-            The resulting symbols are sent to AI, which ranks them by the strategy you pick (Long Term, LEAP options, or Swing).
+            These are time base triggers, updating "cache" every 6 hrs that can be <strong>Pulled</strong>.  
+            You can click <strong>Refresh Universe Cache</strong> to update the cache.
+            The list of stocks can be sent to AI to rank them based on a <strong>Strategy</strong> (Long Term, LEAP options, Swing etc).
           </p>
           <p class="note tiny">Education only. Not investment advice. Data and trademarks belong to their respective owners.</p>
         </div>
@@ -108,7 +110,7 @@
               </select>
 
               <label for="horizonText" class="inline-label">Horizon <span class="muted tiny">(optional)</span></label>
-              <input id="horizonText" class="inline-field long" type="text"
+              <input id="horizonText" class="inline-field" type="text"
                      placeholder="e.g., 3 years • 8 months • 30 days">
             </div>
 

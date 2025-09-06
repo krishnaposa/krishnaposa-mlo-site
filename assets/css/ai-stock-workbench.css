@@ -80,7 +80,7 @@
 
 /* Results table */
 .workbench table.rank{
-  width:100%; border-collapse:collapse; background:#0b1220; border-radius:10px; overflow:hidden;
+  width:100%; border-collapse:collapse; background:#0b1220; border-radius:10px; overflow:hidden; font-size: 13px;
 }
 .workbench table.rank thead th{
   background:#0f172a; position:sticky; top:0; z-index:1;
