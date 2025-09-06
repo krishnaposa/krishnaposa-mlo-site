@@ -14,7 +14,7 @@
   <meta name="theme-color" content="#0b5fff">
 
   <title>AI Stock Workbench | Universe + Strategy Ranking</title>
-  <meta name="description" content="Run the universe builder, edit the tickers, then send to AI for strategy-based ranking (Long Term, LEAPs, Swing).">
+  <meta name="description" content="Pull the cached universe, edit the tickers, then send to AI for strategy-based ranking (Long Term, LEAPs, Swing).">
 
   <!-- Canonical -->
   <link rel="canonical" href="https://www.krishposa.com/blogs/blog-ai-stock-workbench.html">
@@ -22,12 +22,12 @@
   <!-- OG/Twitter -->
   <meta property="og:type" content="article">
   <meta property="og:title" content="AI Stock Workbench">
-  <meta property="og:description" content="Fetch screened tickers, edit the list, then rank with AI by your strategy.">
+  <meta property="og:description" content="Fetch screened tickers from cache, edit the list, then rank with AI by your strategy.">
   <meta property="og:url" content="https://www.krishposa.com/blogs/blog-ai-stock-workbench.html">
   <meta property="og:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="AI Stock Workbench">
-  <meta name="twitter:description" content="Universe → Edit → AI Rank. A simple flow for better decisions.">
+  <meta name="twitter:description" content="Cache → Edit → AI Rank. A simple flow for better decisions.">
   <meta name="twitter:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
 
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
@@ -53,7 +53,7 @@
     <section class="page-hero">
       <div class="container">
         <h1>AI Stock Workbench</h1>
-        <p class="small">Run the screen, edit tickers, then get an AI-ranked list for your strategy.</p>
+        <p class="small">Pull the cached universe, edit tickers, then get an AI-ranked list for your strategy.</p>
       </div>
     </section>
 
@@ -70,25 +70,32 @@
         </div>
 
         <div class="card dark">
-          <h2>Run & edit</h2>
+          <h2>Run &amp; edit</h2>
 
-          <!-- Step 1 -->
+          <!-- Step 1: Pull from cache -->
           <div class="row gap">
             <span class="pill">1</span>
-            <button id="btnUniverse" class="btn btn-blue">Run Universe API</button>
+            <button id="btnUniverse" class="btn btn-blue">Pull from Cache</button>
             <span id="statusUniverse" class="status"></span>
           </div>
-<div class="row gap" style="margin-top:10px">
-  <span class="pill">R</span>
-  <button id="btnRefresh" class="btn btn-green">Refresh Universe Cache</button>
-  <span id="statusRefresh" class="status"></span>
-</div>
+
+          <!-- Step R: Refresh cache -->
+          <div class="row gap" style="margin-top:10px">
+            <span class="pill">R</span>
+            <button id="btnRefresh" class="btn btn-green">Refresh Universe Cache</button>
+            <span id="statusRefresh" class="status"></span>
+          </div>
+          <p class="muted tiny" style="margin-top:4px">
+            <strong>Heads up:</strong> Refresh rebuilds the universe on the server and can take time and external data calls. 
+            When it completes, click <em>Pull from Cache</em> to load the updated list.
+          </p>
+
           <div class="row">
             <label for="tickers"><strong>Editable tickers</strong> <span class="tiny muted">(comma or newline separated)</span></label>
           </div>
           <textarea id="tickers" class="tickers" placeholder="AAPL, MSFT, NVDA"></textarea>
 
-          <!-- Step 2 -->
+          <!-- Step 2: Rank -->
           <div class="row gap align-center stack-on-mobile" style="margin-top:10px">
             <span class="pill">2</span>
 
@@ -100,7 +107,7 @@
                 <option value="swing">Swing (1–8 weeks)</option>
               </select>
 
-<label for="horizonText" class="inline-label">Horizon <span class="muted tiny">(optional)</span></label>
+              <label for="horizonText" class="inline-label">Horizon <span class="muted tiny">(optional)</span></label>
               <input id="horizonText" class="inline-field long" type="text"
                      placeholder="e.g., 3 years • 8 months • 30 days">
             </div>
@@ -126,7 +133,7 @@
               </thead>
               <tbody id="resultsBody"></tbody>
             </table>
-            <p id="emptyMsg" class="muted">Run the universe, edit tickers if you want, then click <em>Rank with AI</em>.</p>
+            <p id="emptyMsg" class="muted">Pull from cache, edit tickers if you want, then click <em>Rank with AI</em>.</p>
           </div>
         </div>
       </div>
@@ -150,7 +157,7 @@
   </main>
 
   <!-- Page-specific JS -->
-  <script defer src="https://www.krishposa.com/assets/js/ai-stock-workbench.js?v=3"></script>
+  <script defer src="https://www.krishposa.com/assets/js/ai-stock-workbench.js?v=4"></script>
 
   <div id="footer"></div>
   <script src="https://www.krishposa.com/assets/js/footer.js"></script>
