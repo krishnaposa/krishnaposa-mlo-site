@@ -1,28 +1,30 @@
 // === Endpoints (Anonymous auth) ===
 const API_BASE     = "https://stocks-func-app.azurewebsites.net";
-const UNIVERSE_URL = `${API_BASE}/api/universe`;
+const UNIVERSE_URL = `${API_BASE}/api/universe`;   // returns cached universe (+stale flag)
 const RANK_URL     = `${API_BASE}/api/rank`;
 const REFRESH_URL  = `${API_BASE}/api/refresh`;
 
-// === Refresh key (for /api/refresh) ===
-// If you rotate the key in App Settings (REFRESH_SHARED_KEY), update it here:
+// === Refresh key for /api/refresh (header x-refresh-key) ===
 const REFRESH_KEY  = "Xc9v#4pLm2!b7QzR1t8w";
 
 // ---- Elements ----
 const els = {
+  // cache pull
   btnUniverse:    document.getElementById('btnUniverse'),
   statusUniverse: document.getElementById('statusUniverse'),
+  // refresh
+  btnRefresh:     document.getElementById('btnRefresh'),
+  statusRefresh:  document.getElementById('statusRefresh'),
+  // editing & ranking
   tickers:        document.getElementById('tickers'),
   strategy:       document.getElementById('strategy'),
   horizonText:    document.getElementById('horizonText'),
   btnRank:        document.getElementById('btnRank'),
   statusRank:     document.getElementById('statusRank'),
+  // results
   resultsTable:   document.getElementById('resultsTable'),
   resultsBody:    document.getElementById('resultsBody'),
   emptyMsg:       document.getElementById('emptyMsg'),
-  // refresh UI (optional, safe if not present)
-  btnRefresh:     document.getElementById('btnRefresh'),
-  statusRefresh:  document.getElementById('statusRefresh'),
 };
 
 // ---- Helpers ----
@@ -87,21 +89,50 @@ function renderRank(result){
 }
 
 // ---- Actions ----
-async function runUniverse(){
-  if(els.statusUniverse) els.statusUniverse.textContent = 'Fetching universe…';
-  if(els.btnUniverse) els.btnUniverse.disabled = true;
+
+// Pull from cache (no build). The backend may compute only if nothing exists.
+// We show cache metadata so users know if it's stale.
+async function pullFromCache(){
+  els.statusUniverse.textContent = 'Pulling from cache…';
+  els.btnUniverse.disabled = true;
   try{
     const res = await fetch(UNIVERSE_URL, { method: 'GET' });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+
     const list = data.tickers || [];
-    if(els.tickers) els.tickers.value = list.join(', ');
-    if(els.statusUniverse) els.statusUniverse.textContent = `Loaded ${list.length} tickers. You can edit below.`;
+    els.tickers.value = list.join(', ');
+
+    // Status text with metadata (updated_utc + stale flag if present)
+    const updated = data.updated_utc ? ` • updated ${data.updated_utc.replace('T',' ').replace('Z',' UTC')}` : '';
+    const stale = data.stale ? ' • stale (consider Refresh)' : '';
+    els.statusUniverse.textContent = `Loaded ${list.length} tickers from cache${updated}${stale}.`;
   }catch(err){
     console.error(err);
-    if(els.statusUniverse) els.statusUniverse.textContent = `Error: ${err.message}`;
+    els.statusUniverse.textContent = `Error: ${err.message}`;
   }finally{
-    if(els.btnUniverse) els.btnUniverse.disabled = false;
+    els.btnUniverse.disabled = false;
+  }
+}
+
+async function runRefresh(){
+  if(!els.btnRefresh) return;
+  els.statusRefresh.textContent = 'Refreshing universe on server… this can take a while.';
+  els.btnRefresh.disabled = true;
+  try{
+    const res = await fetch(REFRESH_URL, {
+      method: 'POST',
+      headers: { 'x-refresh-key': REFRESH_KEY }
+    });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json().catch(()=>({ ok:true }));
+    els.statusRefresh.textContent = data.ok ? 'Refresh complete. Click “Pull from Cache” to load the new list.' :
+                                              (data.message || 'Refresh done.');
+  }catch(err){
+    console.error(err);
+    els.statusRefresh.textContent = `Error: ${err.message}`;
+  }finally{
+    els.btnRefresh.disabled = false;
   }
 }
 
@@ -112,12 +143,11 @@ async function runRank(){
   const strategy = els.strategy?.value || 'long_term';
   const horizonInput = normalizeHorizon(els.horizonText?.value || ""); // OPTIONAL
 
-  // Build payload; include horizon ONLY if provided
   const body = { strategy, tickers };
   if(horizonInput) body.horizon = horizonInput;
 
-  if(els.statusRank) els.statusRank.textContent = 'Ranking with AI…';
-  if(els.btnRank) els.btnRank.disabled = true;
+  els.statusRank.textContent = 'Ranking with AI…';
+  els.btnRank.disabled = true;
   try{
     const res = await fetch(RANK_URL, {
       method: 'POST',
@@ -135,38 +165,16 @@ async function runRank(){
 
     const strat = payload.strategy || strategy;
     const hz = payload.horizon || horizonInput || '';
-    if(els.statusRank) els.statusRank.textContent = `Ranked by ${strat}${hz ? ` (horizon: ${hz})` : ''}.`;
+    els.statusRank.textContent = `Ranked by ${strat}${hz ? ` (horizon: ${hz})` : ''}.`;
   }catch(err){
     console.error(err);
-    if(els.statusRank) els.statusRank.textContent = `Error: ${err.message}`;
+    els.statusRank.textContent = `Error: ${err.message}`;
   }finally{
-    if(els.btnRank) els.btnRank.disabled = false;
-  }
-}
-
-async function runRefresh(){
-  if(!els.btnRefresh) return; // button not present on page
-  if(els.statusRefresh) els.statusRefresh.textContent = 'Refreshing…';
-  els.btnRefresh.disabled = true;
-  try{
-    const res = await fetch(REFRESH_URL, {
-      method: 'POST',
-      headers: { 'x-refresh-key': REFRESH_KEY }
-    });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json().catch(()=>({ ok:true }));
-    if(els.statusRefresh) els.statusRefresh.textContent = data.ok ? 'Refresh complete.' : (data.message || 'Refreshed.');
-    // Auto-fetch the new universe after a successful refresh:
-    await runUniverse();
-  }catch(err){
-    console.error(err);
-    if(els.statusRefresh) els.statusRefresh.textContent = `Error: ${err.message}`;
-  }finally{
-    els.btnRefresh.disabled = false;
+    els.btnRank.disabled = false;
   }
 }
 
 // ---- Wire buttons ----
-els.btnUniverse?.addEventListener('click', runUniverse);
-els.btnRank?.addEventListener('click', runRank);
+els.btnUniverse?.addEventListener('click', pullFromCache);
 els.btnRefresh?.addEventListener('click', runRefresh);
+els.btnRank?.addEventListener('click', runRank);
