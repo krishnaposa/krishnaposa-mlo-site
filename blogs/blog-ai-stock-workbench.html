@@ -59,18 +59,19 @@
 
     <section class="content">
       <div class="container narrow workbench">
-        <div class="card dark">
-          <h2>How the picks are built</h2>
-          <p class="muted">
-            The universe starts with a Finviz screen filters to emphasize large &amp; mega cap liquidity.
-            It then finds strong ETFs and pulls their top two holdings. A final quality pass trims noise.
-            These are time base triggers, updating "cache" every 6 hrs that can be <strong>Pulled</strong>.  
-            You can click <strong>Refresh Universe Cache</strong> to update the cache.
-            The list of stocks can be sent to AI to rank them based on a <strong>Strategy</strong> (Long Term, LEAP options, Swing etc).
-          </p>
-          <p class="note tiny">Education only. Not investment advice. Data and trademarks belong to their respective owners.</p>
-        </div>
-
+       
+<div class="card dark">
+  <h2>How the picks are built</h2>
+  <ul class="muted">
+    <li>The universe starts with Finviz screen filters to emphasize large &amp; mega cap liquidity.</li>
+    <li>It then finds strong ETFs and pulls their top two holdings.</li>
+    <li>A final quality pass trims noise from the list.</li>
+    <li>The system updates the “cache” every 6 hours automatically.</li>
+    <li>You can also click <strong>Refresh Universe Cache</strong> to rebuild it on demand.</li>
+    <li>Once pulled, the list of stocks can be sent to AI to rank them based on your selected <strong>Strategy</strong> (Long Term, LEAP options, Swing, etc.).</li>
+  </ul>
+  <p class="note tiny">Education only. Not investment advice. Data and trademarks belong to their respective owners.</p>
+</div>
         <div class="card dark">
           <h2>Run &amp; edit</h2>
 
@@ -98,15 +99,53 @@
           <textarea id="tickers" class="tickers" placeholder="AAPL, MSFT, NVDA"></textarea>
 
           <!-- Step 2: Rank -->
-          <div class="row gap align-center stack-on-mobile" style="margin-top:10px">
+            <div class="row gap align-center stack-on-mobile" style="margin-top:10px">
             <span class="pill">2</span>
 
             <div class="inline-controls">
               <label for="strategy" class="inline-label">Strategy</label>
               <select id="strategy" class="inline-field">
-                <option value="long_term">Long Term</option>
-                <option value="leaps">LEAP Options</option>
-                <option value="swing">Swing (1–8 weeks)</option>
+                <!-- Core horizons -->
+                <optgroup label="Core">
+                  <option value="long_term" selected>Long Term</option>
+                  <option value="medium_term">Medium Term</option>
+                  <option value="swing">Swing (1–8 weeks)</option>
+                  <option value="day_trading">Day Trading</option>
+                </optgroup>
+
+                <!-- Options-oriented -->
+                <optgroup label="Options">
+                  <option value="leaps">LEAP Options</option>
+                  <option value="short_term_options">Short-term Options</option>
+                  <option value="covered_calls">Covered Calls</option>
+                  <option value="protective_puts">Protective Puts</option>
+                </optgroup>
+
+                <!-- Investment styles -->
+                <optgroup label="Styles">
+                  <option value="value">Value</option>
+                  <option value="growth">Growth</option>
+                  <option value="dividend_income">Dividend Income</option>
+                  <option value="quality">Quality</option>
+                  <option value="momentum">Momentum</option>
+                  <option value="contrarian">Contrarian</option>
+                </optgroup>
+
+                <!-- Thematic / sector -->
+                <optgroup label="Thematic / Sector">
+                  <option value="tech_innovation">Tech / Innovation</option>
+                  <option value="energy_transition">Energy Transition</option>
+                  <option value="defensive">Defensive</option>
+                  <option value="cyclical">Cyclical</option>
+                </optgroup>
+
+                <!-- Event-driven / tactical -->
+                <optgroup label="Event-driven / Tactical">
+                  <option value="earnings_play">Earnings Play</option>
+                  <option value="merger_arbitrage">Merger Arbitrage</option>
+                  <option value="catalyst_trading">Catalyst Trading</option>
+                  <option value="short_squeeze">Short Squeeze</option>
+                </optgroup>
               </select>
 
               <label for="horizonText" class="inline-label">Horizon <span class="muted tiny">(optional)</span></label>
