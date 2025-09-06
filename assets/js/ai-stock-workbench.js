@@ -24,9 +24,9 @@ function parseTickers(text){
   return [...new Set(parts)];
 }
 
-// Normalize common abbreviations into canonical strings the API will accept
+// Normalize common abbreviations into canonical strings
 function normalizeHorizon(h){
-  if(!h || !h.trim()) return ""; // backend can default
+  if(!h || !h.trim()) return ""; // OPTIONAL now
   let s = h.trim().toLowerCase();
 
   // Abbreviations -> canonical
@@ -50,7 +50,7 @@ function normalizeHorizon(h){
   const m = s.match(/^(\d+(?:\.\d+)?)\s*(years|months|days)$/);
   if(m) return `${m[1]} ${m[2]}`;
 
-  // Just a number? default to years.
+  // Just a number? interpret as years
   if(/^\d+(?:\.\d+)?$/.test(s)) return `${s} years`;
 
   // Otherwise pass through
@@ -89,9 +89,9 @@ async function runUniverse(){
     const res = await fetch(UNIVERSE_URL, { method: 'GET' });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if(!data.ok) throw new Error(data.error || 'Universe error');
-    els.tickers.value = (data.tickers || []).join(', ');
-    els.statusUniverse.textContent = `Loaded ${data.tickers.length} tickers. You can edit below.`;
+    const list = data.tickers || [];
+    els.tickers.value = list.join(', ');
+    els.statusUniverse.textContent = `Loaded ${list.length} tickers. You can edit below.`;
   }catch(err){
     console.error(err);
     els.statusUniverse.textContent = `Error: ${err.message}`;
@@ -105,8 +105,11 @@ async function runRank(){
   if(!tickers.length){ alert('Please provide at least one ticker.'); return; }
 
   const strategy = els.strategy.value;
-  const horizonInput = normalizeHorizon(els.horizonText.value || "");
-  if(!horizonInput) els.horizonText.value = "3 years"; // UI default if blank
+  const horizonInput = normalizeHorizon(els.horizonText.value || ""); // OPTIONAL
+
+  // Build payload; include horizon ONLY if provided
+  const body = { strategy, tickers };
+  if(horizonInput) body.horizon = horizonInput;
 
   els.statusRank.textContent = 'Ranking with AI…';
   els.btnRank.disabled = true;
@@ -114,11 +117,7 @@ async function runRank(){
     const res = await fetch(RANK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        strategy,
-        horizon: horizonInput || "3 years",
-        tickers
-      })
+      body: JSON.stringify(body)
     });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -128,7 +127,10 @@ async function runRank(){
       throw new Error(data.error || 'Unexpected response format');
     }
     renderRank(payload);
-    els.statusRank.textContent = `Ranked by ${payload.strategy || strategy}${(payload.horizon || horizonInput) ? ` (horizon: ${payload.horizon || horizonInput})` : ""}.`;
+
+    const strat = payload.strategy || strategy;
+    const hz = payload.horizon || horizonInput || '';
+    els.statusRank.textContent = `Ranked by ${strat}${hz ? ` (horizon: ${hz})` : ''}.`;
   }catch(err){
     console.error(err);
     els.statusRank.textContent = `Error: ${err.message}`;
