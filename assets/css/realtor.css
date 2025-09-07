@@ -62,3 +62,59 @@
   display:flex; gap:8px; justify-content:center;
   padding:.5rem; background:#fff; border-top:1px solid #eee;
 }
+/* --- Realtor partners grid & cards --- */
+.realtor-grid {
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+/* Card look to match your current aesthetic */
+.realtor-card {
+  position: relative;
+  background:#fff;
+  border:1px solid #e0e6f0;
+  border-radius:12px;
+  box-shadow:0 3px 10px rgba(0,0,0,.05);
+  padding:1rem;
+  text-align:center;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.realtor-card:hover {
+  transform: translateY(-2px);
+  box-shadow:0 6px 16px rgba(0,0,0,.08);
+}
+
+/* Make the whole card clickable (overlay link) */
+.realtor-card .card-link {
+  position:absolute; inset:0;
+  z-index:1; /* sits above content so any click works */
+  border-radius:12px;
+}
+.realtor-card .card-link:focus { outline: 2px solid #0b5fff; outline-offset: 3px; }
+
+/* Visual content sits above the overlay via z-index */
+.realtor-card .content { position:relative; z-index:2; }
+
+.realtor-card img {
+  max-width:120px; max-height:120px;
+  border-radius:8px; object-fit:contain;
+  display:block; margin:0 auto 0.75rem;
+}
+.realtor-card h2 {
+  margin:.25rem 0 .25rem;
+  font-size:1.15rem; line-height:1.25;
+}
+.realtor-card p { color:#444; font-size:.95rem; margin:.25rem 0; }
+
+/* Button row inside card */
+.realtor-card .actions {
+  margin-top:.75rem;
+  display:flex; gap:.5rem; flex-wrap:wrap; justify-content:center;
+}
+.realtor-card .btn,
+.realtor-card .btn-outline { padding:.45rem .9rem; font-size:.9rem; }
+
+/* Optional hover hint */
+.realtor-card:hover { cursor:pointer; }
