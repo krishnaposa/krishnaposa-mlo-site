@@ -28,7 +28,7 @@
 /* Smaller hero heading */
 .hero-card h1 {
   margin-top:0;
-  font-size:clamp(1.25rem, 2vw, 1.6rem);  /* was default; now smaller & responsive */
+  font-size:clamp(1.25rem, 2vw, 1.6rem);
   line-height:1.2;
   font-weight:700;
   margin-bottom:.5rem;
@@ -37,10 +37,10 @@
 /* Krish photo smaller */
 .hero-card .hero-photo-card img {
   width:100%;
-  max-width:300px;    /* was 420px */
+  max-width:300px;
   height:auto;
   border-radius:10px;
-  margin:0 auto;      /* center image */
+  margin:0 auto;
   display:block;
 }
 
@@ -62,6 +62,7 @@
   display:flex; gap:8px; justify-content:center;
   padding:.5rem; background:#fff; border-top:1px solid #eee;
 }
+
 /* --- Realtor partners grid & cards --- */
 .realtor-grid {
   display:grid;
@@ -70,43 +71,51 @@
   margin-top: 2rem;
 }
 
-/* Card look to match your current aesthetic */
-
+/* Card look (no light background) */
 .realtor-card {
   position: relative;
-  background:#f5f8ff; /* soft light-blue background */
+  background: transparent;                 /* removed lighter panel */
   border:1px solid #d7e2ff;
   border-radius:12px;
-  box-shadow:none; /* no shadow, flatter look */
   padding:1.25rem;
   text-align:center;
-  transition: background .2s ease, transform .15s ease;
+  transition: border-color .2s ease, transform .15s ease;
 }
 .realtor-card:hover {
-  background:#e9efff; /* slightly deeper blue on hover */
+  border-color:#0b5fff;                    /* subtle highlight on hover */
   transform: translateY(-2px);
 }
+
 /* Make the whole card clickable (overlay link) */
 .realtor-card .card-link {
   position:absolute; inset:0;
-  z-index:1; /* sits above content so any click works */
+  z-index:1;                                /* overlay for empty areas */
   border-radius:12px;
 }
 .realtor-card .card-link:focus { outline: 2px solid #0b5fff; outline-offset: 3px; }
 
-/* Visual content sits above the overlay via z-index */
+/* Visual content sits above overlay so buttons remain clickable */
 .realtor-card .content { position:relative; z-index:2; }
 
 .realtor-card img {
   max-width:120px; max-height:120px;
-  border-radius:8px; object-fit:contain;
-  display:block; margin:0 auto 0.75rem;
+  border-radius:8px; object-fit:cover;
+  display:block; margin:0 auto .75rem;
 }
+
+/* Ensure realtor name is visible on dark backgrounds */
 .realtor-card h2 {
   margin:.25rem 0 .25rem;
   font-size:1.15rem; line-height:1.25;
+  font-weight:700;
+  color:#fff;                               /* force readable name */
 }
-.realtor-card p { color:#444; font-size:.95rem; margin:.25rem 0; }
+
+/* Description text with softer contrast */
+.realtor-card p {
+  color:#ccc;                               /* readable on dark bg */
+  font-size:.95rem; margin:.25rem 0;
+}
 
 /* Button row inside card */
 .realtor-card .actions {
