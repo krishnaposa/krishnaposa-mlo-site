@@ -71,21 +71,21 @@
 }
 
 /* Card look to match your current aesthetic */
+
 .realtor-card {
   position: relative;
-  background:#fff;
-  border:1px solid #e0e6f0;
+  background:#f5f8ff; /* soft light-blue background */
+  border:1px solid #d7e2ff;
   border-radius:12px;
-  box-shadow:0 3px 10px rgba(0,0,0,.05);
-  padding:1rem;
+  box-shadow:none; /* no shadow, flatter look */
+  padding:1.25rem;
   text-align:center;
-  transition: transform .15s ease, box-shadow .15s ease;
+  transition: background .2s ease, transform .15s ease;
 }
 .realtor-card:hover {
+  background:#e9efff; /* slightly deeper blue on hover */
   transform: translateY(-2px);
-  box-shadow:0 6px 16px rgba(0,0,0,.08);
 }
-
 /* Make the whole card clickable (overlay link) */
 .realtor-card .card-link {
   position:absolute; inset:0;
