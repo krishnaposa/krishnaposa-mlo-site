@@ -1,0 +1,36 @@
+/* Co-brand strip (global, consistent) */
+.cobrand-strip {
+  background: #0b5fff;
+  color: #fff;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+.cobrand-strip .inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .75rem;
+  padding: .5rem 1rem;
+  flex-wrap: wrap;
+}
+.cobrand-strip img {
+  height: 36px;
+  width: auto;
+  border-radius: 4px;
+  object-fit: cover;
+  display: block;
+}
+.cobrand-strip span {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* guard against other files shrinking images/spacing */
+.cobrand-strip img,
+.cobrand-strip .inner,
+.cobrand-strip span { all: revert; }
+.cobrand-strip { all: revert; background: #0b5fff; color:#fff; font-size:.95rem; line-height:1.2; }
+.cobrand-strip .inner { all: revert; display:flex; align-items:center; justify-content:center; gap:.75rem; padding:.5rem 1rem; flex-wrap:wrap; }
+.cobrand-strip span { all: unset; display:inline-flex; align-items:center; white-space:nowrap; color:#fff; }
+.cobrand-strip img { all: unset; height:36px; width:auto; border-radius:4px; object-fit:cover; display:block; }
