@@ -9,7 +9,7 @@
     document.body.insertAdjacentElement("afterbegin", mount);
   }
 
-  const paths = ["https://www.krishposa.com/realtors/header.html"];
+  const paths = ["https://www.krishposa.com/partials/header.html"];
   let html = null;
   for (const p of paths) {
     try {
