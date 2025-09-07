@@ -1,6 +1,9 @@
-document.addEventListener("DOMContentLoaded", function() {
-  const strip = `
-    <div class="cobrand-strip">
+document.addEventListener("DOMContentLoaded", function () {
+  // Avoid duplicates if the header includes it on some pages
+  if (document.querySelector(".cobrand-strip")) return;
+
+  const stripHTML = `
+    <div class="cobrand-strip" role="region" aria-label="Co-branded">
       <div class="inner">
         <img src="https://www.krishposa.com/assets/img/headshot.jpg" alt="Krish Posa">
         <span>Mortgage by <strong>Krish Posa</strong></span>
@@ -9,5 +12,7 @@ document.addEventListener("DOMContentLoaded", function() {
         <span>In partnership with <strong>GVR Realty LLC</strong></span>
       </div>
     </div>`;
-  document.body.insertAdjacentHTML("afterbegin", strip);
+
+  // Insert right after <body> so it sits above your header include
+  document.body.insertAdjacentHTML("afterbegin", stripHTML);
 });
