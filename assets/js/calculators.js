@@ -65,7 +65,7 @@
   });
 
   // ========================================================
-  // Monthly Payment  (supports 15/30-year terms + ARM selection)
+  // Monthly Payment  (15/30 term + ARM, ARM P+I uses 30-year amortization)
   // ========================================================
   function payCalc() {
     const price = num(document.getElementById("pay_price").value);
@@ -83,21 +83,23 @@
 
     // Read term; default to 30 if control not found
     const termEl = document.getElementById("pay_term");
-    const termYears = termEl ? Math.max(1, parseInt(termEl.value || "30", 10)) : 30;
+    const userTermYears = termEl ? Math.max(1, parseInt(termEl.value || "30", 10)) : 30;
 
-    // Optional ARM subtype (e.g., "5-1", "7-1", "10-1")
+    // ARM subtype informational
     const armTypeEl = document.getElementById("arm_type");
     const armType = armTypeEl ? armTypeEl.value : null;
 
     // For taxes/insurance/MI logic, treat ARM like conventional
     const programForTI = (program === "arm") ? "conventional" : program;
 
-    // Get taxes/ins/pmi/ltv using your engine, but DO NOT use its pAndI (it assumes 30yr)
+    // Get taxes/ins/pmi/ltv using your engine, but DO NOT use its pAndI (assumes 30yr)
     const basis = calc.totalMonthly({ price, down, ratePct, program: programForTI, zip, county });
 
-    // Compute P+I strictly from selected term
+    // ARM rule: payment during fixed period uses 30-year amortization
+    const amortYearsForPI = (program === "arm") ? 30 : userTermYears;
+
     const loanAmount = Math.max(0, price - down);
-    const pAndI = monthlyPI(loanAmount, ratePct, termYears);
+    const pAndI = monthlyPI(loanAmount, ratePct, amortYearsForPI);
 
     const taxesInsPmi = (basis.taxes || 0) + (basis.ins || 0) + (basis.pmi || 0);
     const total = pAndI + taxesInsPmi;
@@ -117,17 +119,23 @@
       pmiNote.textContent = "";
     }
 
+    // Gentle note if user selected 15-year while in ARM
+    const armNote = document.getElementById("arm_note");
+    if (program === "arm" && userTermYears !== 30 && armNote) {
+      armNote.textContent = "ARM payments typically use a 30-year amortization during the fixed period. Calculations here assume 30 years for P+I.";
+    }
+
     if (window.dataLayer) {
       dataLayer.push({
         event: "calc_payment",
         loan_program: program,
-        term_years: termYears,
+        term_years_selected: userTermYears,
+        term_years_used_for_pi: amortYearsForPI,
         arm_type: armType
       });
     }
   }
 
-  // Bind Payment calc + live reactions to changes
   document.getElementById("pay_calc").addEventListener("click", payCalc);
   document.getElementById("pay_reset").addEventListener("click", () => {
     ["pay_pi", "pay_ti", "pay_total"].forEach(id => document.getElementById(id).textContent = "$—");
@@ -142,27 +150,13 @@
     });
   });
 
-  // If the page includes the small enhancer to toggle ARM subtype visibility, it's fine.
-  // Otherwise, this guard will hide/show it if present.
-  (function ensureArmToggle() {
-    const program = document.getElementById('pay_program');
-    const armWrap = document.getElementById('arm_type_wrap');
-    function toggleArm() {
-      if (!program || !armWrap) return;
-      armWrap.style.display = (program.value === 'arm') ? 'block' : 'none';
-    }
-    if (program && armWrap) {
-      program.addEventListener('change', toggleArm);
-      toggleArm();
-    }
-  })();
-
   // ========================================================
   // Refi Break-Even
   // ========================================================
   function refiCalc() {
     const loan = num(document.getElementById("refi_loan").value);
     const oldRateField = (document.getElementById("refi_old_rate").value || cfg.defaultRatePct);
+    aconst = 1; // keep
     const newRateField = (document.getElementById("refi_new_rate").value || cfg.defaultRatePct);
     const costs = num(document.getElementById("refi_costs").value || 0);
 
