@@ -73,3 +73,63 @@
   color: var(--form-help);
   margin-top: 4px;
 }
+
+/* =========================================================
+   Calculator forms (Affordability / Payment / Refi / Extra)
+   Make labels readable and fields balanced on light cards
+   ========================================================= */
+
+#affForm label,
+#payForm label,
+#refiForm label,
+#extraForm label {
+  color: #222;        /* visible on light background */
+  font-weight: 600;
+  display: block;
+  margin-bottom: .25rem;
+}
+
+#affForm input, #affForm select, #affForm textarea,
+#payForm input, #payForm select, #payForm textarea,
+#refiForm input, #refiForm select, #refiForm textarea,
+#extraForm input, #extraForm select, #extraForm textarea {
+  color: #111;
+  background-color: #fff;
+  border: 1px solid #e2e8f0;   /* light gray */
+  border-radius: 6px;
+  padding: .45rem .6rem;
+}
+
+#affForm ::placeholder,
+#payForm ::placeholder,
+#refiForm ::placeholder,
+#extraForm ::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
+#affForm .tiny, #affForm .small, #affForm .help-tip,
+#payForm .tiny, #payForm .small, #payForm .help-tip,
+#refiForm .tiny, #refiForm .small, #refiForm .help-tip,
+#extraForm .tiny, #extraForm .small, #extraForm .help-tip {
+  color: #64748b;   /* soft slate for helper text */
+}
+
+#affForm input:focus, #affForm select:focus, #affForm textarea:focus,
+#payForm input:focus, #payForm select:focus, #payForm textarea:focus,
+#refiForm input:focus, #refiForm select:focus, #refiForm textarea:focus,
+#extraForm input:focus, #extraForm select:focus, #extraForm textarea:focus {
+  outline: 2px solid rgba(59,130,246,.35);   /* blue focus ring */
+  outline-offset: 2px;
+  border-color: rgba(59,130,246,.55);
+}
+
+/* Keep the little "i" badge readable on light cards too */
+#affForm .help, #payForm .help, #refiForm .help, #extraForm .help {
+  color: #475569;
+  border-color: rgba(71,85,105,.5);
+}
+#affForm .help:hover, #payForm .help:hover,
+#refiForm .help:hover, #extraForm .help:hover {
+  background: rgba(71,85,105,.08);
+}
