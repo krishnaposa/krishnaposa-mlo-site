@@ -5,11 +5,7 @@
       "type": "httpTrigger",
       "direction": "in",
       "name": "req",
-      "methods": [
-        "get",
-        "post",
-        "options"
-      ],
+      "methods": [ "post", "options" ],
       "route": "realtorSubmit"
     },
     {
