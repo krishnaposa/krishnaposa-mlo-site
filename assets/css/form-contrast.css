@@ -83,7 +83,7 @@
 #payForm label,
 #refiForm label,
 #extraForm label {
-  color: #222;        /* visible on light background */
+  color: white;        /* visible on light background */
   font-weight: 600;
   display: block;
   margin-bottom: .25rem;
