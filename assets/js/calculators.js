@@ -2,9 +2,19 @@
 (function () {
   const { parseNumber: num, fmtCurrency: fmt, fmtPercent: pct, calc, cfg } = window.MortgageCalc;
 
-  // ---------- Affordability ----------
-  // Target DTI for affordability. You can tweak this to 0.41–0.45 range if desired.
-  const AFF_DTI_TARGET = 0.43;
+  // ---------- Shared amortization helper (used by Payment + Refi + Extra) ----------
+  function monthlyPI(loan, ratePct, years = 30) {
+    const n = years * 12;
+    const m = (ratePct / 100) / 12;
+    if (m === 0) return loan / n;
+    const pow = Math.pow(1 + m, n);
+    return loan * (m * pow) / (pow - 1);
+  }
+
+  // ========================================================
+  // Affordability
+  // ========================================================
+  const AFF_DTI_TARGET = 0.43; // tweak 0.41–0.45 as desired
 
   function priceFromConstraints({ income, debts, ratePct, down, zip, county }) {
     let lo = 50_000, hi = 2_000_000, guess = 0, best = 0;
@@ -30,7 +40,6 @@
 
     if (!income) { alert("Please enter gross monthly income."); return; }
 
-    // If down given as percent, iterate with that percent; else use absolute
     function computePrice() {
       let priceGuess = priceFromConstraints({ income, debts, ratePct, down: 0, zip, county });
       if (downInput.endsWith("%")) {
@@ -55,54 +64,52 @@
     document.getElementById("aff_note").textContent = "";
   });
 
-  // ---------- Shared amortization helper (used by Refi + Payment overrides) ----------
-  function monthlyPI(loan, ratePct, years = 30) {
-    const n = years * 12;
-    const m = (ratePct / 100) / 12;
-    if (m === 0) return loan / n;
-    const pow = Math.pow(1 + m, n);
-    return loan * (m * pow) / (pow - 1);
-  }
-
-  // ---------- Monthly Payment ----------
+  // ========================================================
+  // Monthly Payment  (supports 15/30-year terms + ARM selection)
+  // ========================================================
   function payCalc() {
     const price = num(document.getElementById("pay_price").value);
+    if (!price) { alert("Please enter home price."); return; }
+
     const downInput = (document.getElementById("pay_down").value || "").trim();
     const down = downInput.endsWith("%") ? price * num(downInput) : num(downInput || 0);
+
     const rateField = (document.getElementById("pay_rate").value || cfg.defaultRatePct);
     const ratePct = (rateField.toString().trim().endsWith("%") ? num(rateField) * 100 : num(rateField));
+
     const zip = (document.getElementById("pay_zip").value || "").trim();
     const county = (document.getElementById("pay_county").value || "").trim() || null;
     const program = document.getElementById("pay_program").value;
 
-    // New: read term + ARM type (if present)
+    // Read term; default to 30 if control not found
     const termEl = document.getElementById("pay_term");
-    const termYears = Math.max(1, parseInt(termEl ? termEl.value : "30", 10));
-    const armType = (document.getElementById("arm_type") && document.getElementById("arm_type").value) || null;
+    const termYears = termEl ? Math.max(1, parseInt(termEl.value || "30", 10)) : 30;
 
-    if (!price) { alert("Please enter home price."); return; }
+    // Optional ARM subtype (e.g., "5-1", "7-1", "10-1")
+    const armTypeEl = document.getElementById("arm_type");
+    const armType = armTypeEl ? armTypeEl.value : null;
 
-    // For taxes/insurance/MI logic, treat ARM like conventional.
+    // For taxes/insurance/MI logic, treat ARM like conventional
     const programForTI = (program === "arm") ? "conventional" : program;
 
-    // Base components using your MortgageCalc engine (for taxes, ins, pmi, ltv, etc.)
-    const res = calc.totalMonthly({ price, down, ratePct, program: programForTI, zip, county });
+    // Get taxes/ins/pmi/ltv using your engine, but DO NOT use its pAndI (it assumes 30yr)
+    const basis = calc.totalMonthly({ price, down, ratePct, program: programForTI, zip, county });
 
-    // Override P+I to respect selected term (15 or 30) and ARM choice.
+    // Compute P+I strictly from selected term
     const loanAmount = Math.max(0, price - down);
-    let pAndI = monthlyPI(loanAmount, ratePct, termYears);
+    const pAndI = monthlyPI(loanAmount, ratePct, termYears);
 
-    // Recompose totals with the overridden P+I
-    const taxesInsPmi = res.taxes + res.ins + res.pmi;
+    const taxesInsPmi = (basis.taxes || 0) + (basis.ins || 0) + (basis.pmi || 0);
     const total = pAndI + taxesInsPmi;
 
+    // Render
     document.getElementById("pay_pi").textContent = fmt(pAndI);
     document.getElementById("pay_ti").textContent = fmt(taxesInsPmi);
     document.getElementById("pay_total").textContent = fmt(total);
 
-    // PMI note: show for Conventional and ARM when LTV > 80%
+    // PMI note for Conventional + ARM when LTV > 80%
     const pmiNote = document.getElementById("pay_pmi_note");
-    if ((programForTI === "conventional") && res.ltv > 0.80) {
+    if ((programForTI === "conventional") && basis.ltv > 0.80) {
       pmiNote.style.display = "";
       pmiNote.textContent = "PMI estimated due to LTV above 80 percent. It can fall off when equity improves.";
     } else {
@@ -114,13 +121,13 @@
       dataLayer.push({
         event: "calc_payment",
         loan_program: program,
-        loan_program_for_ti: programForTI,
         term_years: termYears,
         arm_type: armType
       });
     }
   }
 
+  // Bind Payment calc + live reactions to changes
   document.getElementById("pay_calc").addEventListener("click", payCalc);
   document.getElementById("pay_reset").addEventListener("click", () => {
     ["pay_pi", "pay_ti", "pay_total"].forEach(id => document.getElementById(id).textContent = "$—");
@@ -128,7 +135,31 @@
     n.style.display = "none"; n.textContent = "";
   });
 
-  // ---------- Refi Break-Even ----------
+  ["pay_term","pay_program","arm_type","pay_rate","pay_down","pay_price","pay_zip","pay_county"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", () => {
+      if (num(document.getElementById("pay_price").value)) payCalc();
+    });
+  });
+
+  // If the page includes the small enhancer to toggle ARM subtype visibility, it's fine.
+  // Otherwise, this guard will hide/show it if present.
+  (function ensureArmToggle() {
+    const program = document.getElementById('pay_program');
+    const armWrap = document.getElementById('arm_type_wrap');
+    function toggleArm() {
+      if (!program || !armWrap) return;
+      armWrap.style.display = (program.value === 'arm') ? 'block' : 'none';
+    }
+    if (program && armWrap) {
+      program.addEventListener('change', toggleArm);
+      toggleArm();
+    }
+  })();
+
+  // ========================================================
+  // Refi Break-Even
+  // ========================================================
   function refiCalc() {
     const loan = num(document.getElementById("refi_loan").value);
     const oldRateField = (document.getElementById("refi_old_rate").value || cfg.defaultRatePct);
@@ -157,7 +188,9 @@
     document.getElementById("refi_months").textContent = "—";
   });
 
-  // ---------- Extra Payment Impact ----------
+  // ========================================================
+  // Extra Payment Impact
+  // ========================================================
   function extraCalc() {
     const loan = num(document.getElementById("extra_loan").value);
     const rateField = (document.getElementById("extra_rate").value || cfg.defaultRatePct);
@@ -205,7 +238,9 @@
     document.getElementById("extra_note").textContent = "";
   });
 
-  // ---------- Print-to-PDF (single panel) ----------
+  // ========================================================
+  // Print-to-PDF (single panel)
+  // ========================================================
   function printPanel(selector, title = "Mortgage Calculator") {
     const node = document.querySelector(selector);
     if (!node) return alert("Section not found.");
@@ -239,7 +274,6 @@
     win.document.close();
   }
 
-  // Bind buttons
   document.querySelectorAll('[data-print]').forEach(btn => {
     btn.addEventListener('click', () => {
       const sel = btn.getAttribute('data-print');
