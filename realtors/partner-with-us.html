@@ -44,6 +44,30 @@
 
   <!-- Site JS -->
   <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
+  <!-- Submit handler -->
+  <script defer src="https://www.krishposa.com/assets/js/realtor-submit.js?v=1"></script>
+
+  <style>
+    /* Minimal form styles so it matches your site */
+    .form-grid { display:grid; gap:12px; grid-template-columns:1fr; }
+    @media (min-width: 780px) { .form-grid { grid-template-columns: 1fr 1fr; } .span-2 { grid-column:1/-1; } }
+    .field { display:flex; flex-direction:column; gap:.25rem; }
+    .field label { font-weight:600; }
+    .field input, .field textarea {
+      border:1px solid rgba(0,0,0,.12); border-radius:8px; padding:.65rem .75rem; font:inherit;
+      background:#fff;
+    }
+    .field input:focus, .field textarea:focus { outline: none; border-color:#0b5fff; box-shadow:0 0 0 3px rgba(11,95,255,.12); }
+    .help { font-size:.85rem; color:#6b7280; }
+    .error { color:#b91c1c; font-size:.9rem; margin-top:.25rem; }
+    .success-banner, .error-banner {
+      padding:.75rem 1rem; border-radius:10px; margin:.75rem 0; font-weight:600;
+    }
+    .success-banner { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
+    .error-banner { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+    /* Honeypot stays hidden from users but visible to bots */
+    .hp-wrap { position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
+  </style>
 </head>
 <body>
   <!-- GTM (noscript) -->
@@ -102,23 +126,64 @@
       </div>
     </section>
 
-    <!-- APPLY (Google Form embed) -->
+    <!-- APPLY (Native form) -->
     <section id="apply" class="container wide">
       <div class="card">
         <h2 style="margin:0 0 .25rem">Apply to Partner</h2>
         <p class="small" style="margin:.25rem 0 1rem">Complete the quick form below. I’ll review and follow up within one business day.</p>
 
-        <!-- Replace the src below with your live Google Form "embed" link -->
-        <div style="position:relative;padding-bottom:0;height:0;overflow:hidden">
-          <iframe
-            src="https://docs.google.com/forms/d/e/REPLACE_WITH_YOUR_FORM_ID/viewform?embedded=true"
-            width="100%" height="1200" frameborder="0" marginheight="0" marginwidth="0"
-            onload="window.dataLayer=window.dataLayer||[];dataLayer.push({event:'realtor_form_loaded'});">
-            Loading…
-          </iframe>
-        </div>
+        <div id="realtor-alert" aria-live="polite"></div>
 
-        <p class="tiny" style="margin-top:.5rem">Form opens inside this page. If you prefer, <a href="https://docs.google.com/forms/d/e/REPLACE_WITH_YOUR_FORM_ID/viewform" target="_blank" rel="noopener">open it in a new tab</a>.</p>
+        <form id="realtor-form" novalidate>
+          <!-- honeypot + load timestamp -->
+          <div class="hp-wrap" aria-hidden="true">
+            <label>Website <input type="text" name="website" autocomplete="off"></label>
+          </div>
+          <input type="hidden" name="loadedAt" id="loadedAt">
+
+          <div class="form-grid">
+            <div class="field">
+              <label for="name">Full name *</label>
+              <input id="name" name="name" type="text" required placeholder="Jane Agent">
+              <div class="error" data-error-for="name"></div>
+            </div>
+
+            <div class="field">
+              <label for="email">Email *</label>
+              <input id="email" name="email" type="email" required placeholder="jane@example.org" inputmode="email">
+              <div class="error" data-error-for="email"></div>
+            </div>
+
+            <div class="field">
+              <label for="phone">Phone</label>
+              <input id="phone" name="phone" type="tel" placeholder="678-555-1212" inputmode="tel">
+              <div class="help">Digits only or standard formatting is fine.</div>
+            </div>
+
+            <div class="field">
+              <label for="firm">Brokerage / Team</label>
+              <input id="firm" name="firm" type="text" placeholder="GVR Realty LLC">
+            </div>
+
+            <div class="field span-2">
+              <label for="logo">Logo URL</label>
+              <input id="logo" name="logo" type="url" placeholder="https://example.com/logo.png" inputmode="url">
+            </div>
+
+            <div class="field span-2">
+              <label for="notes">Notes</label>
+              <textarea id="notes" name="notes" rows="4" placeholder="Areas served, buyer profile, links, etc."></textarea>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:.5rem; align-items:center; margin-top:12px;">
+            <button class="btn btn-blue" type="submit" id="submitBtn">Submit</button>
+            <button class="btn-outline" type="reset">Clear</button>
+            <span id="formStatus" class="help" style="margin-left:.5rem;"></span>
+          </div>
+        </form>
+
+        <p class="tiny" style="margin-top:.75rem">By submitting, you agree we may contact you regarding this program.</p>
       </div>
     </section>
 
