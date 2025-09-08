@@ -55,6 +55,15 @@
     document.getElementById("aff_note").textContent = "";
   });
 
+  // ---------- Shared amortization helper (used by Refi + Payment overrides) ----------
+  function monthlyPI(loan, ratePct, years = 30) {
+    const n = years * 12;
+    const m = (ratePct / 100) / 12;
+    if (m === 0) return loan / n;
+    const pow = Math.pow(1 + m, n);
+    return loan * (m * pow) / (pow - 1);
+  }
+
   // ---------- Monthly Payment ----------
   function payCalc() {
     const price = num(document.getElementById("pay_price").value);
@@ -66,15 +75,34 @@
     const county = (document.getElementById("pay_county").value || "").trim() || null;
     const program = document.getElementById("pay_program").value;
 
+    // New: read term + ARM type (if present)
+    const termEl = document.getElementById("pay_term");
+    const termYears = Math.max(1, parseInt(termEl ? termEl.value : "30", 10));
+    const armType = (document.getElementById("arm_type") && document.getElementById("arm_type").value) || null;
+
     if (!price) { alert("Please enter home price."); return; }
 
-    const res = calc.totalMonthly({ price, down, ratePct, program, zip, county });
-    document.getElementById("pay_pi").textContent = fmt(res.pAndI);
-    document.getElementById("pay_ti").textContent = fmt(res.taxes + res.ins + res.pmi);
-    document.getElementById("pay_total").textContent = fmt(res.total);
+    // For taxes/insurance/MI logic, treat ARM like conventional.
+    const programForTI = (program === "arm") ? "conventional" : program;
 
+    // Base components using your MortgageCalc engine (for taxes, ins, pmi, ltv, etc.)
+    const res = calc.totalMonthly({ price, down, ratePct, program: programForTI, zip, county });
+
+    // Override P+I to respect selected term (15 or 30) and ARM choice.
+    const loanAmount = Math.max(0, price - down);
+    let pAndI = monthlyPI(loanAmount, ratePct, termYears);
+
+    // Recompose totals with the overridden P+I
+    const taxesInsPmi = res.taxes + res.ins + res.pmi;
+    const total = pAndI + taxesInsPmi;
+
+    document.getElementById("pay_pi").textContent = fmt(pAndI);
+    document.getElementById("pay_ti").textContent = fmt(taxesInsPmi);
+    document.getElementById("pay_total").textContent = fmt(total);
+
+    // PMI note: show for Conventional and ARM when LTV > 80%
     const pmiNote = document.getElementById("pay_pmi_note");
-    if (program === "conventional" && res.ltv > 0.80) {
+    if ((programForTI === "conventional") && res.ltv > 0.80) {
       pmiNote.style.display = "";
       pmiNote.textContent = "PMI estimated due to LTV above 80 percent. It can fall off when equity improves.";
     } else {
@@ -82,7 +110,15 @@
       pmiNote.textContent = "";
     }
 
-    if (window.dataLayer) dataLayer.push({ event: "calc_payment" });
+    if (window.dataLayer) {
+      dataLayer.push({
+        event: "calc_payment",
+        loan_program: program,
+        loan_program_for_ti: programForTI,
+        term_years: termYears,
+        arm_type: armType
+      });
+    }
   }
 
   document.getElementById("pay_calc").addEventListener("click", payCalc);
@@ -93,13 +129,6 @@
   });
 
   // ---------- Refi Break-Even ----------
-  function monthlyPI(loan, ratePct, years = 30) {
-    const n = years * 12;
-    const m = (ratePct / 100) / 12;
-    if (m === 0) return loan / n;
-    const pow = Math.pow(1 + m, n);
-    return loan * (m * pow) / (pow - 1);
-  }
   function refiCalc() {
     const loan = num(document.getElementById("refi_loan").value);
     const oldRateField = (document.getElementById("refi_old_rate").value || cfg.defaultRatePct);
