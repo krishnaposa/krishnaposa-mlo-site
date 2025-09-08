@@ -143,61 +143,90 @@
           </form>
         </div>
 
-        <!-- Monthly Payment -->
-        <div class="card" id="payCard">
-          <h2 style="margin:0 0 .25rem">Monthly Payment</h2>
-          <p class="small">Break down principal and interest, taxes, insurance, PMI.</p>
-          <form id="payForm">
-            <div class="field">
-              <label for="pay_price">Home Price</label>
-              <input id="pay_price" inputmode="decimal" placeholder="400000" required>
-            </div>
-            <div class="field">
-              <label for="pay_down">Down Payment</label>
-              <input id="pay_down" inputmode="decimal" placeholder="80000 or 20%">
-            </div>
-            <div class="field">
-              <label for="pay_rate">Estimated Rate</label>
-              <input id="pay_rate" inputmode="decimal" placeholder="6.75%">
-            </div>
-            <div class="field">
-              <label for="pay_zip">ZIP (for taxes)</label>
-              <input id="pay_zip" inputmode="numeric" pattern="\\d{5}" placeholder="30301">
-            </div>
-          <div class="field">
-  <label for="pay_county">
-    County (optional)
-    <span class="help" aria-label="Info" title="Uses midpoint county-wide effective property tax rates to tighten monthly estimates. Actual taxes vary by city millage and exemptions (e.g., homestead).">i</span>
-  </label>
-  <select id="pay_county">
-    <option value="">— Select county —</option>
-    <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
-    <option>DeKalb</option><option>Forsyth</option>
-  </select>
-  <span class="help-tip">If both County and ZIP are provided, County takes priority for taxes.</span>
+      <!-- Monthly Payment -->
+<div class="card" id="payCard">
+  <h2 style="margin:0 0 .25rem">Monthly Payment</h2>
+  <p class="small">Break down principal and interest, taxes, insurance, PMI.</p>
+  <form id="payForm">
+    <div class="field">
+      <label for="pay_price">Home Price</label>
+      <input id="pay_price" inputmode="decimal" placeholder="400000" required>
+    </div>
+
+    <div class="field">
+      <label for="pay_down">Down Payment</label>
+      <input id="pay_down" inputmode="decimal" placeholder="80000 or 20%">
+    </div>
+
+    <div class="field">
+      <label for="pay_rate">Estimated Rate</label>
+      <input id="pay_rate" inputmode="decimal" placeholder="6.75%">
+    </div>
+
+    <div class="field">
+      <label for="pay_zip">ZIP (for taxes)</label>
+      <input id="pay_zip" inputmode="numeric" pattern="\\d{5}" placeholder="30301">
+    </div>
+
+    <div class="field">
+      <label for="pay_county">
+        County (optional)
+        <span class="help" aria-label="Info" title="Uses midpoint county-wide effective property tax rates to tighten monthly estimates. Actual taxes vary by city millage and exemptions.">i</span>
+      </label>
+      <select id="pay_county">
+        <option value="">— Select county —</option>
+        <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
+        <option>DeKalb</option><option>Forsyth</option>
+      </select>
+      <span class="help-tip">If both County and ZIP are provided, County takes priority for taxes.</span>
+    </div>
+
+    <div class="field">
+      <label for="pay_program">Program</label>
+      <select id="pay_program">
+        <option value="conventional" selected>Conventional (Fixed)</option>
+        <option value="arm">Conventional ARM</option>
+        <option value="fha">FHA</option>
+        <option value="va">VA</option>
+        <option value="usda">USDA</option>
+        <option value="jumbo">Jumbo</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="pay_term">Term</label>
+      <select id="pay_term">
+        <option value="30" selected>30 years</option>
+        <option value="15">15 years</option>
+      </select>
+    </div>
+
+    <!-- ARM subtype (shown only when Program = ARM) -->
+    <div class="field" id="arm_type_wrap" style="display:none">
+      <label for="arm_type">ARM Type</label>
+      <select id="arm_type">
+        <option value="5-1" selected>5/1 ARM</option>
+        <option value="7-1">7/1 ARM</option>
+        <option value="10-1">10/1 ARM</option>
+      </select>
+      <p class="tiny" id="arm_note">
+        Payment shown uses today’s rate for the fixed period with 30-year amortization. After the fixed period, the payment can change.
+      </p>
+    </div>
+
+    <div class="cta" style="gap:.5rem;margin-top:.5rem">
+      <button class="btn btn-blue" type="button" id="pay_calc">Calculate</button>
+      <button class="btn-outline" type="reset" id="pay_reset">Reset</button>
+    </div>
+
+    <div class="grid-3" style="margin-top:.5rem">
+      <div class="card"><strong>P + I</strong><p id="pay_pi" style="margin:.35rem 0 0">$—</p></div>
+      <div class="card"><strong>Taxes + Ins + PMI</strong><p id="pay_ti" style="margin:.35rem 0 0">$—</p></div>
+      <div class="card"><strong>Total Monthly</strong><p id="pay_total" style="margin:.35rem 0 0">$—</p></div>
+    </div>
+    <p class="tiny" id="pay_pmi_note" style="display:none"></p>
+  </form>
 </div>
-            <div class="field">
-              <label for="pay_program">Program</label>
-              <select id="pay_program">
-                <option value="conventional">Conventional</option>
-                <option value="fha">FHA</option>
-                <option value="va">VA</option>
-                <option value="usda">USDA</option>
-                <option value="jumbo">Jumbo</option>
-              </select>
-            </div>
-            <div class="cta" style="gap:.5rem;margin-top:.5rem">
-              <button class="btn btn-blue" type="button" id="pay_calc">Calculate</button>
-              <button class="btn-outline" type="reset" id="pay_reset">Reset</button>
-            </div>
-            <div class="grid-3" style="margin-top:.5rem">
-              <div class="card"><strong>P + I</strong><p id="pay_pi" style="margin:.35rem 0 0">$—</p></div>
-              <div class="card"><strong>Taxes + Ins + PMI</strong><p id="pay_ti" style="margin:.35rem 0 0">$—</p></div>
-              <div class="card"><strong>Total Monthly</strong><p id="pay_total" style="margin:.35rem 0 0">$—</p></div>
-            </div>
-            <p class="tiny" id="pay_pmi_note" style="display:none"></p>
-          </form>
-        </div>
 
         <!-- Refi Break-Even -->
         <div class="card" id="refiCard">
