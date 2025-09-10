@@ -178,6 +178,7 @@
   line-height:1.25;
   max-width:38ch;
   word-wrap:break-word;
+  width: auto
 }
 
 /* Error text */
