@@ -1,0 +1,20 @@
+{
+  "bindings": [
+    {
+      "authLevel": "anonymous",
+      "type": "httpTrigger",
+      "direction": "in",
+      "name": "req",
+      "methods": [ "post" ],
+      "route": "submit"
+    },
+    { "type": "http", "direction": "out", "name": "res" },
+    {
+      "type": "queue",
+      "direction": "out",
+      "name": "msg",
+      "queueName": "%QUEUE_NAME%",
+      "connection": "STORAGE_CONN"
+    }
+  ]
+}
