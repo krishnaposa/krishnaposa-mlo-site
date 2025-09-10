@@ -1,6 +1,6 @@
 (function () {
   // ===== CONFIG =====
-  // Use your real function URL (anonymous). Do not include a function key in public code.
+  // Use your real function URL (anonymous)
   const API_URL = "https://realtors-func-app-gbdufbcvazegue7ew.eastus2-01.azurewebsites.net/api/realtorSubmit";
 
   const form = document.getElementById("realtor-form");
@@ -28,15 +28,26 @@
     if (el) el.textContent = msg || "";
   }
 
+  function normHandleOrUrl(v) {
+    v = (v || "").trim();
+    if (!v) return "";
+    // If it looks like a URL, keep as-is; otherwise strip leading @
+    if (/^https?:\/\//i.test(v)) return v;
+    return v.replace(/^@+/, "");
+  }
+
   function validate() {
     let ok = true;
+    setFieldError("firm", "");
     setFieldError("name", "");
     setFieldError("email", "");
 
+    const firm = form.firm.value.trim();
     const name = form.name.value.trim();
     const email = form.email.value.trim();
 
-    if (!name) { setFieldError("name", "Please enter your full name."); ok = false; }
+    if (!firm) { setFieldError("firm", "Please enter the company name."); ok = false; }
+    if (!name) { setFieldError("name", "Please enter the primary contact name."); ok = false; }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setFieldError("email", "Please enter a valid email.");
       ok = false;
@@ -64,11 +75,17 @@
     setBusy(true);
 
     const payload = {
+      firm: form.firm.value.trim(),
+      caption: form.caption.value.trim(),
       name: form.name.value.trim(),
       email: form.email.value.trim(),
       phone: form.phone.value.trim(),
-      firm: form.firm.value.trim(),
+      address: form.address.value.trim(),
+      whatsapp: form.whatsapp.value.trim(),
+      facebook: normHandleOrUrl(form.facebook.value),
+      instagram: normHandleOrUrl(form.instagram.value),
       logo: form.logo.value.trim(),
+      ownerPic: form.ownerPic.value.trim(),
       notes: form.notes.value.trim()
     };
 
@@ -76,8 +93,7 @@
       const res = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        // No credentials; CORS handled in the Function
+        body: JSON.stringify(payload)
       });
 
       const data = await res.json().catch(() => ({}));
@@ -94,7 +110,7 @@
 
       // GTM
       window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({ event: "realtor_submit_success", email: payload.email, firm: payload.firm || "" });
+      window.dataLayer.push({ event: "realtor_submit_success", firm: payload.firm });
 
     } catch (err) {
       console.error(err);
