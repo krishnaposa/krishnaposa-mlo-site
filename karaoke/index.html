@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <!-- GTM -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-XXXXXXX');</script>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karaoke Split – Vocals to Buds, Band to Speakers</title>
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
+  <style>
+    .container{max-width:960px;margin:0 auto;padding:16px}
+    .card{background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:18px}
+    .field{display:flex;flex-direction:column;gap:.4rem;margin:.5rem 0}
+    .btn{appearance:none;border:none;border-radius:10px;padding:.7rem 1rem;font-weight:600;cursor:pointer}
+    .btn-blue{background:#0b5fff;color:#fff}
+    .btn-outline{border:1px solid rgba(0,0,0,.2);background:#fff}
+    .row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+    .help{color:#6b7280}
+    .error{color:#b91c1c}
+    .success{color:#065f46}
+    .hide{display:none}
+  </style>
+</head>
+<body>
+<main class="container">
+  <section class="card">
+    <h1>Karaoke Split</h1>
+    <p class="help">Upload a song OR paste a YouTube link. We’ll process asynchronously—leave the tab open; we’ll auto-refresh status.</p>
+
+    <div class="field">
+      <label for="file">Upload (mp3/wav)</label>
+      <input id="file" type="file" accept=".mp3,.wav,.flac,.m4a,.aac">
+    </div>
+
+    <div class="field">
+      <label for="yt">…or YouTube link</label>
+      <input id="yt" type="url" placeholder="https://www.youtube.com/watch?v=...">
+    </div>
+
+    <div class="row">
+      <button id="go" class="btn btn-blue">Submit</button>
+      <button id="clear" class="btn btn-outline">Clear</button>
+      <span id="status" class="help" aria-live="polite"></span>
+    </div>
+
+    <div id="alert" class="error hide"></div>
+
+    <div id="done" class="success hide" style="margin-top:10px">
+      <div><strong>Ready!</strong> Download:</div>
+      <ul id="links"></ul>
+    </div>
+  </section>
+</main>
+
+<script>
+const API_BASE = 'https://<YOUR-FUNCTION-APP>.azurewebsites.net'; // <- set this
+
+const els = {
+  file: document.getElementById('file'),
+  yt: document.getElementById('yt'),
+  go: document.getElementById('go'),
+  clear: document.getElementById('clear'),
+  status: document.getElementById('status'),
+  alert: document.getElementById('alert'),
+  done: document.getElementById('done'),
+  links: document.getElementById('links'),
+};
+
+els.clear.addEventListener('click', () => {
+  els.file.value = '';
+  els.yt.value = '';
+  els.status.textContent = '';
+  els.alert.classList.add('hide');
+  els.done.classList.add('hide');
+  els.links.innerHTML = '';
+});
+
+async function pollStatus(jobId) {
+  els.status.textContent = 'Processing… (this can take a minute or two)';
+  while (true) {
+    const r = await fetch(`${API_BASE}/api/status/${jobId}`);
+    if (r.status === 404) { await new Promise(r => setTimeout(r, 1500)); continue; }
+    const s = await r.json();
+    if (s.state === 'done') {
+      els.status.textContent = 'Done!';
+      els.done.classList.remove('hide');
+      els.links.innerHTML = '';
+      for (const [name, url] of Object.entries(s.outputs || {})) {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.href = url; a.textContent = name; a.download = name;
+        li.appendChild(a);
+        els.links.appendChild(li);
+      }
+      return;
+    } else if (s.state === 'failed') {
+      els.alert.textContent = s.error || 'Job failed';
+      els.alert.classList.remove('hide');
+      els.status.textContent = '';
+      return;
+    } else {
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+}
+
+els.go.addEventListener('click', async () => {
+  try {
+    els.alert.classList.add('hide');
+    els.done.classList.add('hide');
+    els.links.innerHTML = '';
+    els.status.textContent = 'Submitting…';
+
+    const fd = new FormData();
+    if (els.file.files[0]) fd.append('file', els.file.files[0]);
+    if (els.yt.value) fd.append('youtube_url', els.yt.value);
+    if (!fd.has('file') && !fd.has('youtube_url')) throw new Error('Select a file or paste a YouTube link.');
+
+    const res = await fetch(`${API_BASE}/api/submit`, { method:'POST', body:fd });
+    if (!res.ok) throw new Error(await res.text());
+    const { job_id } = await res.json();
+    if (!job_id) throw new Error('No job id returned');
+
+    dataLayer = window.dataLayer || []; dataLayer.push({event: 'karaoke_submit'});
+    pollStatus(job_id);
+  } catch (e) {
+    els.alert.textContent = e.message || String(e);
+    els.alert.classList.remove('hide');
+    els.status.textContent = '';
+  }
+});
+</script>
+</body>
+</html>
