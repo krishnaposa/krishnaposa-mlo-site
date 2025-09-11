@@ -1,44 +1,42 @@
-import io, json, uuid, azure.functions as func
-from shared import blob_client, upload_input_stream, put_status, safe_name, queue_name, env
+import json, os, uuid, tempfile
+from azure.storage.blob import ContentSettings
+from . import logging
+import azure.functions as func
+from shared import BLOB, INPUT, enqueue_job, job_id_for, put_status, ensure_vm_running
 
-def main(req: func.HttpRequest, msg: func.Out[str]) -> func.HttpResponse:
-    bsc = blob_client()
+async def main(req: func.HttpRequest) -> func.HttpResponse:
+    form = await req.form()
+    youtube_url = form.get('youtube_url')
+    upfile = req.files.get('file')
 
-    # Accept either file upload or youtube_url
-    youtube_url = req.form.get("youtube_url") if req.form else req.params.get("youtube_url")
-    file = None
-    try:
-        if hasattr(req, "files") and "file" in req.files:
-            file = req.files["file"]
-    except Exception:
-        pass
+    if not youtube_url and not upfile:
+        return func.HttpResponse("Provide file or youtube_url", status_code=400)
 
-    if not youtube_url and not file:
-        return func.HttpResponse("Send multipart with 'file' OR provide 'youtube_url' param.", status_code=400)
+    job_id = job_id_for(youtube_url or upfile.filename)
 
-    job_id = uuid.uuid4().hex
-    status_url = f"/api/status/{job_id}"
+    # initial status
+    put_status(job_id, {"state":"queued","progress":0})
 
-    # Minimal status up front
-    put_status(bsc, job_id, {"job_id": job_id, "state": "queued"})
+    # upload input
+    if upfile:
+        name = f"{job_id}/{upfile.filename}"
+        BLOB.get_container_client(INPUT).upload_blob(
+            name, upfile.stream.read(),
+            overwrite=True,
+            content_settings=ContentSettings(content_type=upfile.mimetype or "application/octet-stream"),
+        )
+        src = {"type":"blob", "blob": name}
+    else:
+        # just pass the URL; VM will download with yt-dlp
+        src = {"type":"youtube", "url": youtube_url}
 
-    blob_name = None
-    if file:
-        stream = io.BytesIO(file.read())
-        filename = file.filename or "track"
-        blob_name = upload_input_stream(bsc, job_id, filename, stream)
+    # enqueue job
+    enqueue_job({"job_id": job_id, "src": src})
 
-    # Build queue payload
-    payload = {
-        "job_id": job_id,
-        "blob_name": blob_name,          # may be None when using yt
-        "youtube_url": youtube_url,      # may be None when using file
-        "model": env("DEMUCS_MODEL", "htdemucs_ft"),
-        "max_seconds": int(env("MAX_SECONDS", "600"))
-    }
-    msg.set(json.dumps(payload))
+    # make sure VM is waking up
+    state = ensure_vm_running()
 
     return func.HttpResponse(
-        json.dumps({"ok": True, "job_id": job_id, "status_url": status_url}),
+        json.dumps({"job_id": job_id, "vm": state}),
         mimetype="application/json"
     )
