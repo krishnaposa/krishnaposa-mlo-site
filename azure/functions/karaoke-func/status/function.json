@@ -1,13 +1,6 @@
 {
   "bindings": [
-    {
-      "authLevel": "anonymous",
-      "type": "httpTrigger",
-      "direction": "in",
-      "name": "req",
-      "methods": [ "get" ],
-      "route": "status/{job_id}"
-    },
+    { "authLevel": "anonymous", "type": "httpTrigger", "direction": "in", "methods": ["get"], "name": "req", "route": "status/{job_id}" },
     { "type": "http", "direction": "out", "name": "res" }
   ]
 }
