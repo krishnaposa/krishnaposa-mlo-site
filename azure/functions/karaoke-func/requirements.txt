@@ -1,6 +1,5 @@
+azure-functions
 azure-storage-blob==12.20.0
 azure-storage-queue==12.6.0
-azure-identity==1.17.1
-azure-mgmt-compute==31.0.0
 fastapi==0.111.0
 requests==2.32.3
