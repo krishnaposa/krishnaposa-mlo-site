@@ -1,11 +1,5 @@
 {
   "bindings": [
-    {
-      "type": "queueTrigger",
-      "direction": "in",
-      "name": "msg",
-      "queueName": "%QUEUE_NAME%",
-      "connection": "STORAGE_CONN"
-    }
+    { "name": "myTimer", "type": "timerTrigger", "direction": "in", "schedule": "0 */5 * * * *" }
   ]
 }
