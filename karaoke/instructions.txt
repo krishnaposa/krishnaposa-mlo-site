@@ -1,0 +1,6 @@
+Functions in karaoke-func:
+    status - [httpTrigger]
+        Invoke url: https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/status/{job_id}
+
+    submit - [httpTrigger]
+        Invoke url: https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/submit
