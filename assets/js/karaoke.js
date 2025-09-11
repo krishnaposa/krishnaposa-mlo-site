@@ -1,5 +1,5 @@
 // Set your Azure Function base URL
-const API_BASE = 'https://<YOUR-FUNCTION-APP>.azurewebsites.net';
+const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net';
 
 // Elements
 const els = {
