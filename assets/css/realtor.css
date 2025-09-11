@@ -157,7 +157,6 @@
   padding:.65rem .75rem;
   font:inherit;
   background:#0f172a;          /* dark slate */
-  color:#f8fafc;               /* near-white text */
 }
 .field input::placeholder,
 .field textarea::placeholder { color:#94a3b8; }
