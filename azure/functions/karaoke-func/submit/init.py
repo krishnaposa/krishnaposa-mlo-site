@@ -2,7 +2,7 @@ import json, os, uuid, tempfile
 from azure.storage.blob import ContentSettings
 import logging
 import azure.functions as func
-from shared import BLOB, INPUT, enqueue_job, job_id_for, put_status, ensure_vm_running
+from shared_local import BLOB, INPUT, enqueue_job, job_id_for, put_status, ensure_vm_running
 
 async def main(req: func.HttpRequest) -> func.HttpResponse:
     form = await req.form()
