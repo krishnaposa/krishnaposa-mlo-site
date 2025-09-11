@@ -11,25 +11,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Karaoke Split – Vocals to Buds, Band to Speakers</title>
+
+  <!-- site base styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
-  <style>
-    :root { --blue:#0b5fff; --muted:#6b7280; }
-    .container{max-width:960px;margin:0 auto;padding:16px}
-    .card{background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:18px;margin-bottom:1rem}
-    .field{display:flex;flex-direction:column;gap:.4rem;margin:.5rem 0}
-    .btn{appearance:none;border:none;border-radius:10px;padding:.7rem 1rem;font-weight:600;cursor:pointer}
-    .btn-blue{background:var(--blue);color:#fff}
-    .btn-outline{border:1px solid rgba(0,0,0,.2);background:#fff}
-    .row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
-    .help{color:var(--muted)}
-    .error{color:#b91c1c}
-    .success{color:#065f46}
-    .hide{display:none}
-    .grid-2{display:grid;gap:.5rem;grid-template-columns:1fr}
-    @media(min-width:900px){.grid-2{grid-template-columns:1fr 1fr}}
-    .progress{height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:.5rem 0 0}
-    .bar{height:100%;width:0;background:var(--blue)}
-  </style>
+  <!-- page-specific styles -->
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
 </head>
 <body>
 <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
@@ -38,7 +24,7 @@
 
   <!-- Upload + polling -->
   <section class="card">
-    <h1 style="margin-top:0">Karaoke Split</h1>
+    <h1>Karaoke Split</h1>
     <p class="help">Upload a song OR paste a YouTube link. We’ll process asynchronously—keep this page open; it will auto-refresh status.</p>
 
     <div class="field">
@@ -57,11 +43,13 @@
       <span id="status" class="help" aria-live="polite"></span>
     </div>
 
-    <div class="progress" id="prog" hidden><div class="bar" id="bar"></div></div>
+    <div class="progress" id="prog" hidden>
+      <div class="bar" id="bar"></div>
+    </div>
 
     <div id="alert" class="error hide" role="alert"></div>
 
-    <div id="done" class="success hide" style="margin-top:10px">
+    <div id="done" class="success hide">
       <div><strong>Ready!</strong> Download:</div>
       <ul id="links"></ul>
     </div>
@@ -83,15 +71,15 @@
       </div>
     </div>
 
-    <div class="row" style="margin-top:.5rem">
+    <div class="row">
       <button id="initAudio" class="btn btn-outline">Enable device list</button>
       <button id="play" class="btn btn-blue">Play</button>
       <button id="pause" class="btn btn-outline">Pause</button>
     </div>
 
-    <div class="row" style="margin-top:.5rem">
+    <div class="row">
       <label for="offset">Vocals advance/Delay (ms):</label>
-      <input id="offset" type="number" value="0" step="10" style="width:120px">
+      <input id="offset" type="number" value="0" step="10">
       <span class="help">Adjust if Bluetooth lags (positive delays vocals; negative delays band).</span>
     </div>
 
