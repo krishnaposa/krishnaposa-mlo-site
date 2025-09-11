@@ -46,26 +46,12 @@ sudo systemctl status karaoke-agent@ubuntu
 
 
 local worker
-install prerequisites 
-# Python 3.10 (if not installed) – be sure to check "Add to PATH"
-# https://www.python.org/downloads/release/python-31011/
 
-# FFmpeg (needed by demucs/yt-dlp). Use winget if you have it:
-winget install Gyan.FFmpeg
-
-# Create a clean venv
-python -m venv %USERPROFILE%\karaoke-venv
-%USERPROFILE%\karaoke-venv\Scripts\activate
-
-# Upgrade pip + install worker deps
-python -m pip install -U pip wheel
-pip install demucs==4.0.1 yt-dlp==2024.8.6 azure-storage-blob==12.20.0 azure-storage-queue==12.6.0
+#
 
 run
 # Python 3.10 (if not installed) – be sure to check "Add to PATH"
-# https://www.python.org/downloads/release/python-31011/
 
-# FFmpeg (needed by demucs/yt-dlp). Use winget if you have it:
 winget install Gyan.FFmpeg
 
 # Create a clean venv
