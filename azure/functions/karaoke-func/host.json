@@ -9,5 +9,5 @@
   "logging": {
     "applicationInsights": { "samplingSettings": { "isEnabled": true } }
   },
-  "functionTimeout": "00:20:00"   // applies to non-HTTP functions like our worker
+  "functionTimeout": "00:30:00"   // applies to non-HTTP functions like our worker
 }
