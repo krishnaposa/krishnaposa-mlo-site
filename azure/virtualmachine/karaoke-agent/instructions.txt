@@ -1,0 +1,45 @@
+sudo apt update
+sudo apt -y install python3.10 python3.10-venv ffmpeg
+python3.10 -m venv ~/venv
+source ~/venv/bin/activate
+pip install --upgrade pip wheel
+pip install demucs==4.0.1 yt-dlp==2024.8.6 azure-storage-blob==12.20.0 azure-storage-queue==12.6.0
+
+Place at ~/karaoke-agent/agent.py
+
+mkdir -p ~/karaoke-agent
+nano ~/karaoke-agent/agent.py  # paste
+chmod +x ~/karaoke-agent/agent.py
+
+sudo bash -c 'cat >/etc/karaoke-agent.env' <<'EOF'
+STORAGE_CONN=<your storage connection string>
+INPUT_CONTAINER=karaoke-input
+OUTPUT_CONTAINER=karaoke-output
+STATUS_CONTAINER=karaoke-status
+QUEUE_NAME=karaoke-jobs
+EOF
+
+systemd service 
+
+sudo bash -c 'cat >/etc/systemd/system/karaoke-agent.service' <<'EOF'
+[Unit]
+Description=Karaoke Demucs Worker
+After=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/karaoke-agent
+EnvironmentFile=/etc/karaoke-agent.env
+ExecStart=/home/%i/venv/bin/python /home/%i/karaoke-agent/agent.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+enable
+sudo systemctl enable karaoke-agent@ubuntu
+sudo systemctl start  karaoke-agent@ubuntu
+sudo systemctl status karaoke-agent@ubuntu
