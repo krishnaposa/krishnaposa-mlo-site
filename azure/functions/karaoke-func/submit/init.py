@@ -1,8 +1,8 @@
-import json, os, uuid, tempfile
+# submit/__init__.py
+import json, uuid, tempfile, logging
 from azure.storage.blob import ContentSettings
-import logging
 import azure.functions as func
-from shared_local import BLOB, INPUT, enqueue_job, job_id_for, put_status, ensure_vm_running
+from shared import BLOB, INPUT, enqueue_job, job_id_for, put_status
 
 async def main(req: func.HttpRequest) -> func.HttpResponse:
     form = await req.form()
@@ -15,28 +15,27 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
     job_id = job_id_for(youtube_url or upfile.filename)
 
     # initial status
-    put_status(job_id, {"state":"queued","progress":0})
+    put_status(job_id, {"state": "queued", "progress": 0})
 
     # upload input
     if upfile:
         name = f"{job_id}/{upfile.filename}"
         BLOB.get_container_client(INPUT).upload_blob(
-            name, upfile.stream.read(),
+            name,
+            upfile.stream.read(),
             overwrite=True,
-            content_settings=ContentSettings(content_type=upfile.mimetype or "application/octet-stream"),
+            content_settings=ContentSettings(
+                content_type=upfile.mimetype or "application/octet-stream"
+            ),
         )
-        src = {"type":"blob", "blob": name}
+        src = {"type": "blob", "blob": name}
     else:
-        # just pass the URL; VM will download with yt-dlp
-        src = {"type":"youtube", "url": youtube_url}
+        src = {"type": "youtube", "url": youtube_url}
 
-    # enqueue job
+    # enqueue job for local worker
     enqueue_job({"job_id": job_id, "src": src})
 
-    # make sure VM is waking up
-    state = ensure_vm_running()
-
     return func.HttpResponse(
-        json.dumps({"job_id": job_id, "vm": state}),
+        json.dumps({"job_id": job_id}),
         mimetype="application/json"
     )
