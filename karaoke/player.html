@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karaoke Player – Route Vocals & Band</title>
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
+</head>
+<body>
+<main class="container">
+
+  <section class="card">
+    <h1>Karaoke Player</h1>
+    <p class="help">
+      Load separated tracks and route outputs. Works best on Chrome/Edge desktop.
+    </p>
+
+    <div class="grid-2">
+      <div class="field">
+        <label for="vocalsUrl">Vocals URL</label>
+        <input id="vocalsUrl" type="url" placeholder="https://.../vocals.wav">
+      </div>
+      <div class="field">
+        <label for="bandUrl">Band URL</label>
+        <input id="bandUrl" type="url" placeholder="https://.../no_vocals.wav">
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="loadBtn" class="btn btn-blue">Load</button>
+      <span id="loadStatus" class="help" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Route outputs</h2>
+    <div class="grid-2">
+      <div class="field">
+        <label for="vocalsOut">Vocals output</label>
+        <select id="vocalsOut"></select>
+      </div>
+      <div class="field">
+        <label for="bandOut">Band output</label>
+        <select id="bandOut"></select>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:.5rem">
+      <button id="initAudio" class="btn btn-outline">Enable device list</button>
+      <button id="testVocals" class="btn btn-outline">Test Vocals</button>
+      <button id="testBand" class="btn btn-outline">Test Band</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Play</h2>
+    <div class="row" style="margin-bottom:.5rem">
+      <button id="play" class="btn btn-blue">Play</button>
+      <button id="pause" class="btn btn-outline">Pause</button>
+      <button id="restart" class="btn btn-outline">Restart</button>
+    </div>
+
+    <div class="row">
+      <label for="offset">Vocals advance/Delay (ms):</label>
+      <input id="offset" type="number" value="0" step="10" style="width:120px">
+      <span class="help">Positive delays vocals; negative delays band.</span>
+    </div>
+
+    <div id="msg" class="error hide" role="alert"></div>
+
+    <!-- Hidden players -->
+    <audio id="vocalsEl" crossorigin="anonymous" preload="auto"></audio>
+    <audio id="bandEl" crossorigin="anonymous" preload="auto"></audio>
+  </section>
+
+</main>
+
+<script src="/assets/js/karaoke.js"></script>
+<script>
+  // Tell karaoke.js we’re in "player mode"
+  window.KARAOKE_MODE = "player";
+</script>
+</body>
+</html>
