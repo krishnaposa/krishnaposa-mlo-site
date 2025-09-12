@@ -1,6 +1,6 @@
 /* assets/js/karaoke.js
    Upload + poll (submit page) and "player mode" listing (private storage via SAS).
-   Robust against network hiccups; handles blob keys OR absolute URLs.
+   Adds robust audio-output listing and a beep test for routing checks.
 */
 
 // =================== CONFIG ===================
@@ -168,7 +168,7 @@ if (els.go) {
   });
 }
 
-// =================== DUAL-OUTPUT ROUTING (both pages) ===================
+// =================== DUAL-OUTPUT ROUTING + BEEP TEST ===================
 const vocalsEl = document.getElementById('vocalsEl');
 const bandEl   = document.getElementById('bandEl');
 const vocalsOut= document.getElementById('vocalsOut');
@@ -178,34 +178,90 @@ const playBtn  = document.getElementById('play');
 const pauseBtn = document.getElementById('pause');
 const offsetIn = document.getElementById('offset');
 
-async function ensurePermission() { try { await navigator.mediaDevices.getUserMedia({ audio: true }); } catch(e){} }
+// Optional status span in HTML: <span id="deviceMsg" class="help" aria-live="polite"></span>
+const deviceMsg = document.getElementById('deviceMsg');
+function setDeviceMsg(t){ if (deviceMsg) deviceMsg.textContent = t || ''; }
+
+const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
+
+async function ensurePermission() {
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+    return true;
+  } catch (e) {
+    console.warn('getUserMedia denied:', e);
+    setDeviceMsg('Please allow microphone access to list audio outputs.');
+    return false;
+  }
+}
+
+function fillSelect(sel, outs) {
+  if (!sel) return;
+  sel.innerHTML = '';
+  outs.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.deviceId;
+    opt.textContent = d.label || `Output ${d.deviceId}`;
+    sel.appendChild(opt);
+  });
+  const def = outs.find(d => d.deviceId === 'default');
+  sel.value = def ? def.deviceId : (outs[0]?.deviceId || 'default');
+}
+
+function addDefaultFallback(sel) {
+  if (!sel) return;
+  sel.innerHTML = '';
+  const opt = document.createElement('option');
+  opt.value = 'default';
+  opt.textContent = 'System default';
+  sel.appendChild(opt);
+  sel.value = 'default';
+}
+
 async function listOutputs() {
   const devices = await navigator.mediaDevices.enumerateDevices();
   const outs = devices.filter(d => d.kind === 'audiooutput');
-  function fill(select) {
-    if (!select) return;
-    select.innerHTML = '';
-    outs.forEach(d => {
-      const opt = document.createElement('option');
-      opt.value = d.deviceId; opt.textContent = d.label || `Output ${d.deviceId}`;
-      select.appendChild(opt);
-    });
-    const def = outs.find(d => d.deviceId === 'default');
-    if (def) select.value = def.deviceId;
+
+  if (outs.length > 0) {
+    fillSelect(vocalsOut, outs);
+    fillSelect(bandOut,   outs);
+    setDeviceMsg(`Found ${outs.length} audio output device${outs.length>1?'s':''}.`);
+  } else {
+    addDefaultFallback(vocalsOut);
+    addDefaultFallback(bandOut);
+    setDeviceMsg('No discrete outputs reported. Using system default.');
   }
-  fill(vocalsOut); fill(bandOut);
+  return outs.length;
 }
+
 initBtn?.addEventListener('click', async () => {
-  if (!('setSinkId' in HTMLMediaElement.prototype)) { alert('Your browser does not support selecting outputs (try Chrome/Edge desktop).'); return; }
-  await ensurePermission(); await listOutputs();
-  initBtn.textContent = 'Device list ready';
+  setDeviceMsg('');
+  if (!supportSink) {
+    setDeviceMsg('Output selection not supported here. Use Chrome or Edge on desktop.');
+    return;
+  }
+  const ok = await ensurePermission(); // needed so device labels show up
+  if (!ok) return;
+
+  const count = await listOutputs();
+  initBtn.textContent = count ? 'Device list ready' : 'Device list (default only)';
+
+  // Refresh list when devices change (BT connect/disconnect, etc.)
+  try {
+    navigator.mediaDevices.addEventListener('devicechange', async () => {
+      await listOutputs();
+    });
+  } catch (_) {}
 });
+
 async function applySinks() {
-  if (!('setSinkId' in HTMLMediaElement.prototype)) return;
-  try { await vocalsEl?.setSinkId(vocalsOut?.value || ''); } catch(e){}
-  try { await bandEl?.setSinkId(bandOut?.value || ''); } catch(e){}
+  if (!supportSink) return;
+  try { await vocalsEl?.setSinkId(vocalsOut?.value || 'default'); } catch(e){ console.warn('setSinkId vocals', e); }
+  try { await bandEl?.setSinkId(bandOut?.value   || 'default'); }   catch(e){ console.warn('setSinkId band', e); }
 }
+
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
 async function playSynced(offsetMs=0) {
   if (!vocalsUrl || !bandUrl || vocalsUrl === '#' || bandUrl === '#') { alert('No tracks loaded yet.'); return; }
   if (!vocalsEl || !bandEl) return;
@@ -235,6 +291,66 @@ async function playSynced(offsetMs=0) {
 }
 playBtn?.addEventListener('click',()=>playSynced(parseInt(offsetIn?.value||'0',10)));
 pauseBtn?.addEventListener('click',()=>{clearInterval(window._syncTimer);vocalsEl?.pause();bandEl?.pause();});
+
+// ======= Beep test to selected output (vocals/band) =======
+const _beepElVocals = document.createElement('audio');
+const _beepElBand   = document.createElement('audio');
+_beepElVocals.setAttribute('playsinline',''); _beepElVocals.style.display='none';
+_beepElBand.setAttribute('playsinline','');   _beepElBand.style.display='none';
+document.body.appendChild(_beepElVocals);
+document.body.appendChild(_beepElBand);
+
+/**
+ * Play a short beep to a given sinkId via a hidden <audio>.
+ * @param {'vocals'|'band'} which
+ * @param {string} sinkId deviceId or 'default'
+ * @param {number} freq Hz (default 880)
+ * @param {number} ms duration (default 600)
+ */
+async function playBeep(which, sinkId, freq=880, ms=600) {
+  if (!supportSink) { alert('Output selection not supported in this browser.'); return; }
+  const outEl = which === 'band' ? _beepElBand : _beepElVocals;
+
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  gain.gain.setValueAtTime(0.0001, ac.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.3, ac.currentTime + 0.02);
+
+  osc.frequency.value = freq;
+  osc.type = 'sine';
+  const dest = ac.createMediaStreamDestination();
+  osc.connect(gain);
+  gain.connect(dest);
+
+  try { await outEl.setSinkId(sinkId || 'default'); } catch (e) { console.warn('setSinkId failed', e); }
+  outEl.srcObject = dest.stream;
+
+  try {
+    osc.start();
+    await outEl.play(); // should be a user gesture (button click)
+    const endT = ac.currentTime + ms / 1000;
+    gain.gain.exponentialRampToValueAtTime(0.0001, endT - 0.05);
+    osc.stop(endT);
+    setTimeout(() => { outEl.pause(); outEl.srcObject = null; ac.close().catch(()=>{}); }, ms + 120);
+  } catch (e) {
+    console.warn('beep play failed', e);
+    ac.close().catch(()=>{});
+  }
+}
+
+const testVocalsBtn = document.getElementById('testVocals');
+const testBandBtn   = document.getElementById('testBand');
+
+testVocalsBtn?.addEventListener('click', async () => {
+  if (!vocalsOut) return;
+  await playBeep('vocals', vocalsOut.value, 880, 500); // A5
+});
+
+testBandBtn?.addEventListener('click', async () => {
+  if (!bandOut) return;
+  await playBeep('band', bandOut.value, 660, 500); // E5
+});
 
 // =================== PLAYER MODE: list & load via SAS ===================
 if (window.KARAOKE_MODE === 'player') {
@@ -274,12 +390,8 @@ if (window.KARAOKE_MODE === 'player') {
         items.sort((a,b) => (b.updated||'').localeCompare(a.updated||''));
 
         for (const it of items) {
-          // Store SAS links as JSON in option value
           const opt = document.createElement('option');
-          opt.value = JSON.stringify({
-            vocals: it.vocals_url, 
-            band: it.band_url
-          });
+          opt.value = JSON.stringify({ vocals: it.vocals_url, band: it.band_url });
           opt.textContent = it.title || it.job_id;
           pick?.appendChild(opt);
         }
