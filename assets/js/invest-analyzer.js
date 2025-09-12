@@ -1,7 +1,7 @@
 // invest-analyzer.js
 // Replace with your Azure Function endpoints:
-const API_SUBMIT = "https://<your-func-app>.azurewebsites.net/api/submit";
-const API_STATUS = "https://<your-func-app>.azurewebsites.net/api/status?id=";
+const API_SUBMIT = "https://invest-analyzer-func.azurewebsites.net/api/submit";
+const API_STATUS = "https://invest-analyzer-func.azurewebsites.net/api/status?id=";
 
 // Helpers
 const fmtMoney = (v) => isFinite(v) ? ('$' + Number(v).toLocaleString()) : '—';
