@@ -1,0 +1,62 @@
+/* ===========================
+   Invest Analyzer Custom Styles
+   =========================== */
+
+/* Grid layouts for form fields */
+.grid-2 {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr;
+}
+.grid-3 {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 900px) {
+  .grid-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .grid-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+/* Form elements */
+label {
+  display: block;
+  margin: 0.5rem 0;
+  font-weight: 600;
+}
+input {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+/* Pills for status badges */
+.pill {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 700;
+}
+
+/* Metrics pre block */
+pre.metrics {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.75rem;
+  overflow: auto;
+}
+
+/* Utility text */
+.small {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
