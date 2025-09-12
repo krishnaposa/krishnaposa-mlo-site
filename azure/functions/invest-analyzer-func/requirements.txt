@@ -5,3 +5,4 @@ requests==2.32.3
 numpy==2.1.1
 numpy-financial==1.0.0
 pydantic==2.8.2
+pandas==2.2.2
