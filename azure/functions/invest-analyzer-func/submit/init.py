@@ -41,7 +41,7 @@ def main(req: func.HttpRequest, starter: str) -> func.HttpResponse:
         cosmos.create_doc(doc)
 
         # Start orchestration (instanceId == analysis_id for easy lookup)
-        _ = client.start_new("Orchestrator", instance_id=analysis_id, client_input={"id": analysis_id})
+        _ = client.start_new("orchestrator", instance_id=analysis_id, client_input={"id": analysis_id})
         return func.HttpResponse(json.dumps({"ok": True, "id": analysis_id}),
                                  headers={"Content-Type":"application/json"})
     except Exception as e:
