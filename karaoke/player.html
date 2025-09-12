@@ -16,9 +16,9 @@
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
 
-  <!-- Config for listing + URL building -->
-  <meta name="karaoke-list" content="https://<yourfunc>.azurewebsites.net/api/list">
-  <meta name="karaoke-output-base" content="https://<account>.blob.core.windows.net/karaoke-output">
+  <!-- Your list endpoint that returns SAS URLs:
+       { items: [{ job_id, title?, updated?, vocals_url, band_url }, ... ] } -->
+  <meta name="karaoke-list" content="https://<yourfunc>.azurewebsites.net/api/list?code=<FUNCTION_KEY>">
 </head>
 <body>
 <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
@@ -31,7 +31,7 @@
   <!-- Pick a completed song -->
   <section class="card">
     <h1>Karaoke Player</h1>
-    <p class="help">Choose a processed song from storage. We’ll auto-load vocals/band and you can route outputs.</p>
+    <p class="help">Choose a processed song from storage. We’ll auto-load secure (SAS) links for vocals & band.</p>
 
     <div class="grid-2">
       <div class="field">
@@ -46,10 +46,14 @@
       </div>
     </div>
 
+    <div class="row" style="margin-top:.5rem">
+      <button id="refreshList" class="btn btn-outline" type="button">Refresh list</button>
+    </div>
+
     <div id="listStatus" class="help" aria-live="polite"></div>
   </section>
 
-  <!-- Routing -->
+  <!-- Route outputs -->
   <section class="card">
     <h2>Route outputs</h2>
     <div class="grid-2">
@@ -103,67 +107,79 @@
 <div id="footer"></div>
 <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
-<!-- Player mode -->
+<!-- Tell karaoke.js we’re in player mode BEFORE loading it -->
 <script>window.KARAOKE_MODE = "player";</script>
 <script src="https://www.krishposa.com/assets/js/karaoke.js"></script>
 
-<!-- List → build URLs → load -->
+<!-- List → use SAS URLs → load -->
 <script>
-(async function(){
+(function(){
   const LIST_URL = document.querySelector('meta[name="karaoke-list"]')?.content || '';
-  const OUT_BASE = (document.querySelector('meta[name="karaoke-output-base"]')?.content || '').replace(/\/$/,'');
+
   const pick = document.getElementById('songPick');
-  const status = document.getElementById('listStatus');
   const useBtn = document.getElementById('useSelection');
-  const vocalsUrlIn = document.getElementById('vocalsUrl');
-  const bandUrlIn   = document.getElementById('bandUrl');
-  const loadBtn     = document.getElementById('loadBtn');
+  const refreshBtn = document.getElementById('refreshList');
+  const status = document.getElementById('listStatus');
+
+  const vocalsUrlIn = document.getElementById('vocalsUrl'); // hidden
+  const bandUrlIn   = document.getElementById('bandUrl');   // hidden
+  const loadBtn     = document.getElementById('loadBtn');   // hidden
   const loadStatus  = document.getElementById('loadStatus');
 
-  function setLoading(t){ status.textContent = t || ''; }
+  function setListStatus(t){ status.textContent = t || ''; }
 
-  try {
-    if (!LIST_URL) throw new Error('Missing karaoke-list URL meta.');
-    if (!OUT_BASE) throw new Error('Missing karaoke-output-base meta.');
+  async function loadList(){
+    try {
+      if (!LIST_URL) throw new Error('Missing karaoke-list URL meta.');
+      setListStatus('Loading songs…');
 
-    setLoading('Loading songs…');
-    const res = await fetch(LIST_URL, { mode: 'cors' });
-    const data = await res.json();
-    const items = data.items || []; // expected: [{job_id, title?}, ...]
+      const res = await fetch(LIST_URL, { mode: 'cors' });
+      if (!res.ok) throw new Error(`List failed (${res.status})`);
+      const data = await res.json();
 
-    pick.innerHTML = '';
-    if (!items.length) {
-      pick.innerHTML = '<option value="">No completed songs yet</option>';
-      setLoading('');
-      return;
+      const items = (data && data.items) || [];
+      pick.innerHTML = '';
+      if (!items.length) {
+        pick.innerHTML = '<option value="">No completed songs yet</option>';
+        setListStatus('');
+        return;
+      }
+
+      // newest first if API includes timestamps
+      items.sort((a,b) => (b.updated||'').localeCompare(a.updated||''));
+
+      for (const it of items) {
+        // store SAS links as JSON in option value, display friendly title
+        const opt = document.createElement('option');
+        opt.value = JSON.stringify({ vocals: it.vocals_url, band: it.band_url });
+        opt.textContent = it.title || it.job_id;
+        pick.appendChild(opt);
+      }
+      setListStatus(`Loaded ${items.length} song(s).`);
+    } catch (e) {
+      console.warn(e);
+      setListStatus('Could not load list. ' + (e.message || e));
     }
-    // newest first if API didn’t already sort
-    items.sort((a,b) => (b.updated||'').localeCompare(a.updated||''));
-    for (const it of items) {
-      const opt = document.createElement('option');
-      opt.value = it.job_id;
-      opt.textContent = it.title || it.job_id;
-      pick.appendChild(opt);
-    }
-    setLoading(`Loaded ${items.length} song(s).`);
-  } catch (e) {
-    setLoading('Could not load list. ' + (e.message || e));
-    console.warn(e);
   }
 
   useBtn.addEventListener('click', () => {
-    const jobId = pick.value;
-    if (!jobId) return;
-    // Deduce URLs:
-    const voc = `${OUT_BASE}/${jobId}/vocals.wav`;
-    const band = `${OUT_BASE}/${jobId}/no_vocals.wav`;
+    const val = pick.value;
+    if (!val) return;
 
-    // Fill hidden inputs for karaoke.js (player mode) and trigger load
-    vocalsUrlIn.value = voc;
-    bandUrlIn.value = band;
-    loadBtn.click();
-    loadStatus.textContent = 'Tracks loaded.';
+    try {
+      const sel = JSON.parse(val);
+      // Feed SAS URLs into hidden inputs for karaoke.js (player mode)
+      vocalsUrlIn.value = sel.vocals || '';
+      bandUrlIn.value   = sel.band   || '';
+      loadBtn.click(); // your existing loader in karaoke.js will pick these up
+      loadStatus.textContent = 'Tracks loaded.';
+    } catch (e) {
+      console.warn('Invalid selection', e);
+    }
   });
+
+  refreshBtn.addEventListener('click', loadList);
+  loadList();
 })();
 </script>
 </body>
