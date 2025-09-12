@@ -1,26 +1,56 @@
-# submit/__init__.py
-import json, logging
+# submit/init.py
+import json, logging, re
 from azure.storage.blob import ContentSettings
 import azure.functions as func
 from shared import BLOB, INPUT, enqueue_job, job_id_for, put_status
 
+YTLINK_RE = re.compile(r'^https?://(www\.)?(youtube\.com|youtu\.be)/', re.I)
+
+def _cors():
+    # If you already configured CORS in the Function App settings, you can remove these headers.
+    return {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization"
+    }
+
+def _json(status: int, payload: dict) -> func.HttpResponse:
+    return func.HttpResponse(json.dumps(payload), status_code=status, mimetype="application/json", headers=_cors())
+
+def _safe_name(name: str) -> str:
+    # keep it simple: strip path, trim, and remove weird chars
+    name = (name or "").split("/")[-1].split("\\")[-1].strip()
+    return re.sub(r'[^A-Za-z0-9._ -]', "_", name) or "upload.bin"
+
 def main(req: func.HttpRequest) -> func.HttpResponse:
+    # CORS preflight
+    if req.method == "OPTIONS":
+        return func.HttpResponse(status_code=204, headers=_cors())
+
     try:
-        # ---- read inputs (no await) ----
-        youtube_url = req.form.get("youtube_url") if req.form else None
+        youtube_url = req.form.get("youtube_url").strip() if (req.form and req.form.get("youtube_url")) else None
         upfile = req.files.get("file") if req.files else None
 
-        if not youtube_url and not upfile:
-            return func.HttpResponse("Provide file or youtube_url", status_code=400)
+        # Must provide exactly one
+        if bool(youtube_url) == bool(upfile):
+            return _json(400, {"error": "Provide exactly one of: file or youtube_url"})
 
-        job_id = job_id_for(youtube_url or upfile.filename)
+        if youtube_url:
+            if not YTLINK_RE.match(youtube_url):
+                return _json(400, {"error": "youtube_url must be a valid YouTube link"})
+            job_id = job_id_for(youtube_url)
+            put_status(job_id, {"state": "queued", "progress": 0})
+            src = {"type": "youtube", "url": youtube_url}
 
-        # initial status
-        put_status(job_id, {"state": "queued", "progress": 0})
+        else:
+            # file path
+            if not upfile or not upfile.filename:
+                return _json(400, {"error": "Empty file"})
+            fname = _safe_name(upfile.filename)
+            job_id = job_id_for(fname)
+            put_status(job_id, {"state": "queued", "progress": 0})
 
-        # upload input
-        if upfile:
-            name = f"{job_id}/{upfile.filename}"
+            name = f"{job_id}/{fname}"
             BLOB.get_container_client(INPUT).upload_blob(
                 name,
                 upfile.stream.read(),
@@ -30,18 +60,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 ),
             )
             src = {"type": "blob", "blob": name}
-        else:
-            src = {"type": "youtube", "url": youtube_url}
 
-        # enqueue
+        # enqueue work
         enqueue_job({"job_id": job_id, "src": src})
 
-        # success
-        body = {"job_id": job_id}
-        return func.HttpResponse(json.dumps(body), mimetype="application/json", status_code=200)
+        return _json(200, {"job_id": job_id})
 
     except Exception as e:
         logging.exception("submit failed")
-        # Return a tiny hint to the client; full stack goes to logs
-        body = {"error": str(e)}
-        return func.HttpResponse(json.dumps(body), mimetype="application/json", status_code=500)
+        return _json(500, {"error": str(e)})
