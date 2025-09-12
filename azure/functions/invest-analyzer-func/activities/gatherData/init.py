@@ -1,33 +1,59 @@
+# Activities/GatherData/__init__.py
 from shared import cosmos
+from shared.providers import (
+    rentcast_property_search, rentcast_rent_estimate, rentcast_avm,
+    fhfa_state_cagr, normalize_estimates
+)
 
-# TODO: replace heuristics with real API calls (RentCast/RapidAPI/ATTOM/etc.)
-def main(id: str):
-    doc = cosmos.get_doc(id)
+def main(analysis_id: str):
+    doc = cosmos.get_doc(analysis_id)
     a = doc["assumptions"]
     addr = doc["address"]
 
-    # Heuristic placeholders (wire real APIs here)
-    rent_est = 2000.0
-    price_est = 320000.0
-    taxes_month = a.get("taxes", 0) or 320.0
-    ins_month = a.get("insurance", 0) or 140.0
-    hoa_month = a.get("hoa", 0) or 0.0
-    hpi_growth = 0.028  # 2.8% annual
+    # 1) Try RentCast
+    prop = {}
+    try:
+        prop = rentcast_property_search(addr["line1"], addr["city"], addr["state"], addr["zip"])
+    except Exception:
+        prop = {}
+
+    beds = prop.get("bedrooms")
+    baths = prop.get("bathrooms")
+    sqft  = prop.get("squareFootage") or prop.get("livingArea")
+
+    rent_resp = {}
+    try:
+        rent_resp = rentcast_rent_estimate(addr["line1"], addr["city"], addr["state"], addr["zip"], beds, baths, sqft)
+    except Exception:
+        rent_resp = {}
+
+    value_resp = {}
+    try:
+        value_resp = rentcast_avm(addr["line1"], addr["city"], addr["state"], addr["zip"])
+    except Exception:
+        value_resp = {}
+
+    # 2) Normalize + fallbacks (tax/insurance heuristics)
+    est = normalize_estimates(addr, rent_resp, value_resp, addr["state"])
+
+    # 3) FHFA HPI CAGR for appreciation (free)
+    hpi_growth = fhfa_state_cagr(addr["state"], years=int(a.get("holdYears", 10))) or 0.02
+    est["hpi_growth"] = float(hpi_growth)
 
     pulls = {
         "address": addr,
-        "sources": ["heuristic"],  # put raw API payloads here when integrated
-        "estimates": {
-            "rent_est": rent_est,
-            "price_est": price_est,
-            "taxes_month": taxes_month,
-            "ins_month": ins_month,
-            "hoa_month": hoa_month,
-            "hpi_growth": hpi_growth
-        }
+        "sources": ["rentcast", "fhfa_hpi"],
+        "raw": {
+            "rentcast_prop": prop,
+            "rentcast_rent": rent_resp,
+            "rentcast_value": value_resp
+        },
+        "estimates": est
     }
-    # optional: save interim
+
+    # Persist interim
     doc["status"] = "running"
     doc["pulls"] = pulls
+    doc["estimates"] = est
     cosmos.upsert_doc(doc)
     return pulls
