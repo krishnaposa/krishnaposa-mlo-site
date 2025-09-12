@@ -1,33 +1,34 @@
 // invest-analyzer.js
-// Replace with your Azure Function endpoints:
 const API_SUBMIT = "https://invest-analyzer-func.azurewebsites.net/api/submit";
 const API_STATUS = "https://invest-analyzer-func.azurewebsites.net/api/status?id=";
 
-// Helpers
-const fmtMoney = (v) => isFinite(v) ? ('$' + Number(v).toLocaleString()) : '—';
-const fmtPct   = (v, d=1) => isFinite(v) ? (Number(v)*100).toFixed(d) + '%' : '—';
+const fmtMoney = (v) => (isFinite(v) ? "$" + Number(v).toLocaleString() : "—");
+const fmtPct   = (v, d=1) => (isFinite(v) ? (Number(v)*100).toFixed(d) + "%" : "—");
 
-// Attach form handler if on invest.html
 document.addEventListener("DOMContentLoaded", () => {
-  const form = document.getElementById('investForm');
+  const form = document.getElementById("investForm");
   if (form) {
-    form.addEventListener('submit', async (e) => {
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const elStatus = document.getElementById('submitStatus');
+      const elStatus = document.getElementById("submitStatus");
       const data = Object.fromEntries(new FormData(form).entries());
-      ['dpPct','rate','term','vacancyPct','mgmtPct','rehab','hoa','insurance','taxes','holdYears']
+      ["dpPct","rate","term","vacancyPct","mgmtPct","rehab","hoa","insurance","taxes","holdYears"]
         .forEach(k => data[k] = Number(data[k] ?? 0));
 
       elStatus.textContent = "Submitting…";
       try {
         const r = await fetch(API_SUBMIT, {
           method: "POST",
-          headers: { "Content-Type":"application/json" },
-          body: JSON.stringify(data)
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
         });
         const j = await r.json();
         if (!j.ok) throw new Error(j.error || "Submission failed");
-        location.href = `/status.html?id=${encodeURIComponent(j.id)}`;
+
+        // Build URL relative to the current page's directory
+        const statusUrl = new URL("status.html", location.href);
+        statusUrl.searchParams.set("id", j.id);
+        location.href = statusUrl.toString();
       } catch (err) {
         elStatus.textContent = "Error: " + err.message;
       }
@@ -35,34 +36,37 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Status page updater
-  const statusEl = document.getElementById('status');
+  const statusEl = document.getElementById("status");
   if (statusEl) {
-    async function tick(){
-      const id = new URLSearchParams(location.search).get('id');
-      if(!id){
-        document.getElementById('error').textContent = "Missing analysis id.";
+    async function tick() {
+      const id = new URLSearchParams(location.search).get("id");
+      if (!id) {
+        const errEl = document.getElementById("error");
+        if (errEl) errEl.textContent = "Missing analysis id.";
         return;
       }
-      try{
+      try {
         const r = await fetch(API_STATUS + encodeURIComponent(id));
         const j = await r.json();
-        if(!j.ok) throw new Error(j.error || 'Not found');
+        if (!j.ok) throw new Error(j.error || "Not found");
 
         const a = j.analysis || {};
-        statusEl.textContent = (a.status || 'unknown').toUpperCase();
+        statusEl.textContent = (a.status || "unknown").toUpperCase();
 
-        if(a.error){ document.getElementById('error').textContent = a.error; }
+        if (a.error) {
+          const errEl = document.getElementById("error");
+          if (errEl) errEl.textContent = a.error;
+        }
 
-        if(a.status === 'done'){
-          // summary
-          document.getElementById('summary').style.display = '';
-          document.getElementById('verdict').textContent = 'Verdict: ' + (a.verdict || '').toUpperCase();
-          document.getElementById('reasons').textContent = a.reasons || '';
+        if (a.status === "done") {
+          document.getElementById("summary").style.display = "";
+          document.getElementById("verdict").textContent =
+            "Verdict: " + (a.verdict || "").toUpperCase();
+          document.getElementById("reasons").textContent = a.reasons || "";
 
-          // estimates
           const e = a.estimates || {};
-          const estDiv = document.getElementById('estimates');
-          estDiv.style.display = '';
+          const estDiv = document.getElementById("estimates");
+          estDiv.style.display = "";
           estDiv.innerHTML = `
             <h4>Key Estimates</h4>
             <ul class="small" style="color:#334155;line-height:1.6">
@@ -71,13 +75,14 @@ document.addEventListener("DOMContentLoaded", () => {
               <li><strong>Taxes/mo:</strong> ${fmtMoney(e.taxes_month)}</li>
               <li><strong>Insurance/mo:</strong> ${fmtMoney(e.ins_month)}</li>
               <li><strong>HOA/mo:</strong> ${fmtMoney(e.hoa_month)}</li>
-              <li><strong>Appreciation (HPI):</strong> ${isFinite(e.hpi_growth) ? (e.hpi_growth*100).toFixed(2) + '%' : '—'}</li>
+              <li><strong>Appreciation (HPI):</strong> ${
+                isFinite(e.hpi_growth) ? (e.hpi_growth*100).toFixed(2) + "%" : "—"
+              }</li>
             </ul>`;
 
-          // metrics
           const m = a.metrics || {};
-          const metricsDiv = document.getElementById('metricsWrap');
-          metricsDiv.style.display = '';
+          const metricsDiv = document.getElementById("metricsWrap");
+          metricsDiv.style.display = "";
           metricsDiv.innerHTML = `
             <h4>Metrics</h4>
             <ul class="small" style="color:#334155;line-height:1.6">
@@ -86,15 +91,18 @@ document.addEventListener("DOMContentLoaded", () => {
               <li><strong>NOI/mo:</strong> ${fmtMoney(m.noi_month)}</li>
               <li><strong>P&amp;I/mo:</strong> ${fmtMoney(m.pi_month)}</li>
               <li><strong>Cash-on-Cash:</strong> ${fmtPct(m.coc || 0, 2)}</li>
-              <li><strong>IRR (years):</strong> ${m.irr_years ?? '—'} | <strong>IRR:</strong> ${isFinite(m.irr) ? (m.irr*100).toFixed(2) + '%' : '—'}</li>
+              <li><strong>IRR (years):</strong> ${m.irr_years ?? "—"} | <strong>IRR:</strong> ${
+                isFinite(m.irr) ? (m.irr*100).toFixed(2) + "%" : "—"
+              }</li>
             </ul>
             <details style="margin-top:.5rem">
               <summary class="small">Raw JSON</summary>
               <pre class="metrics">${JSON.stringify({estimates:a.estimates, metrics:a.metrics}, null, 2)}</pre>
             </details>`;
         }
-      }catch(err){
-        document.getElementById('error').textContent = err.message;
+      } catch (err) {
+        const errEl = document.getElementById("error");
+        if (errEl) errEl.textContent = err.message;
       }
     }
     tick();
