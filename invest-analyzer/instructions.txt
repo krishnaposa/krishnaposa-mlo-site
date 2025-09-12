@@ -1,0 +1,118 @@
+Investment Analyzer - Azure Deployment Instructions
+
+This document explains how to set up the Investment Analyzer pipeline on Azure.
+
+---
+
+## 1. Resource Setup
+
+### Resource Group
+- Create a new Resource Group (e.g. `invest-analyzer-rg`) to keep all resources together.
+
+### Function App
+- Create an **Azure Function App** (Python 3.10 runtime, Consumption plan or Premium if heavy usage).
+- This will automatically provision:
+  - **Azure Storage Account** (used for Durable Functions state, queues, etc.).
+  - **Application Insights** (if selected, for monitoring and logs).
+
+### Cosmos DB
+- Create a **Cosmos DB account** (Core SQL API).
+- Add a Database called `invest`.
+- Add a Container called `analyses`.
+  - Partition key: `/id`
+- Stores all analysis requests, estimates, metrics, and verdicts.
+
+### Key Vault
+- Create an **Azure Key Vault**.
+- Add secrets:
+  - `COSMOS_CONN` → Cosmos DB connection string
+  - `RENTCAST_KEY` → RentCast API key
+  - `RAPIDAPI_KEY` → RapidAPI key (if used)
+  - Any other API credentials
+- Enable **System-assigned Managed Identity** on the Function App.
+- Grant this identity `Get` access to secrets in the Key Vault.
+
+---
+
+## 2. Function App Configuration
+
+Update **Configuration > Application Settings** in the Function App:
+- `COSMOS_DB = invest`
+- `COSMOS_CONTAINER = analyses`
+- `COSMOS_CONN = @Microsoft.KeyVault(SecretUri=https://<vault-name>.vault.azure.net/secrets/COSMOS_CONN/...)`
+- `RENTCAST_KEY = @Microsoft.KeyVault(SecretUri=https://<vault-name>.vault.azure.net/secrets/RENTCAST_KEY/...)`
+- `RAPIDAPI_KEY = @Microsoft.KeyVault(SecretUri=https://<vault-name>.vault.azure.net/secrets/RAPIDAPI_KEY/...)`
+
+Enable **CORS** for your frontend:
+- Allowed origins: `https://www.krishposa.com`, `https://krishposa.com`
+
+---
+
+## 3. Code Deployment
+
+### Local Requirements
+- Install Azure Functions Core Tools
+- Python 3.10
+- Requirements in `requirements.txt` (e.g. durable-functions, azure-cosmos, requests, numpy, etc.)
+
+### Deployment Command
+```bash
+func azure functionapp publish <your-function-app-name>
+```
+
+This will package and deploy your code to the Function App.
+
+---
+
+## 4. Frontend Setup
+
+- Host `invest.html` and `status.html` on krishposa.com
+- Both reference:
+  - `/assets/js/invest-analyzer.js`
+  - `/assets/css/invest-analyzer.css`
+- Update `/assets/js/invest-analyzer.js` with your Function App endpoints:
+  - `API_SUBMIT = "https://<your-func-app>.azurewebsites.net/api/submit"`
+  - `API_STATUS = "https://<your-func-app>.azurewebsites.net/api/status?id="`
+
+---
+
+## 5. Flow Overview
+
+1. User submits a property via **invest.html**.
+2. Browser POSTs to Function App `/api/submit`.
+3. Function App (Durable Orchestration):
+   - Creates doc in Cosmos DB.
+   - Calls activities to fetch RentCast / FHFA data.
+   - Computes ROI metrics.
+   - Saves final verdict to Cosmos DB.
+4. User redirected to `status.html?id=<analysisId>`.
+5. Frontend polls Function App `/api/status?id=...` every 2 seconds.
+6. Verdict, estimates, and metrics displayed in browser.
+
+---
+
+## 6. Optional Services
+
+- **Azure Maps**: For ZIP → County/MSA lookup to improve HPI accuracy.
+- **Azure Static Web Apps**: If you want to host `invest.html` and `status.html` inside Azure instead of krishposa.com.
+
+---
+
+## 7. Minimum Required Azure Resources
+
+- **Resource Group**
+- **Function App** (+ Storage Account + Application Insights)
+- **Cosmos DB**
+- **Key Vault**
+
+---
+
+## 8. Monitoring
+
+- Use **Application Insights** to track Durable Function steps and failures.
+- Cosmos DB Data Explorer to view results.
+- Function App Logs (Log Stream) for debugging.
+
+---
+
+End of Instructions.
