@@ -1,7 +1,7 @@
 import json, logging
 from azure.storage.blob import ContentSettings
 import azure.functions as func
-from shared import BLOB, INPUT, enqueue_job, job_id_for, put_status
+from shared_local import BLOB, INPUT, enqueue_job, job_id_for, put_status
 
 async def main(req: func.HttpRequest) -> func.HttpResponse:
     # Grab fields safely
