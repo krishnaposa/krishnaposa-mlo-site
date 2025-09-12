@@ -12,10 +12,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Karaoke Player – Route Vocals & Band</title>
 
-  <!-- site base styles -->
+  <!-- site styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
-  <!-- page-specific styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
+
+  <!-- Config for listing + URL building -->
+  <meta name="karaoke-list" content="https://<yourfunc>.azurewebsites.net/api/list">
+  <meta name="karaoke-output-base" content="https://<account>.blob.core.windows.net/karaoke-output">
 </head>
 <body>
 <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
@@ -25,29 +28,28 @@
 
 <main class="container">
 
-  <!-- Load URLs -->
+  <!-- Pick a completed song -->
   <section class="card">
     <h1>Karaoke Player</h1>
-    <p class="help">Load separated tracks and route outputs. Works best on Chrome/Edge desktop.</p>
+    <p class="help">Choose a processed song from storage. We’ll auto-load vocals/band and you can route outputs.</p>
 
     <div class="grid-2">
       <div class="field">
-        <label for="vocalsUrl">Vocals URL</label>
-        <input id="vocalsUrl" type="url" placeholder="https://.../vocals.wav">
+        <label for="songPick">Song</label>
+        <select id="songPick">
+          <option value="">Loading…</option>
+        </select>
       </div>
       <div class="field">
-        <label for="bandUrl">Band URL</label>
-        <input id="bandUrl" type="url" placeholder="https://.../no_vocals.wav">
+        <label>&nbsp;</label>
+        <button id="useSelection" class="btn btn-blue" type="button">Load selection</button>
       </div>
     </div>
 
-    <div class="row">
-      <button id="loadBtn" class="btn btn-blue" type="button">Load</button>
-      <span id="loadStatus" class="help" aria-live="polite"></span>
-    </div>
+    <div id="listStatus" class="help" aria-live="polite"></div>
   </section>
 
-  <!-- Route outputs -->
+  <!-- Routing -->
   <section class="card">
     <h2>Route outputs</h2>
     <div class="grid-2">
@@ -88,6 +90,12 @@
     <!-- Hidden players -->
     <audio id="vocalsEl" crossorigin="anonymous" preload="auto"></audio>
     <audio id="bandEl" crossorigin="anonymous" preload="auto"></audio>
+
+    <!-- Hidden inputs kept for karaoke.js (player mode) compatibility -->
+    <input id="vocalsUrl" type="hidden">
+    <input id="bandUrl"   type="hidden">
+    <button id="loadBtn" type="button" style="display:none"></button>
+    <span id="loadStatus" class="help" aria-live="polite"></span>
   </section>
 
 </main>
@@ -95,8 +103,68 @@
 <div id="footer"></div>
 <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
-<!-- Tell karaoke.js we’re in player mode, then load it -->
+<!-- Player mode -->
 <script>window.KARAOKE_MODE = "player";</script>
 <script src="https://www.krishposa.com/assets/js/karaoke.js"></script>
+
+<!-- List → build URLs → load -->
+<script>
+(async function(){
+  const LIST_URL = document.querySelector('meta[name="karaoke-list"]')?.content || '';
+  const OUT_BASE = (document.querySelector('meta[name="karaoke-output-base"]')?.content || '').replace(/\/$/,'');
+  const pick = document.getElementById('songPick');
+  const status = document.getElementById('listStatus');
+  const useBtn = document.getElementById('useSelection');
+  const vocalsUrlIn = document.getElementById('vocalsUrl');
+  const bandUrlIn   = document.getElementById('bandUrl');
+  const loadBtn     = document.getElementById('loadBtn');
+  const loadStatus  = document.getElementById('loadStatus');
+
+  function setLoading(t){ status.textContent = t || ''; }
+
+  try {
+    if (!LIST_URL) throw new Error('Missing karaoke-list URL meta.');
+    if (!OUT_BASE) throw new Error('Missing karaoke-output-base meta.');
+
+    setLoading('Loading songs…');
+    const res = await fetch(LIST_URL, { mode: 'cors' });
+    const data = await res.json();
+    const items = data.items || []; // expected: [{job_id, title?}, ...]
+
+    pick.innerHTML = '';
+    if (!items.length) {
+      pick.innerHTML = '<option value="">No completed songs yet</option>';
+      setLoading('');
+      return;
+    }
+    // newest first if API didn’t already sort
+    items.sort((a,b) => (b.updated||'').localeCompare(a.updated||''));
+    for (const it of items) {
+      const opt = document.createElement('option');
+      opt.value = it.job_id;
+      opt.textContent = it.title || it.job_id;
+      pick.appendChild(opt);
+    }
+    setLoading(`Loaded ${items.length} song(s).`);
+  } catch (e) {
+    setLoading('Could not load list. ' + (e.message || e));
+    console.warn(e);
+  }
+
+  useBtn.addEventListener('click', () => {
+    const jobId = pick.value;
+    if (!jobId) return;
+    // Deduce URLs:
+    const voc = `${OUT_BASE}/${jobId}/vocals.wav`;
+    const band = `${OUT_BASE}/${jobId}/no_vocals.wav`;
+
+    // Fill hidden inputs for karaoke.js (player mode) and trigger load
+    vocalsUrlIn.value = voc;
+    bandUrlIn.value = band;
+    loadBtn.click();
+    loadStatus.textContent = 'Tracks loaded.';
+  });
+})();
+</script>
 </body>
 </html>
