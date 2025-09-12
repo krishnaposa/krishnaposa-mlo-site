@@ -4,11 +4,15 @@
       "authLevel": "anonymous",
       "type": "httpTrigger",
       "direction": "in",
-      "methods": [
-        "post"
-      ],
       "name": "req",
+      "methods": ["post", "options"],
       "route": "submit"
+    },
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "$return"
     }
-  ]
+  ],
+  "scriptFile": "init.py"
 }
