@@ -1,0 +1,5 @@
+{
+  "bindings": [
+    { "name": "pulls", "type": "activityTrigger", "direction": "in" }
+  ]
+}
