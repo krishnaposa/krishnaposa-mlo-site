@@ -16,11 +16,19 @@
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <!-- page-specific styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
+
+  <!-- expose endpoints to JS (edit these values to your app/keys) -->
+  <meta name="karaoke-submit" content="https://<yourfunc>.azurewebsites.net/api/submit?code=<FUNCTION_KEY>">
+  <meta name="karaoke-status" content="https://<yourfunc>.azurewebsites.net/api/status/{job_id}?code=<FUNCTION_KEY>">
+  <!-- if your output container is public or you serve SAS links, optionally set base to build hrefs -->
+  <meta name="karaoke-output-base" content="">
 </head>
 <body>
 <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+
 <div id="header"></div>
 <script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
+
 <main class="container">
 
   <!-- Upload + polling -->
@@ -30,17 +38,17 @@
 
     <div class="field">
       <label for="file">Upload (mp3/wav/m4a/flac/aac)</label>
-      <input id="file" type="file" accept=".mp3,.wav,.flac,.m4a,.aac">
+      <input id="file" name="file" type="file" accept=".mp3,.wav,.flac,.m4a,.aac">
     </div>
 
     <div class="field">
       <label for="yt">…or YouTube link</label>
-      <input id="yt" type="url" placeholder="https://www.youtube.com/watch?v=...">
+      <input id="yt" name="youtube_url" type="url" placeholder="https://www.youtube.com/watch?v=...">
     </div>
 
     <div class="row">
-      <button id="go" class="btn btn-blue">Submit</button>
-      <button id="clear" class="btn btn-outline">Clear</button>
+      <button id="go" class="btn btn-blue" type="button">Submit</button>
+      <button id="clear" class="btn btn-outline" type="button">Clear</button>
       <span id="status" class="help" aria-live="polite"></span>
     </div>
 
@@ -73,9 +81,9 @@
     </div>
 
     <div class="row">
-      <button id="initAudio" class="btn btn-outline">Enable device list</button>
-      <button id="play" class="btn btn-blue">Play</button>
-      <button id="pause" class="btn btn-outline">Pause</button>
+      <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
+      <button id="play" class="btn btn-blue" type="button">Play</button>
+      <button id="pause" class="btn btn-outline" type="button">Pause</button>
     </div>
 
     <div class="row">
@@ -91,8 +99,6 @@
 
 </main>
 
-<!-- Site footer/header scripts -->
-<script src="https://www.krishposa.com/assets/js/header.js"></script>
 <div id="footer"></div>
 <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
