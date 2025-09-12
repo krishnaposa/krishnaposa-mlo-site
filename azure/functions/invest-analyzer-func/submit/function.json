@@ -1,8 +1,24 @@
 {
   "bindings": [
-    { "authLevel": "Anonymous", "type": "httpTrigger", "direction": "in",
-      "name": "req", "methods": ["post"], "route": "submit" },
-    { "type": "http", "direction": "out", "name": "res" },
-    { "type": "orchestrationClient", "direction": "in", "name": "starter" }
+    {
+      "authLevel": "Anonymous",
+      "type": "httpTrigger",
+      "direction": "in",
+      "name": "req",
+      "methods": [
+        "post"
+      ],
+      "route": "submit"
+    },
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "$return"
+    },
+    {
+      "type": "orchestrationClient",
+      "direction": "in",
+      "name": "starter"
+    }
   ]
 }
