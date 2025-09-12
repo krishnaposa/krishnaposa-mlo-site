@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-KJZPQKBM');</script>
+  <!-- End Google Tag Manager -->
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analysis Status | Krish Posa</title>
+  <meta name="description" content="Track the status and results of your investment property analysis.">
+  <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
+
+  <!-- site styles/scripts -->
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/cobrand.css?v=1">
+  <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/cobrand.js?v=1"></script>
+  <script defer src="/assets/js/invest-analyzer.js"></script>
+
+  <style>
+    .pill{display:inline-block;padding:.2rem .6rem;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:700}
+    pre.metrics{background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:.75rem;overflow:auto}
+  </style>
+</head>
+<body>
+  <!-- GTM noscript -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+
+  <div id="header"></div>
+  <script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
+
+  <main>
+    <section class="page-hero">
+      <div class="container">
+        <h2>Analysis</h2>
+        <p>Live status, verdict, and detailed ROI metrics.</p>
+      </div>
+    </section>
+
+    <section class="content container narrow">
+      <div class="card">
+        <p id="status" class="pill">Loading…</p>
+        <div id="error" class="small" style="color:#b91c1c;font-weight:600;margin:.5rem 0 0;"></div>
+
+        <div id="summary" style="margin-top:1rem;display:none">
+          <h3 id="verdict">Verdict</h3>
+          <p id="reasons" class="small" style="color:#475569"></p>
+        </div>
+
+        <div id="estimates" style="display:none"></div>
+        <div id="metricsWrap" style="display:none"></div>
+
+        <div style="margin-top:1rem">
+          <a class="btn-outline" href="/invest.html">Analyze another property</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="footer"></div>
+  <script src="https://www.krishposa.com/assets/js/footer.js"></script>
+</body>
+</html>
