@@ -4,11 +4,15 @@
       "authLevel": "anonymous",
       "type": "httpTrigger",
       "direction": "in",
-      "methods": [
-        "get"
-      ],
       "name": "req",
+      "methods": ["get", "options"],
       "route": "status/{job_id}"
+    },
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "$return"
     }
-  ]
+  ],
+  "scriptFile": "init.py"
 }
