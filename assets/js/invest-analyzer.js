@@ -5,6 +5,7 @@ const API_STATUS = "https://invest-analyzer-func.azurewebsites.net/api/status?id
 const fmtMoney = (v) => (isFinite(v) ? "$" + Number(v).toLocaleString() : "—");
 const fmtPct   = (v, d=1) => (isFinite(v) ? (Number(v)*100).toFixed(d) + "%" : "—");
 
+// safer fetch -> show server text in errors
 async function fetchJSON(url, opts) {
   const r = await fetch(url, opts);
   const text = await r.text();
@@ -52,25 +53,46 @@ document.addEventListener("DOMContentLoaded", () => {
     const metricsEl   = document.getElementById("metricsWrap");
     const errorEl     = document.getElementById("error");
 
+    // helper: build {label, cls}
+    const src = (label, cls) => ({ label, cls });
+    const badgeHTML = (s) => `<span class="src-badge ${s.cls}">${s.label}</span>`;
+
     function deriveSources(a, e) {
       const pulls = a.pulls || {};
-      const raw = (pulls.raw || {});
-      const dbg = (pulls.debug || {});
+      const raw = pulls.raw || {};
+      const dbg = pulls.debug || {};
       const has = (obj, path) => path.split(".").reduce((p,k)=> (p && p[k]!==undefined ? p[k] : undefined), obj);
 
-      const rentcastRentOK  = !!has(dbg, "rentcast_rent.ok");
-      const rentcastValueOK = !!has(dbg, "rentcast_value.ok");
-      const zillowOK        = !!has(dbg, "zillow.ok") && (has(dbg, "zillow.hoa") > 0);
+      const rentcastRentOK  = !!has(dbg, "rentcast_rent.ok")  || Object.keys(raw.rentcast_rent  || {}).length > 0;
+      const rentcastValueOK = !!has(dbg, "rentcast_value.ok") || Object.keys(raw.rentcast_value || {}).length > 0;
+      const zillowHOAOK     = !!has(dbg, "zillow.ok") && (has(dbg, "zillow.hoa") > 0);
 
-      return {
-        rent_est: (rentcastRentOK) ? "RentCast" : (e.rent_est > 0 ? "Heuristic" : "Unknown"),
-        price_est: (rentcastValueOK) ? "RentCast AVM" : (e.price_est > 0 ? "Heuristic" : "Unknown"),
-        taxes_month: (e.price_est > 0) ? "Heuristic (state avg)" : "Unknown",
-        ins_month: (e.price_est > 0) ? "Heuristic (state baseline)" : "Unknown",
-        hoa_month: (zillowOK && e.hoa_month > 0) ? "Zillow (RapidAPI)" :
-                   (e.hoa_month > 0 ? "User-supplied" : "Not available"),
-        hpi_growth: "FHFA/FRED (state HPI)"
-      };
+      // decide labels
+      const rent_est =
+        rentcastRentOK ? src("RentCast", "api")
+        : (e.rent_est > 0 ? src("Estimated (from price)", "heuristic")
+        : src("Unknown", "na"));
+
+      const price_est =
+        rentcastValueOK ? src("RentCast AVM", "api")
+        : (e.price_est > 0 ? src("Estimated (from rent)", "heuristic")
+        : src("Unknown", "na"));
+
+      const taxes_month =
+        (e.price_est > 0) ? src("Estimated (State Avg)", "heuristic")
+        : src("Unknown", "na");
+
+      const ins_month =
+        (e.price_est > 0) ? src("Estimated (State Baseline)", "heuristic")
+        : src("Unknown", "na");
+
+      let hoa_month = src("N/A", "na");
+      if (zillowHOAOK && e.hoa_month > 0) hoa_month = src("Zillow (RapidAPI)", "api");
+      else if (e.hoa_month > 0)          hoa_month = src("User-supplied", "user");
+
+      const hpi_growth = src("FHFA/FRED (State HPI)", "api");
+
+      return { rent_est, price_est, taxes_month, ins_month, hoa_month, hpi_growth };
     }
 
     async function tick() {
@@ -85,55 +107,67 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const a = j.analysis || {};
         statusEl.textContent = (a.status || "unknown").toUpperCase();
-
         if (a.error && errorEl) errorEl.textContent = a.error;
 
         if (a.status === "done") {
-          if (summaryEl)   summaryEl.classList.remove("hidden");
-          if (estimatesEl) estimatesEl.classList.remove("hidden");
-          if (metricsEl)   metricsEl.classList.remove("hidden");
+          summaryEl?.classList.remove("hidden");
+          estimatesEl?.classList.remove("hidden");
+          metricsEl?.classList.remove("hidden");
 
+          // summary
           const verdictEl = document.getElementById("verdict");
           const reasonsEl = document.getElementById("reasons");
           if (verdictEl) verdictEl.textContent = "Verdict: " + (a.verdict || "").toUpperCase();
           if (reasonsEl) reasonsEl.textContent = a.reasons || "";
 
+          // estimates + provenance
           const e = a.estimates || {};
-          const sources = deriveSources(a, e);
+          const s = deriveSources(a, e);
           if (estimatesEl) {
             estimatesEl.innerHTML = `
               <h4>Key Estimates</h4>
               <ul class="results-list">
-                <li><strong>Rent (est):</strong> ${fmtMoney(e.rent_est)} <span class="src-badge">${sources.rent_est}</span></li>
-                <li><strong>Price (est):</strong> ${fmtMoney(e.price_est)} <span class="src-badge">${sources.price_est}</span></li>
-                <li><strong>Taxes/mo:</strong> ${fmtMoney(e.taxes_month)} <span class="src-badge">${sources.taxes_month}</span></li>
-                <li><strong>Insurance/mo:</strong> ${fmtMoney(e.ins_month)} <span class="src-badge">${sources.ins_month}</span></li>
-                <li><strong>HOA/mo:</strong> ${fmtMoney(e.hoa_month)} <span class="src-badge">${sources.hoa_month}</span></li>
-                <li><strong>Appreciation (HPI):</strong> ${isFinite(e.hpi_growth) ? (e.hpi_growth*100).toFixed(2) + "%" : "—"} <span class="src-badge">${sources.hpi_growth}</span></li>
-              </ul>`;
+                <li><strong>Rent (est):</strong> ${fmtMoney(e.rent_est)} ${badgeHTML(s.rent_est)}</li>
+                <li><strong>Price (est):</strong> ${fmtMoney(e.price_est)} ${badgeHTML(s.price_est)}</li>
+                <li><strong>Taxes/mo:</strong> ${fmtMoney(e.taxes_month)} ${badgeHTML(s.taxes_month)}</li>
+                <li><strong>Insurance/mo:</strong> ${fmtMoney(e.ins_month)} ${badgeHTML(s.ins_month)}</li>
+                <li><strong>HOA/mo:</strong> ${fmtMoney(e.hoa_month)} ${badgeHTML(s.hoa_month)}</li>
+                <li><strong>Appreciation (HPI):</strong> ${
+                  isFinite(e.hpi_growth) ? (e.hpi_growth*100).toFixed(2) + "%" : "—"
+                } ${badgeHTML(s.hpi_growth)}</li>
+              </ul>
+              <div class="results-legend">
+                <span class="src-badge api">API</span> live provider data
+                <span class="src-badge heuristic">Estimated</span> rule-of-thumb / state averages
+                <span class="src-badge user">User</span> value you entered
+                <span class="src-badge na">N/A</span> not available
+              </div>`;
           }
 
+          // metrics + explanations
           const m = a.metrics || {};
           if (metricsEl) {
             metricsEl.innerHTML = `
               <h4>Metrics</h4>
               <ul class="results-list">
                 <li><strong>Cap Rate:</strong> ${fmtPct(m.cap_rate || 0, 2)}<br>
-                  <span class="small">Cap Rate is NOI ÷ Purchase Price. It measures unleveraged return if you bought in cash.</span>
+                  <span class="small">Cap Rate = NOI ÷ Purchase Price (what a cash buyer might earn, ignoring financing).</span>
                 </li>
                 <li><strong>Cash Flow/mo:</strong> ${fmtMoney(m.cash_flow_month)}</li>
                 <li><strong>NOI/mo:</strong> ${fmtMoney(m.noi_month)}</li>
                 <li><strong>P&amp;I/mo:</strong> ${fmtMoney(m.pi_month)}</li>
                 <li><strong>Cash-on-Cash (CoC):</strong> ${fmtPct(m.coc || 0, 2)}<br>
-                  <span class="small">CoC is annual pre-tax cash flow ÷ total cash invested. It measures actual return on money you put in.</span>
+                  <span class="small">CoC = Annual Cash Flow ÷ Total Cash Invested (down payment + rehab + closing).</span>
                 </li>
-                <li><strong>IRR (${m.irr_years ?? "—"} yrs):</strong> ${isFinite(m.irr) ? (m.irr*100).toFixed(2) + "%" : "—"}<br>
-                  <span class="small">IRR is the annualized return including future sale proceeds. It accounts for both cash flow and appreciation.</span>
+                <li><strong>IRR (${m.irr_years ?? "—"} yrs):</strong> ${
+                  isFinite(m.irr) ? (m.irr*100).toFixed(2) + "%" : "—"
+                }<br>
+                  <span class="small">IRR = annualized total return (cash flow + sale), net of selling costs and remaining loan payoff.</span>
                 </li>
               </ul>
               <details style="margin-top:.5rem">
                 <summary class="small">Raw JSON</summary>
-                <pre class="metrics">${JSON.stringify({estimates:a.estimates, metrics:a.metrics}, null, 2)}</pre>
+                <pre class="metrics">${JSON.stringify({estimates:a.estimates, metrics:a.metrics, pulls:a.pulls}, null, 2)}</pre>
               </details>`;
           }
         }
