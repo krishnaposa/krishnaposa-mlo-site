@@ -36,7 +36,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         if (!j.ok) throw new Error(j.error || "Submission failed");
 
-        // Redirect to status.html (same directory)
+        // Redirect to status.html (same directory as current page)
         const statusUrl = new URL("status.html", location.href);
         statusUrl.searchParams.set("id", j.id);
         location.href = statusUrl.toString();
@@ -47,7 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------- Status poller (status.html) ----------
-  const statusEl = document.getElementById("status");
+  const statusEl   = document.getElementById("status");
   if (statusEl) {
     const summaryEl   = document.getElementById("summary");
     const estimatesEl = document.getElementById("estimates");
@@ -71,7 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (a.error && errorEl) errorEl.textContent = a.error;
 
         if (a.status === "done") {
-          // reveal previously hidden sections
+          // reveal previously hidden sections (use classList, not style.display)
           if (summaryEl)   summaryEl.classList.remove("hidden");
           if (estimatesEl) estimatesEl.classList.remove("hidden");
           if (metricsEl)   metricsEl.classList.remove("hidden");
