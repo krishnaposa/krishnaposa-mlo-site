@@ -46,19 +46,32 @@
         <p id="status" class="pill">Loading…</p>
         <div id="error" class="small"></div>
 
-        <!-- Summary section: verdict + reasons + estimates + metrics -->
         <div id="summary" class="mt-1 hidden">
           <h3 id="verdict">Verdict</h3>
           <p id="reasons" class="small"></p>
-
-          <!-- Estimates and metrics live here so they're shown alongside verdict -->
-          <div id="estimates" class="hidden"></div>
-          <div id="metricsWrap" class="hidden"></div>
         </div>
+
+        <div id="estimates" class="hidden"></div>
+        <div id="metricsWrap" class="hidden"></div>
 
         <div class="mt-1">
           <a class="btn-outline" href="/invest.html">Analyze another property</a>
         </div>
+
+        <!-- Explanation block -->
+        <details style="margin-top:1rem">
+          <summary class="small">What these results mean</summary>
+          <div class="small" style="margin-top:0.5rem; line-height:1.5">
+            <p><strong>Verdict</strong> – A simple pass/borderline/buy decision, based on thresholds like Cap ≥ 6%, CoC ≥ 10%, or IRR ≥ 13%.</p>
+            <p><strong>Key Estimates</strong> – Rent, Price, Taxes, Insurance, HOA, and projected appreciation. These come from APIs (RentCast, Zillow HOA, FHFA HPI) or fallback heuristics.</p>
+            <p><strong>Metrics</strong> – ROI calculations:  
+              • <em>Cap Rate</em> = NOI ÷ Price  
+              • <em>Cash Flow</em> = NOI – Mortgage Payment  
+              • <em>Cash-on-Cash</em> = Annual Cash Flow ÷ Cash Invested  
+              • <em>IRR</em> = Annualized return over the hold period (accounts for sale &amp; loan payoff)  
+              • <em>DSCR</em> = NOI ÷ Mortgage Payment (useful for lenders)</p>
+          </div>
+        </details>
       </div>
     </section>
   </main>
