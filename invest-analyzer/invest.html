@@ -37,7 +37,7 @@
     <section class="page-hero">
       <div class="container">
         <h2>Investment Property Analyzer</h2>
-        <p>We’ll fetch rent &amp; price comps, estimate taxes/insurance/HOA, apply appreciation, and compute Cap Rate, Cash Flow, CoC, and 10-yr IRR.</p>
+        <p>We’ll fetch rent &amp; price comps, estimate taxes/insurance/HOA, apply appreciation, and compute Cap Rate, Cash Flow, CoC, and IRR.</p>
       </div>
     </section>
 
@@ -107,11 +107,21 @@
 
           <p class="small">If any monthly cost is unknown, leave it 0 — we’ll estimate from public data/heuristics.</p>
 
-          <div class="flex-row">
+          <div style="display:flex; gap:.5rem; align-items:center; flex-wrap:wrap">
             <button type="submit" class="btn">Analyze</button>
             <span id="submitStatus" class="small"></span>
           </div>
         </form>
+
+        <!-- Explanation block -->
+        <details style="margin-top:1rem">
+          <summary class="small">How the analyzer works</summary>
+          <div class="small" style="margin-top:0.5rem; line-height:1.5">
+            <p><strong>1. Data Gathering</strong> – Pulls data from RentCast (rent &amp; price comps), FHFA HPI (state-level appreciation), and Zillow (HOA when available). Falls back to heuristics if APIs miss.</p>
+            <p><strong>2. Metrics Computation</strong> – Uses your assumptions and estimates to calculate Cap Rate, Cash-on-Cash Return (CoC), Monthly Cash Flow, and a 10-year IRR (with loan payoff &amp; selling costs).</p>
+            <p><strong>3. Results</strong> – Shows rent/price/taxes/insurance/HOA estimates, ROI metrics, and a simple verdict: BUY, BORDERLINE, or PASS, with a short explanation.</p>
+          </div>
+        </details>
       </div>
     </section>
   </main>
