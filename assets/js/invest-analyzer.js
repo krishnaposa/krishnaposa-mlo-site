@@ -5,7 +5,21 @@ const API_STATUS = "https://invest-analyzer-func.azurewebsites.net/api/status?id
 const fmtMoney = (v) => (isFinite(v) ? "$" + Number(v).toLocaleString() : "—");
 const fmtPct   = (v, d=1) => (isFinite(v) ? (Number(v)*100).toFixed(d) + "%" : "—");
 
+// Safer fetch helper: always read text, then parse JSON (better errors on bad responses)
+async function fetchJSON(url, opts) {
+  const r = await fetch(url, opts);
+  const text = await r.text();
+  let data;
+  try { data = JSON.parse(text); }
+  catch {
+    const snippet = text ? text.slice(0, 300) : "(empty body)";
+    throw new Error(`Bad response ${r.status} ${r.statusText}: ${snippet}`);
+  }
+  return data;
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  // ----- submit handler (invest.html) -----
   const form = document.getElementById("investForm");
   if (form) {
     form.addEventListener("submit", async (e) => {
@@ -17,15 +31,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
       elStatus.textContent = "Submitting…";
       try {
-        const r = await fetch(API_SUBMIT, {
+        const j = await fetchJSON(API_SUBMIT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
         });
-        const j = await r.json();
         if (!j.ok) throw new Error(j.error || "Submission failed");
 
-        // Build URL relative to the current page's directory
+        // Redirect to status.html in the same directory as the current page
         const statusUrl = new URL("status.html", location.href);
         statusUrl.searchParams.set("id", j.id);
         location.href = statusUrl.toString();
@@ -35,28 +48,26 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Status page updater
+  // ----- status page poller (status.html) -----
   const statusEl = document.getElementById("status");
   if (statusEl) {
     async function tick() {
       const id = new URLSearchParams(location.search).get("id");
+      const errEl = document.getElementById("error");
       if (!id) {
-        const errEl = document.getElementById("error");
         if (errEl) errEl.textContent = "Missing analysis id.";
         return;
       }
       try {
-        const r = await fetch(API_STATUS + encodeURIComponent(id));
-        const j = await r.json();
+        const j = await fetchJSON(API_STATUS + encodeURIComponent(id));
         if (!j.ok) throw new Error(j.error || "Not found");
 
         const a = j.analysis || {};
-        statusEl.textContent = (a.status || "unknown").toUpperCase();
+        // Show durable runtime status if available
+        const label = (a.status || (a.runtimeStatus ? a.runtimeStatus.toLowerCase() : "unknown"));
+        statusEl.textContent = label.toUpperCase();
 
-        if (a.error) {
-          const errEl = document.getElementById("error");
-          if (errEl) errEl.textContent = a.error;
-        }
+        if (a.error && errEl) errEl.textContent = a.error;
 
         if (a.status === "done") {
           document.getElementById("summary").style.display = "";
@@ -64,6 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
             "Verdict: " + (a.verdict || "").toUpperCase();
           document.getElementById("reasons").textContent = a.reasons || "";
 
+          // estimates
           const e = a.estimates || {};
           const estDiv = document.getElementById("estimates");
           estDiv.style.display = "";
@@ -80,6 +92,7 @@ document.addEventListener("DOMContentLoaded", () => {
               }</li>
             </ul>`;
 
+          // metrics
           const m = a.metrics || {};
           const metricsDiv = document.getElementById("metricsWrap");
           metricsDiv.style.display = "";
@@ -101,11 +114,12 @@ document.addEventListener("DOMContentLoaded", () => {
             </details>`;
         }
       } catch (err) {
-        const errEl = document.getElementById("error");
         if (errEl) errEl.textContent = err.message;
       }
     }
+
     tick();
+    // Poll every 2s
     setInterval(tick, 2000);
   }
 });
