@@ -1,5 +1,5 @@
 /* ===========================
-   Invest Analyzer Custom Styles
+   Invest Analyzer — Layout & Form
    =========================== */
 
 /* Grid layouts for form fields */
@@ -8,20 +8,14 @@
   gap: 0.75rem;
   grid-template-columns: 1fr;
 }
-
 .grid-3 {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: 1fr;
 }
-
 @media (min-width: 900px) {
-  .grid-2 {
-    grid-template-columns: 1fr 1fr;
-  }
-  .grid-3 {
-    grid-template-columns: 1fr 1fr 1fr;
-  }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
 }
 
 /* Form elements */
@@ -30,7 +24,6 @@ label {
   margin: 0.5rem 0;
   font-weight: 600;
 }
-
 input {
   width: 100%;
   padding: 0.6rem 0.7rem;
@@ -39,7 +32,18 @@ input {
   font-size: 16px;
 }
 
-/* Pills for status badges */
+/* Buttons / utilities shared by pages */
+.flex-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ===========================
+   Status & Utility
+   =========================== */
+
 .pill {
   display: inline-block;
   padding: 0.2rem 0.6rem;
@@ -49,7 +53,11 @@ input {
   font-weight: 700;
 }
 
-/* Metrics pre block */
+.small { font-size: 0.9rem; line-height: 1.4; }
+.hidden { display: none; }
+.mt-1 { margin-top: 1rem; }
+
+/* Code block for raw metrics/estimates JSON */
 pre.metrics {
   background: #f8fafc;
   border: 1px solid #e5e7eb;
@@ -58,67 +66,106 @@ pre.metrics {
   overflow: auto;
 }
 
-/* Utility text */
-.small {
-  font-size: 0.9rem;
-  line-height: 1.4;
-}
-
-/* status page helpers */
-.hidden {
-  display: none;
-}
-
-.mt-1 {
-  margin-top: 1rem;
-}
-
-/* invest page helpers */
-.flex-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
 /* ===========================
-   Invest Analyzer Results
+   Results (Estimates + Metrics)
    =========================== */
 
-/* Estimates + Metrics lists 
-color: #dce0e5; 
-*/
+/* Readable list on all themes; dark overrides come later */
 .results-list {
-  font-size: 1rem;         /* base font, same as normal text */
-  line-height: 1.6;
-  margin: 0;
-  padding-left: 1.2rem;    /* keep bullets indented */
-}
-
-.results-list li {
-  margin: 0.25rem 0;
-}
-/* Results list styling */
-.results-list {
-  font-size: 0.95rem;
-  line-height: 1.6;
-  color: #334155;
+  color: #0f172a;          /* ink on light backgrounds */
+  font-size: 1rem;
+  line-height: 1.65;
   margin: 0;
   padding-left: 1.25rem;
 }
+.results-list li { margin-bottom: 0.45rem; }
 
-.results-list li {
-  margin-bottom: 0.4rem;
-}
-
-/* Tiny source badge */
+/* Source badges */
 .src-badge {
   display: inline-block;
-  margin-left: 0.4rem;
-  padding: 0.15rem 0.4rem;
-  border-radius: 6px;
-  background: #eef2ff;
-  color: #3730a3;
+  margin-left: 0.45rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
+.src-badge.api {
+  background: #e0f2fe;  /* light cyan */
+  color: #075985;       /* cyan-800 */
+}
+.src-badge.heuristic {
+  background: #fef9c3;  /* light yellow */
+  color: #854d0e;       /* amber-800 */
+}
+.src-badge.user {
+  background: #e9d5ff;  /* light purple */
+  color: #6b21a8;       /* purple-800 */
+}
+.src-badge.na {
+  background: #f1f5f9;  /* slate-100 */
+  color: #334155;       /* slate-700 */
+}
+
+/* Badge legend */
+.results-legend {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  color: #475569;
+}
+.results-legend .src-badge {
+  margin-left: 0.25rem;
+  margin-right: 0.5rem;
+}
+
+/* ===========================
+   Dark Theme Overrides (inside .card)
+   =========================== */
+
+/* Make results readable on your site's dark cards */
+.card .results-list {
+  color: var(--text);            /* from main theme: #e5e7eb */
+}
+
+/* Brighten small/explanation text inside analyzer sections */
+.card .results-list .small,
+.card #summary .small,
+.card .results-legend {
+  color: var(--text);
+  opacity: 0.95;
+}
+
+/* Keep the "Raw JSON" summary readable but slightly subdued */
+.card details > summary.small {
+  color: #cbd5e1;
+}
+
+/* Badges tuned for dark background */
+.card .src-badge.api {
+  background: rgba(14,165,233,.18); /* cyan tint */
+  color: #7dd3fc;
+  border: 1px solid rgba(125,211,252,.35);
+}
+.card .src-badge.heuristic {
+  background: rgba(245,158,11,.18); /* amber tint */
+  color: #fcd34d;
+  border: 1px solid rgba(252,211,77,.35);
+}
+.card .src-badge.user {
+  background: rgba(147,51,234,.18); /* purple tint */
+  color: #d8b4fe;
+  border: 1px solid rgba(216,180,254,.35);
+}
+.card .src-badge.na {
+  background: rgba(148,163,184,.18); /* slate tint */
+  color: #cbd5e1;
+  border: 1px solid rgba(203,213,225,.35);
+}
+
+/* Status pill tuned for dark background */
+.card .pill {
+  background: rgba(99,102,241,.18);
+  color: #c7d2fe;
+  border: 1px solid rgba(199,210,254,.35);
 }
