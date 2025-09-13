@@ -1,11 +1,12 @@
+# orchestrator/__init__.py
 import azure.durable_functions as df
 
-def run(context: df.OrchestrationContext):
+def run(context):
     context.set_custom_status({"step": "start"})
     data = context.get_input() or {}
     analysis_id = data.get("id")
 
-    # Write Cosmos doc as running
+    # Update Cosmos -> running
     yield context.call_activity("Activities-MarkStatus", {
         "id": analysis_id,
         "status": "running"
@@ -21,7 +22,7 @@ def run(context: df.OrchestrationContext):
     verdict = yield context.call_activity("Activities-DecideVerdict", estimates)
     context.set_custom_status({"step": "verdict_done", "id": analysis_id})
 
-    # Save results
+    # Save results + mark done in Cosmos
     yield context.call_activity("Activities-SaveResults", {
         "id": analysis_id,
         "pulls": pulls,
@@ -30,8 +31,6 @@ def run(context: df.OrchestrationContext):
         "verdict": verdict.get("verdict"),
         "reasons": verdict.get("reasons")
     })
-
-    # Explicitly mark Cosmos as done
     yield context.call_activity("Activities-MarkStatus", {
         "id": analysis_id,
         "status": "done",
@@ -45,4 +44,5 @@ def run(context: df.OrchestrationContext):
     context.set_custom_status({"step": "saved", "id": analysis_id})
     return {"id": analysis_id, "status": "done"}
 
+# IMPORTANT
 main = df.Orchestrator.create(run)
