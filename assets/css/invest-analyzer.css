@@ -85,9 +85,10 @@ pre.metrics {
    Invest Analyzer Results
    =========================== */
 
-/* Estimates + Metrics lists */
+/* Estimates + Metrics lists 
+color: #dce0e5; 
+*/
 .results-list {
-  color: #334155;          /* same as verdict reasons */
   font-size: 1rem;         /* base font, same as normal text */
   line-height: 1.6;
   margin: 0;
