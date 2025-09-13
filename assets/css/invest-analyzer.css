@@ -80,3 +80,20 @@ pre.metrics {
   align-items: center;
   flex-wrap: wrap;
 }
+
+/* ===========================
+   Invest Analyzer Results
+   =========================== */
+
+/* Estimates + Metrics lists */
+.results-list {
+  color: #334155;          /* same as verdict reasons */
+  font-size: 1rem;         /* base font, same as normal text */
+  line-height: 1.6;
+  margin: 0;
+  padding-left: 1.2rem;    /* keep bullets indented */
+}
+
+.results-list li {
+  margin: 0.25rem 0;
+}
