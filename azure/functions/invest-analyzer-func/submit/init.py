@@ -1,17 +1,21 @@
-import json, uuid
+import json, uuid, logging
 import azure.functions as func
+import azure.durable_functions as df
 from shared import cosmos
 
 REQUIRED = ["address","city","state","zip"]
 
-def main(req: func.HttpRequest, starter: str) -> func.HttpResponse:
-    from azure.durable_functions import DurableOrchestrationClient
-    client = DurableOrchestrationClient(starter)
+async def main(req: func.HttpRequest, starter: str) -> func.HttpResponse:
+    client = df.DurableOrchestrationClient(starter)
     try:
         body = req.get_json()
         for k in REQUIRED:
-            if not body.get(k): return func.HttpResponse(
-                json.dumps({"ok": False, "error": f"Missing {k}"}), status_code=400)
+            if not body.get(k):
+                return func.HttpResponse(
+                    json.dumps({"ok": False, "error": f"Missing {k}"}),
+                    status_code=400,
+                    mimetype="application/json"
+                )
 
         analysis_id = uuid.uuid4().hex
         doc = {
@@ -41,8 +45,21 @@ def main(req: func.HttpRequest, starter: str) -> func.HttpResponse:
         cosmos.create_doc(doc)
 
         # Start orchestration (instanceId == analysis_id for easy lookup)
-        _ = client.start_new("orchestrator", instance_id=analysis_id, client_input={"id": analysis_id})
-        return func.HttpResponse(json.dumps({"ok": True, "id": analysis_id}),
-                                 headers={"Content-Type":"application/json"})
+        instance_id = await client.start_new(
+            "orchestrator",                     # must exactly match folder name
+            instance_id=analysis_id,
+            client_input={"id": analysis_id}
+        )
+        logging.info(f"Started orchestration {instance_id}")
+
+        return func.HttpResponse(
+            json.dumps({"ok": True, "id": analysis_id}),
+            mimetype="application/json"
+        )
     except Exception as e:
-        return func.HttpResponse(json.dumps({"ok": False, "error": str(e)}), status_code=500)
+        logging.exception("Submit failed")
+        return func.HttpResponse(
+            json.dumps({"ok": False, "error": str(e)}),
+            status_code=500,
+            mimetype="application/json"
+        )
