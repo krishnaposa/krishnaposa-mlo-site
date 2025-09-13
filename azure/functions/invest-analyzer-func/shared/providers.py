@@ -159,9 +159,10 @@ def normalize_estimates(address: Dict[str, Any],
                         rent_resp: Optional[Dict[str, Any]],
                         value_resp: Optional[Dict[str, Any]],
                         state_abbr: str) -> Dict[str, Any]:
+    # 1) Extract provider values if present
     rent_est = None
     if rent_resp:
-        # RentCast fields: {'rent': 2050, 'low': 1900, 'high': 2200, ...}
+        # RentCast fields could be 'rent', 'amount', or 'estimate'
         rent_est = rent_resp.get("rent") or rent_resp.get("amount") or rent_resp.get("estimate")
 
     price_est = None
@@ -169,18 +170,41 @@ def normalize_estimates(address: Dict[str, Any],
         # RentCast AVM returns {"value": 321000, "low":..., "high":...}
         price_est = value_resp.get("value") or value_resp.get("estimate") or value_resp.get("zestimate")
 
-    if not rent_est:
+    # 2) Heuristic bridging if one side is missing
+    # If we have RENT but not PRICE -> estimate PRICE via a conservative GRM
+    # Typical GRM ranges wildly; use 130–160 as a simple fallback. We'll pick 140.
+    if (not price_est or float(price_est) <= 0) and (rent_est and float(rent_est) > 0):
+        try:
+            price_est = float(rent_est) * 12.0 * 140.0
+        except Exception:
+            price_est = 0.0
+
+    # If we have PRICE but not RENT -> estimate RENT via "monthly rent ≈ 0.6–0.8% of price"
+    if (not rent_est or float(rent_est) <= 0) and (price_est and float(price_est) > 0):
+        try:
+            rent_est = float(price_est) * 0.0065  # 0.65% rule (middle-of-road)
+        except Exception:
+            rent_est = 0.0
+
+    # Final numeric guards
+    try:
+        rent_est = float(rent_est or 0.0)
+    except Exception:
         rent_est = 0.0
-    if not price_est:
+
+    try:
+        price_est = float(price_est or 0.0)
+    except Exception:
         price_est = 0.0
 
-    taxes_month = estimate_monthly_tax(price_est, state_abbr)
-    ins_month = estimate_monthly_insurance(price_est, state_abbr)
+    # 3) Taxes/insurance derived even if provider AVM failed
+    taxes_month = estimate_monthly_tax(price_est, state_abbr) if price_est > 0 else 0.0
+    ins_month   = estimate_monthly_insurance(price_est, state_abbr) if price_est > 0 else 0.0
 
     return {
         "rent_est": float(rent_est),
         "price_est": float(price_est),
-        "taxes_month": taxes_month,
-        "ins_month": ins_month,
-        "hoa_month": 0.0,   # keep from form or your own data; default 0
+        "taxes_month": float(taxes_month),
+        "ins_month": float(ins_month),
+        "hoa_month": 0.0,   # leave 0; UI/computeMetrics will override from user entry if provided
     }
