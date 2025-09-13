@@ -2,22 +2,26 @@ from shared import cosmos
 from datetime import datetime, timezone
 
 def main(payload: dict):
-  doc = cosmos.get_doc(payload["id"])
-  if not doc:
-    return {"ok": False, "error": "not found"}
+    doc = cosmos.get_doc(payload["id"])
+    if not doc:
+        return {"ok": False, "error": "doc not found"}
 
-  doc["status"] = payload.get("status", doc.get("status", "queued"))
-  if payload.get("error"):
-    doc["error"] = payload["error"]
-  if payload.get("estimates") is not None:
-    doc["estimates"] = payload["estimates"]
-  if payload.get("metrics") is not None:
-    doc["metrics"] = payload["metrics"]
-  if payload.get("verdict") is not None:
-    doc["verdict"] = payload["verdict"]
-  if payload.get("reasons") is not None:
-    doc["reasons"] = payload["reasons"]
+    # update fields if provided
+    if "status" in payload:
+        doc["status"] = payload["status"]
+    if "error" in payload:
+        doc["error"] = payload["error"]
+    if "pulls" in payload:
+        doc["pulls"] = payload["pulls"]
+    if "estimates" in payload:
+        doc["estimates"] = payload["estimates"]
+    if "metrics" in payload:
+        doc["metrics"] = payload["metrics"]
+    if "verdict" in payload:
+        doc["verdict"] = payload["verdict"]
+    if "reasons" in payload:
+        doc["reasons"] = payload["reasons"]
 
-  doc["updatedAt"] = datetime.now(timezone.utc).isoformat()
-  cosmos.upsert_doc(doc)
-  return {"ok": True}
+    doc["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    cosmos.upsert_doc(doc)
+    return {"ok": True}
