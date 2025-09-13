@@ -1,5 +1,5 @@
 # shared/providers.py
-import os, csv, io, math, requests
+import os, csv, io, math, time, requests
 from typing import Dict, Any, Optional
 
 # ----------------------------
@@ -11,14 +11,37 @@ def rentcast_headers():
     key = os.environ.get("RENTCAST_KEY")
     if not key:
         raise RuntimeError("Missing RENTCAST_KEY in settings")
-    return {"X-Api-Key": key}
+    return {"X-Api-Key": key, "User-Agent": "invest-analyzer/1.0"}
+
+def _rc_get(path: str, params=None, timeout=20, max_retries=3):
+    """GET with small backoff + helpful error text."""
+    url = f"{RENTCAST_BASE}{path}"
+    last_exc = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            r = requests.get(url, headers=rentcast_headers(), params=params, timeout=timeout)
+            if r.status_code >= 400:
+                body = (r.text or "")[:400]
+                raise requests.HTTPError(f"{r.status_code} {r.reason} – {body}", response=r)
+            return r.json()
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code in (429, 500, 502, 503, 504):
+                time.sleep(1.5 * attempt)
+                last_exc = e
+                continue
+            raise
+        except requests.RequestException as e:
+            time.sleep(1.2 * attempt)
+            last_exc = e
+            continue
+    if last_exc:
+        raise last_exc
 
 def rentcast_property_search(address: str, city: str, state: str, zip_code: str) -> Dict[str, Any]:
-    url = f"{RENTCAST_BASE}/properties?address={requests.utils.quote(address)}&city={city}&state={state}&zip={zip_code}"
-    r = requests.get(url, headers=rentcast_headers(), timeout=20)
-    r.raise_for_status()
-    data = r.json()
-    return data[0] if data else {}
+    data = _rc_get("/properties", {
+        "address": address, "city": city, "state": state, "zip": zip_code
+    }) or []
+    return data[0] if isinstance(data, list) and data else {}
 
 def rentcast_rent_estimate(address: str, city: str, state: str, zip_code: str,
                            beds: Optional[int]=None, baths: Optional[float]=None, sqft: Optional[int]=None) -> Dict[str, Any]:
@@ -26,20 +49,15 @@ def rentcast_rent_estimate(address: str, city: str, state: str, zip_code: str,
     if beds:  params["bedrooms"] = beds
     if baths: params["bathrooms"] = baths
     if sqft:  params["squareFootage"] = sqft
-    url = f"{RENTCAST_BASE}/rent/estimate"
-    r = requests.get(url, headers=rentcast_headers(), params=params, timeout=20)
-    r.raise_for_status()
-    return r.json()
+    return _rc_get("/rent/estimate", params=params)
 
 def rentcast_avm(address: str, city: str, state: str, zip_code: str) -> Dict[str, Any]:
-    url = f"{RENTCAST_BASE}/avm/value"
-    params = {"address": address, "city": city, "state": state, "zip": zip_code}
-    r = requests.get(url, headers=rentcast_headers(), params=params, timeout=20)
-    r.raise_for_status()
-    return r.json()
+    return _rc_get("/avm/value", params={
+        "address": address, "city": city, "state": state, "zip": zip_code
+    })
 
 # ----------------------------
-#  Zillow via RapidAPI (cheap)
+#  Zillow via RapidAPI (optional/cheap)
 # ----------------------------
 RAPIDAPI_ZILLOW_HOST = os.environ.get("RAPIDAPI_ZILLOW_HOST")  # e.g., "zillow-com1.p.rapidapi.com"
 RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY")
@@ -49,40 +67,31 @@ def rapid_headers():
         raise RuntimeError("Missing RAPIDAPI_KEY or RAPIDAPI_ZILLOW_HOST")
     return {
         "X-RapidAPI-Key": RAPIDAPI_KEY,
-        "X-RapidAPI-Host": RAPIDAPI_ZILLOW_HOST
+        "X-RapidAPI-Host": RAPIDAPI_ZILLOW_HOST,
+        "User-Agent": "invest-analyzer/1.0"
     }
 
 def zillow_search_address_freeform(query: str) -> Dict[str, Any]:
-    """
-    Search by freeform address text to find a ZPID.
-    Provider endpoints vary. Many use /locations, /search or /propertyExtendedSearch.
-    This version tries /locations first.
-    """
     url = f"https://{RAPIDAPI_ZILLOW_HOST}/locations"
     r = requests.get(url, headers=rapid_headers(), params={"location": query}, timeout=20)
     r.raise_for_status()
     return r.json()
 
 def zillow_property_details_zpid(zpid: str) -> Dict[str, Any]:
-    """
-    Load details for a ZPID; different RapidAPI providers expose different fields.
-    We’ll try typical keys for HOA: 'hoaFee', 'monthlyHoaFee', 'hoa' etc.
-    """
     url = f"https://{RAPIDAPI_ZILLOW_HOST}/property"
     r = requests.get(url, headers=rapid_headers(), params={"zpid": zpid}, timeout=20)
     r.raise_for_status()
     data = r.json()
-    # Try to surface HOA as a float
     hoa_candidates = []
     if isinstance(data, dict):
         for k in ("hoaFee", "monthlyHoaFee", "hoa", "hoa_fee", "hoa_per_month"):
             if k in data:
                 hoa_candidates.append(data.get(k))
-        # Some providers wrap details in 'data' or 'result'
         inner = data.get("data") or data.get("result") or {}
-        for k in ("hoaFee", "monthlyHoaFee", "hoa", "hoa_fee", "hoa_per_month"):
-            if isinstance(inner, dict) and k in inner:
-                hoa_candidates.append(inner.get(k))
+        if isinstance(inner, dict):
+            for k in ("hoaFee", "monthlyHoaFee", "hoa", "hoa_fee", "hoa_per_month"):
+                if k in inner:
+                    hoa_candidates.append(inner.get(k))
     hoa_val = 0.0
     for cand in hoa_candidates:
         try:
@@ -96,19 +105,13 @@ def zillow_property_details_zpid(zpid: str) -> Dict[str, Any]:
     return data
 
 def get_zillow_hoa_by_address(address: str, city: str, state: str, zip_code: str) -> float:
-    """
-    Convenience: search by address -> zpid -> details -> parse HOA.
-    Returns monthly HOA or 0.0 if not available.
-    """
     try:
         query = f"{address}, {city}, {state} {zip_code}".strip()
         sr = zillow_search_address_freeform(query)
         zpid = None
-        # Try common patterns to extract a zpid
         if isinstance(sr, dict):
             zpid = sr.get("zpid")
             if not zpid:
-                # Some providers return lists under 'results' or 'addresses'
                 for key in ("results", "addresses", "data", "items"):
                     arr = sr.get(key)
                     if isinstance(arr, list) and arr:
@@ -122,7 +125,7 @@ def get_zillow_hoa_by_address(address: str, city: str, state: str, zip_code: str
         return 0.0
 
 # ----------------------------
-#  HPI Appreciation (free) via FRED API (FHFA All-Transactions HPI)
+#  HPI Appreciation via FRED (FHFA HPI)
 # ----------------------------
 FRED_KEY = os.environ.get("FRED_KEY")
 FRED_OBS_URL = "https://api.stlouisfed.org/fred/series/observations"
@@ -133,11 +136,8 @@ def fred_state_cagr(state_abbr: str, years: int = 5) -> Optional[float]:
     series_id = f"{state_abbr.upper()}HPI"
     obs_limit = years * 4 + 8
     params = {
-        "series_id": series_id,
-        "api_key": FRED_KEY,
-        "file_type": "json",
-        "sort_order": "asc",
-        "limit": obs_limit
+        "series_id": series_id, "api_key": FRED_KEY, "file_type": "json",
+        "sort_order": "asc", "limit": obs_limit
     }
     try:
         r = requests.get(FRED_OBS_URL, params=params, timeout=30)
@@ -151,8 +151,7 @@ def fred_state_cagr(state_abbr: str, years: int = 5) -> Optional[float]:
         start_idx = vals[-(years * 4 + 1)]
         if start_idx <= 0:
             return None
-        cagr = (end_idx / start_idx) ** (1 / years) - 1
-        return float(cagr)
+        return float((end_idx / start_idx) ** (1 / years) - 1)
     except Exception:
         return None
 
@@ -196,7 +195,6 @@ def normalize_estimates(address: Dict[str, Any],
                         rent_resp: Optional[Dict[str, Any]],
                         value_resp: Optional[Dict[str, Any]],
                         state_abbr: str) -> Dict[str, Any]:
-    # Provider values
     rent_est = None
     if rent_resp:
         rent_est = (rent_resp.get("rent") or rent_resp.get("amount")
@@ -209,13 +207,11 @@ def normalize_estimates(address: Dict[str, Any],
     rent_est = _safe_float(rent_est, 0.0)
     price_est = _safe_float(price_est, 0.0)
 
-    # Bridge one missing side
     if price_est <= 0 and rent_est > 0:
         price_est = rent_est * 12.0 * 140.0  # GRM fallback
     if rent_est <= 0 and price_est > 0:
-        rent_est = price_est * 0.0065       # 0.65%/mo rule
+        rent_est = price_est * 0.0065       # 0.65% rule
 
-    # Last-resort both missing
     if price_est <= 0 and rent_est <= 0:
         baseline_price_by_state = {
             "GA": 320_000, "FL": 360_000, "TX": 310_000, "NC": 300_000, "SC": 290_000,
@@ -232,5 +228,5 @@ def normalize_estimates(address: Dict[str, Any],
         "price_est": float(price_est),
         "taxes_month": float(taxes_month),
         "ins_month": float(ins_month),
-        "hoa_month": 0.0,  # will be overridden if Zillow HOA found
+        "hoa_month": 0.0,
     }
