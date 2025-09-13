@@ -1,4 +1,4 @@
-# Activities/GatherData/__init__.py
+# Activities/gatherData/__init__.py
 from shared import cosmos
 from shared.providers import (
     rentcast_property_search, rentcast_rent_estimate, rentcast_avm,
@@ -6,6 +6,7 @@ from shared.providers import (
 )
 
 def main(analysis_id: str):
+    # Load the doc for assumptions/address
     doc = cosmos.get_doc(analysis_id)
     a = doc["assumptions"]
     addr = doc["address"]
@@ -36,11 +37,13 @@ def main(analysis_id: str):
     # 2) Normalize + fallbacks (tax/insurance heuristics)
     est = normalize_estimates(addr, rent_resp, value_resp, addr["state"])
 
-    # 3) FHFA HPI CAGR for appreciation (free)
+    # 3) State HPI CAGR (FRED-backed helper) with safe default
     hpi_growth = fhfa_state_cagr(addr["state"], years=int(a.get("holdYears", 10))) or 0.02
     est["hpi_growth"] = float(hpi_growth)
 
+    # 4) Build pulls — include id so downstream can re-load assumptions
     pulls = {
+        "id": analysis_id,           # <-- important: include id
         "address": addr,
         "sources": ["rentcast", "fhfa_hpi"],
         "raw": {
@@ -51,9 +54,10 @@ def main(analysis_id: str):
         "estimates": est
     }
 
-    # Persist interim
+    # Persist interim for the status page
     doc["status"] = "running"
     doc["pulls"] = pulls
     doc["estimates"] = est
     cosmos.upsert_doc(doc)
+
     return pulls
