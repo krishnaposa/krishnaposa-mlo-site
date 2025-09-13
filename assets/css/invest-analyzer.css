@@ -8,11 +8,13 @@
   gap: 0.75rem;
   grid-template-columns: 1fr;
 }
+
 .grid-3 {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: 1fr;
 }
+
 @media (min-width: 900px) {
   .grid-2 {
     grid-template-columns: 1fr 1fr;
@@ -28,6 +30,7 @@ label {
   margin: 0.5rem 0;
   font-weight: 600;
 }
+
 input {
   width: 100%;
   padding: 0.6rem 0.7rem;
@@ -59,4 +62,21 @@ pre.metrics {
 .small {
   font-size: 0.9rem;
   line-height: 1.4;
+}
+
+/* status page helpers */
+.hidden {
+  display: none;
+}
+
+.mt-1 {
+  margin-top: 1rem;
+}
+
+/* invest page helpers */
+.flex-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
