@@ -1,5 +1,5 @@
 # shared/providers.py
-import os, math, csv, io, requests
+import os, csv, io, requests
 from typing import Dict, Any, Optional
 
 # ----------------------------
@@ -14,7 +14,7 @@ def rentcast_headers():
     return {"X-Api-Key": key}
 
 def rentcast_property_search(address: str, city: str, state: str, zip_code: str) -> Dict[str, Any]:
-    """Returns property profile + value estimate (if available)."""
+    """Returns property profile (and value estimate if available)."""
     # Docs: https://www.rentcast.io/api
     url = f"{RENTCAST_BASE}/properties?address={requests.utils.quote(address)}&city={city}&state={state}&zip={zip_code}"
     r = requests.get(url, headers=rentcast_headers(), timeout=20)
@@ -24,10 +24,8 @@ def rentcast_property_search(address: str, city: str, state: str, zip_code: str)
 
 def rentcast_rent_estimate(address: str, city: str, state: str, zip_code: str,
                            beds: Optional[int]=None, baths: Optional[float]=None, sqft: Optional[int]=None) -> Dict[str, Any]:
-    """Returns rent estimate (amount + range)"""
-    params = {
-        "address": address, "city": city, "state": state, "zip": zip_code
-    }
+    """Returns rent estimate (amount + range)."""
+    params = {"address": address, "city": city, "state": state, "zip": zip_code}
     if beds:  params["bedrooms"] = beds
     if baths: params["bathrooms"] = baths
     if sqft:  params["squareFootage"] = sqft
@@ -61,7 +59,7 @@ def rapid_headers():
     }
 
 def zillow_property_details_zpid(zpid: str) -> Dict[str, Any]:
-    """Example endpoint: get details by ZPID (the exact path depends on the RapidAPI listing you choose)."""
+    """Example endpoint: get details by ZPID (exact path depends on the RapidAPI provider you choose)."""
     url = f"https://{RAPIDAPI_ZILLOW_HOST}/property"
     r = requests.get(url, headers=rapid_headers(), params={"zpid": zpid}, timeout=20)
     r.raise_for_status()
@@ -75,55 +73,60 @@ def zillow_search_address(address: str) -> Dict[str, Any]:
     return r.json()
 
 # ----------------------------
-#  FHFA HPI (free) – appreciation
-#  We’ll fetch state-level quarterly HPI and compute a trailing CAGR.
-#  You can swap to CBSA/county series if you prefer (FHFA publishes CSVs).
+#  HPI Appreciation (free) via FRED API (FHFA All-Transactions HPI)
+#  Series id pattern: '<STATE>HPI'  e.g., 'GAHPI', 'CAHPI'
+#  Get a free FRED key: https://fred.stlouisfed.org/docs/api/api_key.html
+#  Set env var: FRED_KEY
 # ----------------------------
-FHFA_STATE_CSV = "https://www.fhfa.gov/DataTools/Downloads/Documents/HPI/HPI_AT_state.csv"
+FRED_KEY = os.environ.get("FRED_KEY")
+FRED_OBS_URL = "https://api.stlouisfed.org/fred/series/observations"
 
-def _parse_fhfa_state_csv(csv_bytes: bytes) -> Dict[str, Dict[str, float]]:
+def fred_state_cagr(state_abbr: str, years: int = 5) -> Optional[float]:
     """
-    Returns { 'GA': {'YYYYQq': index_value, ...}, ... }
-    CSV header example: 'State','Quarter','Index','...'
+    Compute trailing CAGR from FHFA All-Transactions HPI via FRED.
+    Returns a float like 0.025 or None on failure.
     """
-    txt = csv_bytes.decode("utf-8", errors="ignore")
-    reader = csv.DictReader(io.StringIO(txt))
-    out: Dict[str, Dict[str, float]] = {}
-    for row in reader:
-        st = row.get("State")
-        q = row.get("Quarter")
-        idx = row.get("Index")
-        if not (st and q and idx):
-            continue
-        out.setdefault(st, {})[q] = float(idx)
-    return out
+    if not FRED_KEY:
+        return None
 
+    series_id = f"{state_abbr.upper()}HPI"
+    # Pull enough quarters (years*4 + a small buffer)
+    obs_limit = years * 4 + 8
+    params = {
+        "series_id": series_id,
+        "api_key": FRED_KEY,
+        "file_type": "json",
+        "sort_order": "asc",
+        "limit": obs_limit
+    }
+    try:
+        r = requests.get(FRED_OBS_URL, params=params, timeout=30)
+        r.raise_for_status()
+        j = r.json()
+        obs = j.get("observations", [])
+        vals = [float(o["value"]) for o in obs if o.get("value") not in (None, ".", "")]
+        if len(vals) < years * 4 + 1:
+            return None
+        end_idx = vals[-1]
+        start_idx = vals[-(years * 4 + 1)]
+        if start_idx <= 0:
+            return None
+        cagr = (end_idx / start_idx) ** (1 / years) - 1
+        return float(cagr)
+    except Exception:
+        return None
+
+# Wrapper maintained for compatibility with your gatherData() usage
 def fhfa_state_cagr(state_abbr: str, years: int = 5) -> Optional[float]:
-    """Compute trailing CAGR from FHFA quarterly index for a state (e.g., 'GA')."""
-    resp = requests.get(FHFA_STATE_CSV, timeout=30)
-    resp.raise_for_status()
-    data = _parse_fhfa_state_csv(resp.content)
-    series = data.get(state_abbr.upper())
-    if not series:
-        return None
-    # sort by quarter key 'YYYYQq'
-    keys = sorted(series.keys())
-    if len(keys) < years*4 + 1:
-        return None
-    end_idx = series[keys[-1]]
-    start_idx = series[keys[-(years*4+1)]]
-    if start_idx <= 0:
-        return None
-    cagr = (end_idx / start_idx) ** (1/years) - 1
-    return float(cagr)
+    """Try FRED-backed state HPI CAGR; caller should fall back to a default if None."""
+    return fred_state_cagr(state_abbr, years)
 
 # ----------------------------
 #  Taxes: simple heuristic (free)
-#  You can refine with ACS (Census) later.
 # ----------------------------
 STATE_PROP_TAX_RATE_GUESS = {
     # very rough average effective property tax rate (% of value per year)
-    # Source should be replaced with your chosen dataset; treat as placeholder
+    # Placeholder; replace with your preferred dataset later
     "GA": 0.009, "FL": 0.008, "TX": 0.016, "CA": 0.007, "NY": 0.017, "NC": 0.008,
     "SC": 0.006, "AL": 0.004, "TN": 0.007, "NJ": 0.024, "IL": 0.018, "PA": 0.014,
 }
@@ -134,19 +137,16 @@ def estimate_monthly_tax(price_est: float, state_abbr: str) -> float:
 
 # ----------------------------
 #  Insurance: heuristic (free)
-#  Zillow does not offer an insurance-quote API;
-#  Scraping Zillow is against their ToS — do not do it.
+#  Note: scraping Zillow for insurance violates their ToS — don’t do it.
 # ----------------------------
 STATE_INS_PER_100K_PER_MONTH = {
     # VERY rough baseline monthly premium per $100k of coverage
-    # Replace with your own dataset or partner later
-    "GA": 28, "FL": 55, "TX": 38, "CA": 30, "NC": 29, "SC": 31, "AL": 32, "TN": 27, "NJ": 35, "NY": 36
+    "GA": 28, "FL": 55, "TX": 38, "CA": 30, "NC": 29, "SC": 31,
+    "AL": 32, "TN": 27, "NJ": 35, "NY": 36
 }
 
 def estimate_monthly_insurance(price_est: float, state_abbr: str, coverage_ratio: float = 0.8) -> float:
-    """
-    coverage_ratio ~ how much dwelling coverage vs price (80% default).
-    """
+    """coverage_ratio ~ how much dwelling coverage vs price (80% default)."""
     per100k = STATE_INS_PER_100K_PER_MONTH.get(state_abbr.upper(), 30)
     coverage = price_est * coverage_ratio
     units = coverage / 100_000.0
@@ -182,5 +182,5 @@ def normalize_estimates(address: Dict[str, Any],
         "price_est": float(price_est),
         "taxes_month": taxes_month,
         "ins_month": ins_month,
-        "hoa_month": 0.0,   # keep from form or scrape listing you own; default 0
+        "hoa_month": 0.0,   # keep from form or your own data; default 0
     }
