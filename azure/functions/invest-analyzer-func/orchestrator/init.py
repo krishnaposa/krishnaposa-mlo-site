@@ -5,10 +5,13 @@ def run(context: df.OrchestrationContext):
     data = context.get_input() or {}
     analysis_id = data.get("id")
 
-    # set Cosmos status = running (so UI stops showing queued)
-    yield context.call_activity("Activities-MarkStatus", {"id": analysis_id, "status": "running"})
+    # Write Cosmos doc as running
+    yield context.call_activity("Activities-MarkStatus", {
+        "id": analysis_id,
+        "status": "running"
+    })
 
-    # fan-out
+    # Fan-out work
     pulls = yield context.call_activity("Activities-GatherData", analysis_id)
     context.set_custom_status({"step": "gather_done", "id": analysis_id})
 
@@ -18,7 +21,7 @@ def run(context: df.OrchestrationContext):
     verdict = yield context.call_activity("Activities-DecideVerdict", estimates)
     context.set_custom_status({"step": "verdict_done", "id": analysis_id})
 
-    # save and mark done (write all final fields to Cosmos)
+    # Save results
     yield context.call_activity("Activities-SaveResults", {
         "id": analysis_id,
         "pulls": pulls,
@@ -27,6 +30,8 @@ def run(context: df.OrchestrationContext):
         "verdict": verdict.get("verdict"),
         "reasons": verdict.get("reasons")
     })
+
+    # Explicitly mark Cosmos as done
     yield context.call_activity("Activities-MarkStatus", {
         "id": analysis_id,
         "status": "done",
@@ -36,8 +41,8 @@ def run(context: df.OrchestrationContext):
         "verdict": verdict.get("verdict"),
         "reasons": verdict.get("reasons")
     })
-    context.set_custom_status({"step": "saved", "id": analysis_id})
 
+    context.set_custom_status({"step": "saved", "id": analysis_id})
     return {"id": analysis_id, "status": "done"}
 
 main = df.Orchestrator.create(run)
