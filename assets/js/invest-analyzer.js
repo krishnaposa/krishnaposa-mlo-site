@@ -87,7 +87,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (estimatesEl) {
             estimatesEl.innerHTML = `
               <h4>Key Estimates</h4>
-              <ul class="small" style="color:#334155;line-height:1.6">
+              <ul class="results-list">
                 <li><strong>Rent (est):</strong> ${fmtMoney(e.rent_est)}</li>
                 <li><strong>Price (est):</strong> ${fmtMoney(e.price_est)}</li>
                 <li><strong>Taxes/mo:</strong> ${fmtMoney(e.taxes_month)}</li>
@@ -104,7 +104,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (metricsEl) {
             metricsEl.innerHTML = `
               <h4>Metrics</h4>
-              <ul class="small" style="color:#334155;line-height:1.6">
+              <ul class="results-list">
                 <li><strong>Cap Rate:</strong> ${fmtPct(m.cap_rate || 0, 2)}</li>
                 <li><strong>Cash Flow/mo:</strong> ${fmtMoney(m.cash_flow_month)}</li>
                 <li><strong>NOI/mo:</strong> ${fmtMoney(m.noi_month)}</li>
