@@ -98,3 +98,27 @@ color: #dce0e5;
 .results-list li {
   margin: 0.25rem 0;
 }
+/* Results list styling */
+.results-list {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #334155;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.results-list li {
+  margin-bottom: 0.4rem;
+}
+
+/* Tiny source badge */
+.src-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 6px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
