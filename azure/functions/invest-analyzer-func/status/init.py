@@ -19,44 +19,45 @@ async def main(req: func.HttpRequest, starter: str) -> func.HttpResponse:
             status_code=400, mimetype="application/json"
         )
 
-    # Read Cosmos (may be stale or not yet written)
-    doc = cosmos.get_doc(analysis_id)
+    # 1) Read Cosmos safely
+    try:
+        doc = cosmos.get_doc(analysis_id) or {}
+    except Exception as e:
+        return func.HttpResponse(
+            json.dumps({"ok": False, "error": f"Cosmos error: {e}"}),
+            status_code=500, mimetype="application/json"
+        )
 
-    # Ask Durable for live runtime status
-    client = df.DurableOrchestrationClient(starter)
-    dstat = await client.get_status(analysis_id, show_history=False)
-    runtime_status = getattr(dstat, "runtime_status", None) if dstat else None
-    runtime_str = str(runtime_status) if runtime_status is not None else None
-    runtime_doc_status = RUNTIME_TO_DOC.get(runtime_str, None)
+    # 2) Ask Durable safely (don’t let errors crash the response)
+    runtime_str = None
+    try:
+        client = df.DurableOrchestrationClient(starter)
+        dstat = await client.get_status(analysis_id, show_history=False)
+        if dstat and getattr(dstat, "runtime_status", None) is not None:
+            runtime_str = str(dstat.runtime_status)
+    except Exception as e:
+        # keep going; just surface the info
+        runtime_str = None
+        doc.setdefault("debug", {})["durable_error"] = str(e)
 
-    # Build a friendly merged payload
+    runtime_doc_status = RUNTIME_TO_DOC.get(runtime_str) if runtime_str else None
+
     merged = {
         "id": analysis_id,
-        "status": None,
+        "status": doc.get("status"),
         "runtimeStatus": runtime_str,
-        "estimates": None,
-        "metrics": None,
-        "verdict": None,
-        "reasons": None,
-        "error": None
+        "estimates": doc.get("estimates"),
+        "metrics": doc.get("metrics"),
+        "verdict": doc.get("verdict"),
+        "reasons": doc.get("reasons"),
+        "error": doc.get("error"),
     }
 
-    if doc:
-        merged.update({
-            "status": doc.get("status"),
-            "estimates": doc.get("estimates"),
-            "metrics": doc.get("metrics"),
-            "verdict": doc.get("verdict"),
-            "reasons": doc.get("reasons"),
-            "error": doc.get("error")
-        })
-
-    # If Cosmos says queued/running or is missing, fall back to Durable runtime
+    # Prefer durable runtime when Cosmos is queued/running/empty
     if not merged["status"] or merged["status"] in ("queued", "running"):
         if runtime_doc_status:
             merged["status"] = runtime_doc_status
 
-    # If still unknown, set a safe default
     if not merged["status"]:
         merged["status"] = "unknown"
 
