@@ -1,395 +1,237 @@
 #!/usr/bin/env python3
-"""
-redfin_property_analyzer.py
-Find a Redfin property from an address, extract key details, and
-pull ZIP-level appreciation data from Redfin's public data center.
-
-Usage:
-  python redfin_property_analyzer.py "2450 Clairview St, Alpharetta, GA 30009"
-
-Requirements:
-  pip install requests beautifulsoup4 pandas python-dateutil
-
-Env:
-  export BING_SEARCH_KEY="...your key..."   # for Bing Web Search API
-"""
-
-import os, re, json, sys, time, math
-import urllib.parse as up
-from typing import Optional, Dict, Any
-
+import os, re, json, sys, time
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
 from dateutil import parser as dtparser
 
-# -----------------------------
-# Config
-# -----------------------------
-BING_SEARCH_KEY = os.environ.get("BING_SEARCH_KEY")
+UA = {"User-Agent":"Mozilla/5.0","Accept-Language":"en-US,en;q=0.9"}
+BING_KEY = os.environ.get("BING_SEARCH_KEY")
 BING_ENDPOINT = "https://api.bing.microsoft.com/v7.0/search"
-RF_UA = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9"
-}
+REDFIN_MEDIAN_CSV = "https://redfin-public-data.s3.us-west-2.amazonaws.com/housing-market-data/market-tracker/median_sale_price.csv"
 
-# Redfin public data center (median sale price by region)
-# This CSV contains rows for region types (zip, county, etc.)
-RED_FIN_MEDIAN_SALE_PRICE_CSV = (
-    "https://redfin-public-data.s3-us-west-2.amazonaws.com/"
-    "housing-market-data/market-tracker/median_sale_price.csv"
-)
+def log(s): print(f"[INFO] {s}", flush=True)
+def warn(s): print(f"[WARN] {s}", flush=True)
 
+def bing_redfin_url(address: str):
+    if not BING_KEY: 
+        warn("BING_SEARCH_KEY not set; please pass a Redfin URL manually if lookup fails.")
+        return None
+    q = f"site:redfin.com {address}"
+    log(f"Searching Bing: {q}")
+    r = requests.get(BING_ENDPOINT, params={"q":q,"count":10,"mkt":"en-US"},
+                     headers={"Ocp-Apim-Subscription-Key":BING_KEY}, timeout=15)
+    r.raise_for_status()
+    for it in (r.json().get("webPages",{}) or {}).get("value",[]) or []:
+        url = it.get("url","")
+        if "redfin.com" in url and "/home/" in url:
+            log(f"Found Redfin URL: {url}")
+            return url
+    warn("No Redfin property URL found.")
+    return None
 
-# -----------------------------
-# Helpers
-# -----------------------------
-def log(msg: str):
-    print(f"[INFO] {msg}", flush=True)
-
-def warn(msg: str):
-    print(f"[WARN] {msg}", flush=True)
-
-def deep_find_keys(obj: Any, wanted: set[str]) -> Dict[str, Any]:
-    """
-    Walk a nested dict/list and return a map of {key: value} for first hits
-    of keys that appear in `wanted`. Case-insensitive on keys.
-    """
-    found = {}
-    stack = [obj]
-    seen = 0
-    while stack:
-        cur = stack.pop()
-        if isinstance(cur, dict):
-            for k, v in cur.items():
-                kl = str(k).lower()
-                if kl in wanted and kl not in found:
-                    found[kl] = v
-                if isinstance(v, (dict, list)):
-                    stack.append(v)
-        elif isinstance(cur, list):
-            stack.extend(cur)
-        seen += 1
-        if seen > 200000:  # safety cut-off in pathological cases
-            break
-    return found
-
-def http_get(url: str, headers: dict = None, timeout: int = 20) -> Optional[requests.Response]:
+def extract_json_from_redfin(url: str):
+    log(f"Fetching Redfin page: {url}")
+    r = requests.get(url, headers=UA, timeout=25)
+    if r.status_code != 200:
+        warn(f"HTTP {r.status_code} from Redfin")
+        return None
+    soup = BeautifulSoup(r.text, "html.parser")
+    tag = soup.find("script", {"id":"__NEXT_DATA__"})
+    if not tag or not tag.string:
+        warn("__NEXT_DATA__ not found")
+        return None
     try:
-        r = requests.get(url, headers=headers or RF_UA, timeout=timeout)
-        if r.status_code == 200:
-            return r
-        warn(f"GET {url} -> HTTP {r.status_code}")
-        return None
+        return json.loads(tag.string)
     except Exception as e:
-        warn(f"GET {url} failed: {e}")
+        warn(f"JSON parse error: {e}")
         return None
 
-def extract_zip(address: str) -> Optional[str]:
-    m = re.search(r"\b(\d{5})(?:-\d{4})?\b", address)
+def deep_find_keys(obj, keys_lower:set[str]):
+    out={}
+    stack=[obj]
+    while stack:
+        cur=stack.pop()
+        if isinstance(cur,dict):
+            for k,v in cur.items():
+                kl=str(k).lower()
+                if kl in keys_lower and kl not in out:
+                    out[kl]=v
+                if isinstance(v,(dict,list)): stack.append(v)
+        elif isinstance(cur,list):
+            stack.extend(cur)
+        if len(out)==len(keys_lower): break
+    return out
+
+def to_float(x):
+    try: return float(x)
+    except: return None
+
+def parse_property(url: str):
+    data = extract_json_from_redfin(url)
+    if not data: return {"error":"no_redfin_json"}
+    wanted = {
+        "address","streetline","city","state","zipcode","zip","postalcode",
+        "beds","baths","bathsdecimal","sqft","lotsize","yearbuilt",
+        "propertytype","monthlyhoa","hoadues","propertytax",
+        "lastsaledate","lastsaleprice","price","latitude","longitude"
+    }
+    hits = deep_find_keys(data, wanted)
+    addr = hits.get("address") or hits.get("streetline")
+    city = hits.get("city"); state = hits.get("state")
+    zipc = hits.get("zipcode") or hits.get("zip") or hits.get("postalcode")
+    beds = to_float(hits.get("beds"))
+    baths = to_float(hits.get("bathsdecimal") or hits.get("baths"))
+    sqft = to_float(hits.get("sqft"))
+    lot = to_float(hits.get("lotsize"))
+    year_built = hits.get("yearbuilt")
+    hoa = hits.get("monthlyhoa") or hits.get("hoadues")
+    hoa = to_float(hoa) if hoa is not None else None
+    taxes = hits.get("propertytax")
+    if isinstance(taxes,dict):
+        for k in ("amount","annual","value"):
+            if k in taxes: taxes = taxes[k]; break
+    taxes = to_float(taxes)
+    last_price = hits.get("lastsaleprice") or hits.get("price")
+    if isinstance(last_price,dict): last_price = last_price.get("amount")
+    last_price = to_float(last_price)
+    last_date = hits.get("lastsaledate")
+    if isinstance(last_date,str):
+        try: last_date = dtparser.parse(last_date).date().isoformat()
+        except: pass
+    lat = to_float(hits.get("latitude")); lon = to_float(hits.get("longitude"))
+    full = ", ".join([s for s in [addr, city, state, zipc] if s])
+    return {
+        "address_text": full or None,
+        "address_parts": {"street":addr, "city":city, "state":state, "zip":zipc},
+        "geo": {"lat":lat,"lon":lon},
+        "property_details": {
+            "beds":beds, "baths":baths, "sqft":sqft, "lot_sqft":lot,
+            "year_built":year_built, "property_type":hits.get("propertytype"),
+            "hoa_monthly":hoa, "property_tax_annual":taxes,
+            "last_sale_price":last_price, "last_sale_date":last_date
+        }
+    }
+
+def extract_zip_from_any(s: str):
+    m = re.search(r"\b(\d{5})(?:-\d{4})?\b", s or "")
     return m.group(1) if m else None
 
-def pct_change(new: float, old: float) -> Optional[float]:
+def redfin_zip_trend(zip_code: str):
     try:
-        if old == 0:
-            return None
-        return (new - old) / old
-    except Exception:
-        return None
-
-def cagr(final: float, initial: float, years: float) -> Optional[float]:
-    try:
-        if initial <= 0 or years <= 0:
-            return None
-        return (final / initial) ** (1.0 / years) - 1.0
-    except Exception:
-        return None
-
-
-# -----------------------------
-# Step 1: Find Redfin URL for an address (via Bing)
-# -----------------------------
-def redfin_url_via_bing(address: str) -> Optional[str]:
-    if not BING_SEARCH_KEY:
-        warn("BING_SEARCH_KEY not set. Cannot search for Redfin URL automatically.")
-        return None
-
-    q = f"site:redfin.com {address}"
-    log(f"Searching Bing for Redfin URL: {q}")
-    try:
-        resp = requests.get(
-            BING_ENDPOINT,
-            params={"q": q, "count": 10, "mkt": "en-US"},
-            headers={"Ocp-Apim-Subscription-Key": BING_SEARCH_KEY},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        items = (resp.json().get("webPages", {}) or {}).get("value", []) or []
-        for item in items:
-            url = item.get("url") or ""
-            if "redfin.com" in url and "/home/" in url:
-                log(f"Found Redfin URL: {url}")
-                return url
-        warn("No Redfin property URL found in Bing results.")
-        return None
+        df = pd.read_csv(REDFIN_MEDIAN_CSV)
     except Exception as e:
-        warn(f"Bing search failed: {e}")
-        return None
-
-
-# -----------------------------
-# Step 2: Parse Redfin property page
-# -----------------------------
-def parse_redfin_property(url: str) -> Dict[str, Any]:
-    log(f"Fetching Redfin page: {url}")
-    r = http_get(url, headers=RF_UA, timeout=25)
-    if not r:
-        return {"error": f"Failed to fetch Redfin URL: {url}"}
-
-    soup = BeautifulSoup(r.text, "html.parser")
-    data_tag = soup.find("script", {"id": "__NEXT_DATA__"})
-    if not data_tag or not data_tag.string:
-        warn("No __NEXT_DATA__ JSON blob found on the page.")
-        return {"raw_html_snippet": r.text[:2000]}
-
-    try:
-        data = json.loads(data_tag.string)
-    except Exception as e:
-        warn(f"Failed to parse __NEXT_DATA__: {e}")
-        return {"raw_next_data_snippet": data_tag.string[:2000]}
-
-    # Try to find initialReduxState.homeDetails (common location)
-    # But be robust: search the whole object for keys we care about
-    wanted_keys = {
-        "address", "streetline", "city", "state", "zipcode", "zip", "postalcode",
-        "beds", "baths", "bathsdecimal", "sqft", "lotsize", "yearbuilt",
-        "propertytype", "homefacts", "monthlyhoa", "hoadues", "propertytax",
-        "lastsaledate", "lastsaleprice", "price", "publicrecords",
-        "latitude", "longitude"
-    }
-    hits = deep_find_keys(data, wanted_keys)
-
-    # Attempt reasonable field assembly
-    def gn(k, default=None):  # get normalized
-        return hits.get(k, default)
-
-    # Address pieces: prefer combined if available
-    address_line = gn("address") or gn("streetline")
-    city = gn("city")
-    state = gn("state")
-    zipc = gn("zipcode") or gn("zip") or gn("postalcode")
-
-    # Parse numbers carefully
-    def to_float(x):
-        try:
-            return float(x)
-        except Exception:
-            return None
-
-    beds = to_float(gn("beds"))
-    baths = to_float(gn("bathsdecimal") or gn("baths"))
-    sqft = to_float(gn("sqft"))
-    lot = to_float(gn("lotsize"))
-    year_built = gn("yearbuilt")
-    prop_type = gn("propertytype")
-
-    # HOA (monthly)
-    hoa = gn("monthlyhoa") or gn("hoadues")
-    hoa = to_float(hoa) if hoa is not None else None
-
-    # Taxes (best-effort: some pages store annual tax differently)
-    taxes = gn("propertytax")
-    if isinstance(taxes, dict):
-        # look for annual amount
-        for k in ("amount", "annual", "value"):
-            if k in taxes:
-                taxes = taxes.get(k)
-                break
-    taxes = to_float(taxes)
-
-    # Last sale
-    last_sale_price = gn("lastsaleprice") or gn("price")
-    # if it's like {"amount": 12345}
-    if isinstance(last_sale_price, dict):
-        last_sale_price = last_sale_price.get("amount")
-    last_sale_price = to_float(last_sale_price)
-
-    last_sale_date = gn("lastsaledate")
-    if isinstance(last_sale_date, str):
-        try:
-            last_sale_date = dtparser.parse(last_sale_date).date().isoformat()
-        except Exception:
-            pass
-
-    # Coordinates (optional)
-    lat = to_float(hits.get("latitude"))
-    lon = to_float(hits.get("longitude"))
-
-    # Final address string
-    address_full = ", ".join([s for s in [address_line, city, state, zipc] if s])
-
-    return {
-        "address_text": address_full or None,
-        "address_parts": {
-            "street": address_line, "city": city, "state": state, "zip": zipc
-        },
-        "geo": {"lat": lat, "lon": lon},
-        "property_details": {
-            "beds": beds,
-            "baths": baths,
-            "sqft": sqft,
-            "lot_sqft": lot,
-            "year_built": year_built,
-            "property_type": prop_type,
-            "hoa_monthly": hoa,
-            "property_tax_annual": taxes,
-            "last_sale_price": last_sale_price,
-            "last_sale_date": last_sale_date,
-        },
-        "raw_keys_found": list(hits.keys()),  # for debugging transparency
-    }
-
-
-# -----------------------------
-# Step 3: Pull Redfin market data for ZIP (appreciation)
-# -----------------------------
-def market_metrics_for_zip(zip_code: str) -> Dict[str, Any]:
-    """
-    Load Redfin 'median_sale_price.csv', filter to this ZIP,
-    compute YoY and 5-year CAGR on most recent periods.
-    """
-    log(f"Loading Redfin market CSV for ZIP {zip_code} ...")
-    try:
-        df = pd.read_csv(RED_FIN_MEDIAN_SALE_PRICE_CSV)
-    except Exception as e:
-        warn(f"Failed to load Redfin data: {e}")
-        return {"error": "failed_to_load_redfin_data"}
-
-    # Columns vary slightly by dataset version; standard ones include:
-    # region_type, region, period_end, median_sale_price
-    req_cols = {"region_type", "region", "period_end", "median_sale_price"}
-    if not req_cols.issubset(df.columns):
-        # Try a fallback common variant (sometimes property_type, etc.)
-        warn("Unexpected columns in Redfin CSV; returning sample columns for debugging.")
+        warn(f"CSV load error: {e}")
+        return {"error":"csv_load"}
+    if not {"region_type","region","period_end","median_sale_price"}.issubset(df.columns):
         return {"columns": list(df.columns)[:20]}
-
-    zdf = df[(df["region_type"] == "zip") & (df["region"].astype(str) == str(zip_code))].copy()
-    if zdf.empty:
-        warn(f"No Redfin ZIP data for {zip_code}.")
-        return {"zip": zip_code, "found": False}
-
-    # Parse dates and sort
-    zdf["period_end"] = pd.to_datetime(zdf["period_end"])
-    zdf = zdf.sort_values("period_end")
-
-    # Use latest value, 1 year ago, and 5 years ago (approx by months)
-    latest = zdf.iloc[-1]
-    latest_price = float(latest["median_sale_price"]) if pd.notna(latest["median_sale_price"]) else None
-    latest_date = latest["period_end"].date().isoformat()
-
-    # 12 months back row
-    one_year_back_idx = zdf.index.get_loc(zdf.index[-1]) - 12 if len(zdf) > 12 else None
-    yoy = None
-    if one_year_back_idx is not None and one_year_back_idx >= 0:
-        price_prev = float(zdf.iloc[one_year_back_idx]["median_sale_price"]) if pd.notna(zdf.iloc[one_year_back_idx]["median_sale_price"]) else None
-        if latest_price is not None and price_prev is not None:
-            yoy = pct_change(latest_price, price_prev)
-
-    # 60 months back (5y)
-    five_year_back_idx = zdf.index.get_loc(zdf.index[-1]) - 60 if len(zdf) > 60 else None
-    cagr5 = None
-    if five_year_back_idx is not None and five_year_back_idx >= 0:
-        price_5y = float(zdf.iloc[five_year_back_idx]["median_sale_price"]) if pd.notna(zdf.iloc[five_year_back_idx]["median_sale_price"]) else None
-        if latest_price is not None and price_5y is not None:
-            cagr5 = cagr(latest_price, price_5y, 5)
-
+    z = df[(df.region_type=="zip") & (df.region.astype(str)==str(zip_code))].copy()
+    if z.empty:
+        warn(f"No ZIP data for {zip_code}")
+        return {"zip":zip_code, "found":False}
+    z["period_end"]=pd.to_datetime(z["period_end"]); z=z.sort_values("period_end")
+    latest=z.iloc[-1]; latest_price=float(latest["median_sale_price"]) if pd.notna(latest["median_sale_price"]) else None
+    latest_date=str(latest["period_end"].date())
+    yoy=None; cagr5=None
+    if len(z)>12:
+        prev=float(z.iloc[-13]["median_sale_price"]) if pd.notna(z.iloc[-13]["median_sale_price"]) else None
+        if latest_price and prev: yoy=(latest_price-prev)/prev
+    if len(z)>60:
+        prev5=float(z.iloc[-61]["median_sale_price"]) if pd.notna(z.iloc[-61]["median_sale_price"]) else None
+        if latest_price and prev5 and prev5>0: cagr5=(latest_price/prev5)**(1/5)-1
     return {
         "zip": str(zip_code),
         "latest_period_end": latest_date,
         "median_sale_price_latest": latest_price,
-        "median_sale_price_yoy": round(yoy, 4) if yoy is not None else None,
-        "median_sale_price_cagr_5y": round(cagr5, 4) if cagr5 is not None else None,
-        "observations": int(len(zdf)),
+        "median_sale_price_yoy": round(yoy,4) if yoy is not None else None,
+        "median_sale_price_cagr_5y": round(cagr5,4) if cagr5 is not None else None,
+        "observations": int(len(z))
     }
 
+def mortgage_pi(price, down, rate_pct, years):
+    loan = price - down
+    r = rate_pct/100/12
+    n = years*12
+    pmt = loan * r * (1+r)**n / ((1+r)**n - 1)
+    return round(pmt,2)
 
-# -----------------------------
-# Optional: Rent estimate stub (wire your own source)
-# -----------------------------
-def rent_estimate_stub(address: str) -> Optional[float]:
-    """
-    Placeholder. Replace with RentCast/Rentometer/Zillow Playwright call.
-    Return a float for monthly rent if available; else None.
-    """
-    return None
-
-
-# -----------------------------
-# Orchestrator
-# -----------------------------
-def analyze_with_redfin(address: str) -> Dict[str, Any]:
-    log(f"Starting analysis for: {address}")
-
-    # 1) Find Redfin URL (via Bing)
-    url = redfin_url_via_bing(address)
-    if not url:
-        warn("Could not discover Redfin URL from address. You can paste one manually next time.")
-        return {"input_address": address, "ok": False, "error": "redfin_url_not_found"}
-
-    # 2) Parse Redfin property page
-    prop = parse_redfin_property(url)
-
-    # Determine ZIP for market analysis
-    zip_code = None
-    if isinstance(prop, dict):
-        # Try from parsed address parts
-        zip_code = (
-            prop.get("address_parts", {}).get("zip")
-            or extract_zip(prop.get("address_text") or "")
-            or extract_zip(address)
-        )
-    else:
-        zip_code = extract_zip(address)
-
-    # 3) Market metrics
-    market = market_metrics_for_zip(zip_code) if zip_code else {"error": "no_zip_found"}
-
-    # 4) (Optional) Rent estimate
-    rent = rent_estimate_stub(address)
-
-    result = {
-        "input_address": address,
-        "redfin_url": url,
-        "property": prop,
-        "market": market,
-        "rent_estimate_monthly": rent,
+def analyze(address: str, redfin_url: str|None, price: float, down_pct: float, rate_pct: float, years: int,
+            tax_annual: float|None=None, ins_annual: float|None=None, hoa_monthly: float|None=None,
+            maint_pct: float=1.0, vacancy_pct: float=5.0, rent_monthly: float|None=None):
+    t0=time.time()
+    url = redfin_url or bing_redfin_url(address)
+    if not url: 
+        return {"ok":False, "error":"redfin_url_not_found", "input_address":address}
+    prop = parse_property(url)
+    z = (prop.get("address_parts",{}) or {}).get("zip") or extract_zip_from_any(prop.get("address_text")) or extract_zip_from_any(address)
+    market = redfin_zip_trend(z) if z else {"error":"no_zip"}
+    # expenses
+    dp = price*down_pct/100
+    pi = mortgage_pi(price, dp, rate_pct, years)
+    tax_m = (tax_annual/12) if tax_annual is not None else ((prop["property_details"].get("property_tax_annual") or 0)/12)
+    ins_m = (ins_annual/12) if ins_annual is not None else 100 # rough default
+    hoa_m = hoa_monthly if hoa_monthly is not None else (prop["property_details"].get("hoa_monthly") or 0)
+    maint_m = price*(maint_pct/100)/12
+    vac_m = (rent_monthly or 0)*(vacancy_pct/100)
+    op_ex = round(tax_m + ins_m + hoa_m + maint_m + vac_m, 2)
+    # if no rent, leave cashflow incomplete
+    cashflow = None; noi=None; cap_rate=None; coc=None
+    if rent_monthly is not None:
+        cashflow = round(rent_monthly - (pi + op_ex), 2)
+        noi = round((rent_monthly - vac_m) * 12 - (tax_m + ins_m + hoa_m + maint_m)*12, 2)
+        cap_rate = round(noi/price*100, 2) if price else None
+        coc = round((cashflow*12)/(dp) * 100, 2) if dp>0 else None
+    return {
         "ok": True,
+        "timing_sec": round(time.time()-t0,2),
+        "redfin_url": url,
+        "input": {
+            "address": address, "purchase_price": price, "down_pct": down_pct, "rate_pct": rate_pct, "years": years,
+            "tax_annual_override": tax_annual, "ins_annual_override": ins_annual, "hoa_monthly_override": hoa_monthly,
+            "maintenance_pct": maint_pct, "vacancy_pct": vacancy_pct, "rent_monthly": rent_monthly
+        },
+        "property": prop,
+        "market_zip": market,
+        "finance": {
+            "down_payment": round(price*down_pct/100,2),
+            "monthly_pi": pi,
+            "operating_expenses_monthly": op_ex,
+            "cashflow_monthly": cashflow,
+            "noi_annual": noi,
+            "cap_rate_pct": cap_rate,
+            "cash_on_cash_pct": coc
+        },
         "notes": [
-            "Property fields are best-effort from Redfin's embedded JSON; keys vary by page.",
-            "Market metrics use Redfin Data Center (median sale price) at ZIP level.",
-            "Plug in a rent data source to complete cash-flow analysis."
+            "Taxes, HOA from Redfin when available; you can override via CLI args.",
+            "Insurance default is 100/month if not provided.",
+            "Provide rent_monthly to compute cash flow, cap rate, and CoC."
         ]
     }
-    return result
 
-
-# -----------------------------
-# CLI
-# -----------------------------
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python redfin_property_analyzer.py \"2450 Clairview St, Alpharetta, GA 30009\"")
-        sys.exit(1)
+    import argparse
+    ap = argparse.ArgumentParser(description="Analyze a property using Redfin + simple ROI math.")
+    ap.add_argument("address", help="Street, City, State ZIP")
+    ap.add_argument("--redfin-url", help="If you already know it, provide the Redfin property URL.", default=None)
+    ap.add_argument("--price", type=float, required=True)
+    ap.add_argument("--down-pct", type=float, default=20)
+    ap.add_argument("--rate-pct", type=float, default=6.5)
+    ap.add_argument("--years", type=int, default=30)
+    ap.add_argument("--tax-annual", type=float, default=None)
+    ap.add_argument("--ins-annual", type=float, default=None)
+    ap.add_argument("--hoa-monthly", type=float, default=None)
+    ap.add_argument("--maintenance-pct", type=float, default=1.0)
+    ap.add_argument("--vacancy-pct", type=float, default=5.0)
+    ap.add_argument("--rent-monthly", type=float, default=None)
+    args = ap.parse_args()
 
-    address = " ".join(sys.argv[1:])
-    t0 = time.time()
-    out = analyze_with_redfin(address)
-    print(json.dumps(out, indent=2))
-    log(f"Done in {time.time() - t0:.2f}s")
+    res = analyze(
+        address=args.address, redfin_url=args.redfin_url, price=args.price, down_pct=args.down_pct,
+        rate_pct=args.rate_pct, years=args.years, tax_annual=args.tax_annual, ins_annual=args.ins_annual,
+        hoa_monthly=args.hoa_monthly, maint_pct=args.maintenance_pct, vacancy_pct=args.vacancy_pct,
+        rent_monthly=args.rent_monthly
+    )
+    print(json.dumps(res, indent=2))
 
 if __name__ == "__main__":
     main()
