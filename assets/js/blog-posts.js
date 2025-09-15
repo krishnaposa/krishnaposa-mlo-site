@@ -68,6 +68,7 @@ const POSTS = [
   // Add future posts below this line
 ];
 /* Render cards */
+/* Render cards */
 (function () {
   const wrap = document.getElementById("blog-list");
   if (!wrap || !Array.isArray(POSTS)) return;
@@ -82,7 +83,10 @@ const POSTS = [
     }
   }
 
-  POSTS.forEach((p) => {
+  // Sort posts by date (newest first)
+  const sortedPosts = [...POSTS].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  sortedPosts.forEach((p) => {
     const card = document.createElement("article");
     card.className = "card";
 
