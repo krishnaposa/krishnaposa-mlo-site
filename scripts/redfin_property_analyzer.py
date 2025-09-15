@@ -13,6 +13,40 @@ REDFIN_MEDIAN_CSV = "https://redfin-public-data.s3.us-west-2.amazonaws.com/housi
 def log(s): print(f"[INFO] {s}", flush=True)
 def warn(s): print(f"[WARN] {s}", flush=True)
 
+def redfin_url_via_ddg(address: str) -> str | None:
+    """
+    Search DuckDuckGo for a Redfin property URL from an address.
+    Returns the first matching Redfin /home/ link.
+    """
+    q = f"site:redfin.com {address}"
+    try:
+        r = requests.get(
+            "https://duckduckgo.com/html/",
+            params={"q": q},
+            headers={"User-Agent":"Mozilla/5.0"},
+            timeout=15
+        )
+        r.raise_for_status()
+    except Exception as e:
+        print(f"[WARN] DuckDuckGo request failed: {e}")
+        return None
+
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    # Look at result links
+    for a in soup.select("a.result__a"):
+        url = a.get("href") or ""
+        if "redfin.com" in url and "/home/" in url:
+            return url
+        # Sometimes wrapped in redirect: /l/?kh=-1&uddg=<encoded>
+        m = re.search(r"uddg=([^&]+)", url)
+        if m:
+            from urllib.parse import unquote
+            real = unquote(m.group(1))
+            if "redfin.com" in real and "/home/" in real:
+                return real
+    return None
+    
 def bing_redfin_url(address: str):
     if not BING_KEY: 
         warn("BING_SEARCH_KEY not set; please pass a Redfin URL manually if lookup fails.")
