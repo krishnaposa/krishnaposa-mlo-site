@@ -1,5 +1,7 @@
+# list/__init__.py
 import os, json, datetime, logging
 import azure.functions as func
+from urllib.parse import quote
 from azure.storage.blob import (
     BlobServiceClient, generate_blob_sas, BlobSasPermissions
 )
@@ -12,26 +14,45 @@ BLOB = BlobServiceClient.from_connection_string(STOR)
 
 def _cors():
     return {
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": "*",  # or lock to https://www.krishposa.com
         "Access-Control-Allow-Methods": "GET, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization"
     }
 
-def _sas_url(container: str, blob: str, minutes: int = 120) -> str:
-    account_url = BLOB.url.rstrip("/")
-    acc_name = account_url.split("//",1)[1].split(".")[0]  # <account>
-    key_cred = BLOB.credential  # uses key from connection string
+def _conn_info_from_connection_string(conn: str):
+    """
+    Parse AccountName and AccountKey from a classic Azure Storage connection string.
+    Works regardless of SDK internals.
+    """
+    parts = dict(
+        s.split("=", 1) for s in conn.split(";") if "=" in s
+    )
+    return parts.get("AccountName"), parts.get("AccountKey")
 
+def _sas_url(container: str, blob: str, minutes: int = 120) -> str:
+    """
+    Build a read-only SAS URL for a single blob.
+    """
+    account_url = BLOB.url.rstrip("/")  # e.g., https://<account>.blob.core.windows.net
+    acc_name, acc_key = _conn_info_from_connection_string(STOR)
+    if not acc_name or not acc_key:
+        raise RuntimeError("Could not extract AccountName/AccountKey from STORAGE_CONN")
+
+    # give a tiny "start" skew so clients behind clock skew still pass
+    start  = datetime.datetime.utcnow() - datetime.timedelta(minutes=2)
     expiry = datetime.datetime.utcnow() + datetime.timedelta(minutes=minutes)
+
     token = generate_blob_sas(
         account_name=acc_name,
         container_name=container,
         blob_name=blob,
-        account_key=key_cred.account_key,  # available when using conn string
+        account_key=acc_key,
         permission=BlobSasPermissions(read=True),
+        start=start,
         expiry=expiry,
     )
-    return f"{account_url}/{container}/{blob}?{token}"
+    # URL-encode the blob path part
+    return f"{account_url}/{container}/{quote(blob)}?{token}"
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
@@ -41,31 +62,37 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         out_cc = BLOB.get_container_client(OUTPUT)
         in_cc  = BLOB.get_container_client(INPUT)
 
-        # Group by job_id (first path segment)
+        # Collect finished jobs (those that have both vocals + band)
         groups = {}  # job_id -> {"vocals": str, "band": str, "updated": dt}
         for b in out_cc.list_blobs():
-            # expect "<job_id>/vocals.wav" or "<job_id>/no_vocals.wav"
-            if "/" not in b.name: 
+            # Expect "<job_id>/vocals.wav" or "<job_id>/no_vocals.wav"
+            # (If you also emit .mp3, you can extend this section accordingly.)
+            name = b.name
+            if "/" not in name:
                 continue
-            job_id, name = b.name.split("/", 1)
+            job_id, leaf = name.split("/", 1)
             g = groups.setdefault(job_id, {"vocals": None, "band": None, "updated": None})
-            if name == "vocals.wav":    g["vocals"] = b.name
-            if name == "no_vocals.wav": g["band"]   = b.name
-            # keep the most recent modified
-            if not g["updated"] or b.last_modified > g["updated"]:
+            if leaf.lower() == "vocals.wav":
+                g["vocals"] = name
+            elif leaf.lower() in ("no_vocals.wav", "accompaniment.wav"):
+                # support Spleeter naming too
+                g["band"] = name
+
+            if not g["updated"] or (b.last_modified and b.last_modified > g["updated"]):
                 g["updated"] = b.last_modified
 
         items = []
         for job_id, g in groups.items():
             if not (g["vocals"] and g["band"]):
-                continue  # only completed jobs
-            # Try to find original filename from input container
+                # only show completed pairs
+                continue
+
+            # Try to display the original filename (basename without extension)
             display = job_id
             try:
                 blob_list = list(in_cc.list_blobs(name_starts_with=f"{job_id}/"))
                 if blob_list:
-                    # use the first file's basename (without extension)
-                    raw = blob_list[0].name.split("/",1)[1]
+                    raw = blob_list[0].name.split("/", 1)[1]
                     display = os.path.splitext(os.path.basename(raw))[0]
             except Exception:
                 pass
@@ -81,8 +108,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # newest first
         items.sort(key=lambda x: x.get("updated") or "", reverse=True)
 
-        return func.HttpResponse(json.dumps({"items": items}), mimetype="application/json", headers=_cors())
+        return func.HttpResponse(
+            json.dumps({"items": items}),
+            mimetype="application/json",
+            headers=_cors()
+        )
 
     except Exception as e:
         logging.exception("list failed")
-        return func.HttpResponse(json.dumps({"error": str(e)}), status_code=500, mimetype="application/json", headers=_cors())
+        return func.HttpResponse(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            mimetype="application/json",
+            headers=_cors()
+        )
