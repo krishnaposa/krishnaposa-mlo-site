@@ -1,6 +1,6 @@
 /* assets/js/karaoke.js
    Upload + poll (submit page) and "player mode" listing (private storage via SAS).
-   Adds robust audio-output listing and a beep test for routing checks.
+   Robust output device listing, beep tests, and solid play/pause/restart handling.
 */
 
 // =================== CONFIG ===================
@@ -42,7 +42,7 @@ function resetUI() {
   setStatus(''); hideError();
   if (els.done) els.done.classList.add('hide');
   if (els.links) els.links.innerHTML = '';
-  if (els.prog) { els.prog.hidden = true; }
+  if (els.prog) els.prog.hidden = true;
   if (els.bar) els.bar.style.width = '0%';
   if (els.playerCard) els.playerCard.classList.add('hide');
   vocalsUrl = bandUrl = '';
@@ -169,14 +169,15 @@ if (els.go) {
 }
 
 // =================== DUAL-OUTPUT ROUTING + BEEP TEST ===================
-const vocalsEl = document.getElementById('vocalsEl');
-const bandEl   = document.getElementById('bandEl');
-const vocalsOut= document.getElementById('vocalsOut');
-const bandOut  = document.getElementById('bandOut');
-const initBtn  = document.getElementById('initAudio');
-const playBtn  = document.getElementById('play');
-const pauseBtn = document.getElementById('pause');
-const offsetIn = document.getElementById('offset');
+const vocalsEl  = document.getElementById('vocalsEl');
+const bandEl    = document.getElementById('bandEl');
+const vocalsOut = document.getElementById('vocalsOut');
+const bandOut   = document.getElementById('bandOut');
+const initBtn   = document.getElementById('initAudio');
+const playBtn   = document.getElementById('play');
+const pauseBtn  = document.getElementById('pause');
+const restartBtn= document.getElementById('restart'); // optional (player page)
+const offsetIn  = document.getElementById('offset');
 
 // Optional status span in HTML: <span id="deviceMsg" class="help" aria-live="polite"></span>
 const deviceMsg = document.getElementById('deviceMsg');
@@ -262,12 +263,29 @@ async function applySinks() {
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
+function clearSyncTimer() {
+  if (window._syncTimer) { clearInterval(window._syncTimer); window._syncTimer = null; }
+}
+
+function pauseAll() {
+  clearSyncTimer();
+  try { vocalsEl?.pause(); } catch {}
+  try { bandEl?.pause(); } catch {}
+  if (vocalsEl) vocalsEl.playbackRate = 1;
+  if (bandEl)   bandEl.playbackRate   = 1;
+}
+
 async function playSynced(offsetMs=0) {
   if (!vocalsUrl || !bandUrl || vocalsUrl === '#' || bandUrl === '#') { alert('No tracks loaded yet.'); return; }
   if (!vocalsEl || !bandEl) return;
+
+  // stop anything already playing before we start
+  pauseAll();
+
   vocalsEl.src = vocalsUrl; bandEl.src = bandUrl;
   await applySinks();
 
+  // Preload/prime
   await Promise.all([vocalsEl.play().catch(()=>{}), bandEl.play().catch(()=>{})]);
   vocalsEl.pause(); bandEl.pause();
 
@@ -277,20 +295,41 @@ async function playSynced(offsetMs=0) {
   ]);
 
   vocalsEl.currentTime = 0; bandEl.currentTime = 0;
+
   if (offsetMs >= 0) { await bandEl.play(); await sleep(offsetMs); await vocalsEl.play(); }
   else { await vocalsEl.play(); await sleep(-offsetMs); await bandEl.play(); }
 
-  clearInterval(window._syncTimer);
+  clearSyncTimer();
   window._syncTimer = setInterval(() => {
     const driftMs = (vocalsEl.currentTime - bandEl.currentTime) * 1000 - offsetMs;
     if (Math.abs(driftMs) > 60) {
-      if (driftMs > 0) { const r=vocalsEl.playbackRate; vocalsEl.playbackRate=Math.max(0.9,r-0.05); setTimeout(()=>vocalsEl.playbackRate=r,300);}
-      else { const r=bandEl.playbackRate; bandEl.playbackRate=Math.max(0.9,r-0.05); setTimeout(()=>bandEl.playbackRate=r,300);}
+      if (driftMs > 0) {
+        const r=vocalsEl.playbackRate; vocalsEl.playbackRate=Math.max(0.9,r-0.05);
+        setTimeout(()=>{ vocalsEl.playbackRate=r; }, 300);
+      } else {
+        const r=bandEl.playbackRate; bandEl.playbackRate=Math.max(0.9,r-0.05);
+        setTimeout(()=>{ bandEl.playbackRate=r; }, 300);
+      }
     }
   }, 2000);
 }
-playBtn?.addEventListener('click',()=>playSynced(parseInt(offsetIn?.value||'0',10)));
-pauseBtn?.addEventListener('click',()=>{clearInterval(window._syncTimer);vocalsEl?.pause();bandEl?.pause();});
+
+playBtn?.addEventListener('click', () => {
+  const off = parseInt(offsetIn?.value || '0', 10);
+  playSynced(off);
+});
+
+pauseBtn?.addEventListener('click', () => {
+  pauseAll();
+});
+
+restartBtn?.addEventListener('click', () => {
+  if (!vocalsEl || !bandEl) return;
+  vocalsEl.currentTime = 0;
+  bandEl.currentTime   = 0;
+  const off = parseInt(offsetIn?.value || '0', 10);
+  playSynced(off);
+});
 
 // ======= Beep test to selected output (vocals/band) =======
 const _beepElVocals = document.createElement('audio');
@@ -412,7 +451,7 @@ if (window.KARAOKE_MODE === 'player') {
 
         if (vocalsUrlIn) vocalsUrlIn.value = vocalsUrl;
         if (bandUrlIn)   bandUrlIn.value   = bandUrl;
-        loadBtn?.click(); // your existing player loader will pick these up
+        loadBtn?.click(); // existing loader (if any) will pick these up
         if (loadStatus) loadStatus.textContent = 'Tracks loaded.';
       } catch (e) {
         console.warn('Invalid selection', e);
