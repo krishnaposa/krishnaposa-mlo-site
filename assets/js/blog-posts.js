@@ -56,6 +56,14 @@ const POSTS = [
   excerpt:
     "In 2020, I bought into a Basquiat painting on Masterworks and sold in 2024 for a 26.25% profit. Sounds good, but over four years the annualized return wasn’t as strong as it looked.",
   tags: ["Investing", "Alternative Assets", "Art"]
+},
+{
+  title: "Using a Self-Directed IRA with Checkbook Control",
+  url: "https://www.krishposa.com/blogs/blog-sdira.html",
+  date: "2025-09-15",
+  excerpt:
+    "The usage of Self Directed IRA with check book control to use your IRA funds to buy alternative investments including Real Estate.",
+  tags: ["Investing", "Real Estate", "SDIRA"]
 }
   // Add future posts below this line
 ];
