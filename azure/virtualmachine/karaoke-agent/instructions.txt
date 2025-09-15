@@ -4,7 +4,9 @@ python3.10 -m venv ~/venv
 source ~/venv/bin/activate
 pip install --upgrade pip wheel
 pip install demucs==4.0.1 yt-dlp==2024.8.6 azure-storage-blob==12.20.0 azure-storage-queue==12.6.0
-pip install spleeter==2.4.0
+
+pip uninstall spleeter tensorflow numpy -y
+pip install spleeter==2.4.0 tensorflow==2.9.0 "numpy<2"
 
 Place at ~/karaoke-agent/agent.py
 
