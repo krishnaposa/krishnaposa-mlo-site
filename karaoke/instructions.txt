@@ -4,3 +4,19 @@ Functions in karaoke-func:
 
     submit - [httpTrigger]
         Invoke url: https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/submit
+
+Refresh SAS URLs
+curl -s https://https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/list
+
+Delete old blobs and force re-upload
+# Delete a job’s output blobs (replace JOBID)
+az storage blob delete-batch \
+  --source karaoke-output \
+  --pattern "JOBID/*" \
+  --connection-string "$STORAGE_CONN"
+
+Manually requeue a job
+az storage message put \
+  --queue-name karaoke-jobs \
+  --content '{"job_id": "JOBID123", "src": {"type":"blob","blob":"JOBID123/original.mp3"}}' \
+  --connection-string "$STORAGE_CONN"
