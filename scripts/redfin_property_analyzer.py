@@ -10,7 +10,36 @@ UA = {"User-Agent":"Mozilla/5.0","Accept-Language":"en-US,en;q=0.9"}
 BING_KEY = os.environ.get("BING_SEARCH_KEY")
 BING_ENDPOINT = "https://api.bing.microsoft.com/v7.0/search"
 REDFIN_MEDIAN_CSV = "https://redfin-public-data.s3.us-west-2.amazonaws.com/housing-market-data/market-tracker/median_sale_price.csv"
+def extract_redfin_json_from_html(html: str):
+    soup = BeautifulSoup(html, "html.parser")
+    tag = soup.find("script", {"id": "__NEXT_DATA__"})
+    return json.loads(tag.string) if tag and tag.string else None
 
+def fetch_redfin_json_playwright(url: str) -> dict | None:
+    with sync_playwright() as p:
+        # headful helps avoid bot flags; slow_mo adds human-like pacing
+        browser = p.chromium.launch(headless=False, slow_mo=100)
+        context = browser.new_context(
+            viewport={"width": 1366, "height": 900},
+            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0 Safari/124.0"),
+            locale="en-US"
+        )
+        page = context.new_page()
+        # small random delay before navigation
+        time.sleep(random.uniform(0.4, 1.1))
+        page.goto(url, wait_until="domcontentloaded")
+        # wait for network to settle; adjust if your network is slow
+        page.wait_for_load_state("networkidle")
+        # optional: scroll a bit to trigger lazy content
+        page.mouse.wheel(0, 1200); time.sleep(0.5)
+        html = page.content()
+        # save artifacts for debugging
+        page.screenshot(path="redfin_page.png", full_page=True)
+        browser.close()
+    return extract_redfin_json_from_html(html)
+    
 def log(s): print(f"[INFO] {s}", flush=True)
 def warn(s): print(f"[WARN] {s}", flush=True)
 
