@@ -20,3 +20,15 @@ az storage message put \
   --queue-name karaoke-jobs \
   --content '{"job_id": "JOBID123", "src": {"type":"blob","blob":"JOBID123/original.mp3"}}' \
   --connection-string "$STORAGE_CONN"
+
+
+az storage cors clear --services b --account-name krishposastkaraoke
+
+az storage cors add \
+  --methods GET HEAD OPTIONS \
+  --origins https://www.krishposa.com \
+  --services b \
+  --allowed-headers '*' \
+  --exposed-headers '*' \
+  --max-age 3600 \
+  --account-name krishposastkaraoke
