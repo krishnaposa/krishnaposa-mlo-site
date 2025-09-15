@@ -226,7 +226,7 @@ def analyze(address: str, redfin_url: str|None, price: float, down_pct: float, r
             tax_annual: float|None=None, ins_annual: float|None=None, hoa_monthly: float|None=None,
             maint_pct: float=1.0, vacancy_pct: float=5.0, rent_monthly: float|None=None):
     t0=time.time()
-    url = redfin_url or bing_redfin_url(address)
+    url = redfin_url or redfin_url_via_ddg(address)
     if not url: 
         return {"ok":False, "error":"redfin_url_not_found", "input_address":address}
     prop = parse_property(url)
