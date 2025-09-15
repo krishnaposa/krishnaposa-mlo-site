@@ -12,6 +12,9 @@ STATUS_CONTAINER  = os.environ.get("STATUS_CONTAINER", "karaoke-status")
 QUEUE_NAME        = os.environ.get("QUEUE_NAME",       "karaoke-jobs")
 POISON_QUEUE_NAME = os.environ.get("POISON_QUEUE",     f"{QUEUE_NAME}-poison")
 
+# Separator selection: 'spleeter' (fast, default) or 'demucs' (slower, higher quality)
+SEPARATOR         = os.environ.get("SEPARATOR",        "spleeter").lower()
+
 DEMUCS_MODEL      = os.environ.get("DEMUCS_MODEL",     "htdemucs_ft")
 JOBS_PER_RUN      = int(os.environ.get("JOBS_PER_RUN", "0"))   # 0 = loop forever
 OUTPUT_BASE       = os.environ.get("OUTPUT_BASE",       r"C:\pers\karaoke-out")
@@ -31,11 +34,16 @@ PCLI   = QueueClient.from_connection_string(STORAGE_CONN, POISON_QUEUE_NAME)
 
 # Ensure containers/queues exist
 for cname in (INPUT_CONTAINER, OUTPUT_CONTAINER, STATUS_CONTAINER):
-    try: BLOB.create_container(cname)
-    except Exception: pass
+    try:
+        BLOB.create_container(cname)
+    except Exception:
+        pass
+
 for q in (QCLI, PCLI):
-    try: q.create_queue()
-    except Exception: pass
+    try:
+        q.create_queue()
+    except Exception:
+        pass
 
 # Prepend ffmpeg dir to PATH on Windows if present
 if os.name == "nt" and FFMPEG_DIR and os.path.isdir(FFMPEG_DIR):
@@ -65,6 +73,7 @@ def download_input(src: dict, dest_dir: str) -> str:
             )
         return fn
     else:
+        # YouTube: download best audio to mp3 using yt-dlp module (so venv python finds it)
         outtmpl = os.path.join(dest_dir, "input.%(ext)s")
         cmd = [sys.executable, "-m", "yt_dlp",
                "-f", "bestaudio/best", "-x", "--audio-format", "mp3",
@@ -72,11 +81,45 @@ def download_input(src: dict, dest_dir: str) -> str:
         subprocess.run(cmd, check=True)
         for cand in ("input.mp3","input.m4a","input.webm","input.opus","input.wav"):
             p = os.path.join(dest_dir, cand)
-            if os.path.exists(p): return p
+            if os.path.exists(p): 
+                return p
         raise RuntimeError("yt-dlp produced no audio file")
 
+# -------------------- SEPARATORS --------------------
+def run_spleeter(inp: str) -> str:
+    """
+    Run Spleeter 2-stems (vocals + accompaniment).
+    Writes: {OUTPUT_BASE}/spleeter/{basename}/{vocals.wav, accompaniment.wav}
+    """
+    out_dir = os.path.join(OUTPUT_BASE, "spleeter")
+    os.makedirs(out_dir, exist_ok=True)
+    cmd = [
+        sys.executable, "-m", "spleeter", "separate",
+        "-p", "spleeter:2stems",
+        "-o", out_dir,
+        inp
+    ]
+    subprocess.run(cmd, check=True)
+    return out_dir
+
+def find_outputs_spleeter(base_out_dir: str, basename: str) -> Tuple[str, str]:
+    p = pathlib.Path(base_out_dir) / basename
+    voc = p / "vocals.wav"
+    acc = p / "accompaniment.wav"
+    if voc.exists() and acc.exists():
+        # Return accompaniment as "band"
+        return str(voc), str(acc)
+    # fallback scan (just in case)
+    for root, _dirs, files in os.walk(base_out_dir):
+        if "vocals.wav" in files and "accompaniment.wav" in files:
+            return os.path.join(root, "vocals.wav"), os.path.join(root, "accompaniment.wav")
+    raise RuntimeError(f"Spleeter outputs not found for {basename}")
+
 def run_demucs(inp: str) -> str:
-    """Run demucs; return OUTPUT_BASE where files are kept."""
+    """
+    Run Demucs (WAV export). Writes:
+      {OUTPUT_BASE}/{model}/{basename}/{vocals.wav, no_vocals.wav}
+    """
     os.makedirs(OUTPUT_BASE, exist_ok=True)
     cmd = [
         sys.executable, "-m", "demucs",
@@ -89,7 +132,7 @@ def run_demucs(inp: str) -> str:
     subprocess.run(cmd, check=True)
     return OUTPUT_BASE
 
-def find_outputs(base_out_dir: str, model: str, basename: str) -> Tuple[str, str]:
+def find_outputs_demucs(base_out_dir: str, model: str, basename: str) -> Tuple[str, str]:
     p = pathlib.Path(base_out_dir) / model / basename
     if p.is_dir():
         voc, band = p / "vocals.wav", p / "no_vocals.wav"
@@ -98,13 +141,18 @@ def find_outputs(base_out_dir: str, model: str, basename: str) -> Tuple[str, str
     for root, _dirs, files in os.walk(base_out_dir):
         if "vocals.wav" in files and "no_vocals.wav" in files:
             return os.path.join(root,"vocals.wav"), os.path.join(root,"no_vocals.wav")
-    raise RuntimeError(f"Outputs not found for {basename}")
+    raise RuntimeError(f"Demucs outputs not found for {basename}")
 
-def upload_outputs(job_id: str, vocals: str, band: str) -> dict:
+def upload_outputs(job_id: str, vocals: str, bandlike: str) -> dict:
+    """
+    Upload results to OUTPUT_CONTAINER under {job_id}/.
+    If bandlike is Spleeter's 'accompaniment.wav', it will still be published as 'no_vocals.wav'.
+    """
     cc = BLOB.get_container_client(OUTPUT_CONTAINER)
-    voc_key, band_key = f"{job_id}/vocals.wav", f"{job_id}/no_vocals.wav"
-    with open(vocals, "rb") as f: cc.upload_blob(voc_key, f, overwrite=True)
-    with open(band,   "rb") as f: cc.upload_blob(band_key,  f, overwrite=True)
+    voc_key  = f"{job_id}/vocals.wav"
+    band_key = f"{job_id}/no_vocals.wav"
+    with open(vocals,  "rb") as f: cc.upload_blob(voc_key,  f, overwrite=True)
+    with open(bandlike,"rb") as f: cc.upload_blob(band_key, f, overwrite=True)
     return {"vocals.wav": voc_key, "no_vocals.wav": band_key}
 
 # -------------------- MAIN LOOP --------------------
@@ -123,8 +171,8 @@ def process_one_message() -> bool:
         QCLI.delete_message(msg.id, msg.pop_receipt)
         return True
 
-    job_id = body.get("job_id") or "unknown"
-    src    = body.get("src") or {}
+    job_id  = body.get("job_id") or "unknown"
+    src     = body.get("src") or {}
     attempt = int(body.get("attempt", 0))  # 0 on first try
 
     try:
@@ -135,10 +183,15 @@ def process_one_message() -> bool:
             basename = pathlib.Path(inp).stem
 
             put_status(job_id, {"state": "running", "progress": 40, "attempt": attempt})
-            outbase = run_demucs(inp)
 
-            put_status(job_id, {"state": "running", "progress": 75, "attempt": attempt})
-            vocals, band = find_outputs(outbase, DEMUCS_MODEL, basename)
+            if SEPARATOR == "spleeter":
+                outbase = run_spleeter(inp)
+                put_status(job_id, {"state": "running", "progress": 75, "attempt": attempt})
+                vocals, band = find_outputs_spleeter(outbase, basename)
+            else:
+                outbase = run_demucs(inp)
+                put_status(job_id, {"state": "running", "progress": 75, "attempt": attempt})
+                vocals, band = find_outputs_demucs(outbase, DEMUCS_MODEL, basename)
 
             put_status(job_id, {"state": "running", "progress": 85, "attempt": attempt})
             outputs = upload_outputs(job_id, vocals, band)
@@ -149,7 +202,7 @@ def process_one_message() -> bool:
         return True
 
     except subprocess.CalledProcessError as e:
-        # demucs/ffmpeg/yt-dlp exit non-zero → retry
+        # demucs/spleeter/ffmpeg/yt-dlp exit non-zero → retry
         return _handle_failure(msg, body, job_id, f"process error: {e}")
 
     except Exception as e:
