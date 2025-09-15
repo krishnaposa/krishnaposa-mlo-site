@@ -1,6 +1,6 @@
 /* assets/js/karaoke.js
    Upload + poll (submit page) and "player mode" listing (private storage via SAS).
-   Robust output device listing, beep tests, and solid play/pause/restart handling.
+   Robust output device listing, beep tests, and correct Play/Pause/Restart behavior.
 */
 
 // =================== CONFIG ===================
@@ -31,7 +31,7 @@ const els = {
 };
 
 let vocalsUrl = '';
-let bandUrl = '';
+let bandUrl   = '';
 let pollTimer = null;
 
 // =================== HELPERS ===================
@@ -50,9 +50,7 @@ function resetUI() {
 }
 
 function asUrl(valueOrKey) {
-  // If backend returned a full URL (SAS), use as-is
-  if (/^https?:\/\//i.test(valueOrKey)) return valueOrKey;
-  // Otherwise treat it as a blob KEY and build from OUTPUT_BASE (requires public container)
+  if (/^https?:\/\//i.test(valueOrKey)) return valueOrKey; // SAS or absolute
   return OUTPUT_BASE ? `${OUTPUT_BASE.replace(/\/$/,'')}/${valueOrKey.replace(/^\/+/,'')}` : '#';
 }
 
@@ -69,12 +67,11 @@ if (els.clear) {
 async function doPoll(jobId) {
   try {
     const r = await fetch(statusUrl(jobId), { mode: 'cors' });
-    if (r.status === 404) return; // status blob not ready yet
+    if (r.status === 404) return;
     const s = await r.json();
 
     if (s.state === 'queued') {
-      setStatus('Queued…');
-      if (els.prog) els.prog.hidden = false;
+      setStatus('Queued…'); if (els.prog) els.prog.hidden = false;
       if (els.bar && !els.bar.style.width) els.bar.style.width = '10%';
       return;
     }
@@ -126,7 +123,7 @@ async function doPoll(jobId) {
     setStatus(s.state || '…');
 
   } catch (err) {
-    console.warn('poll error', err); // transient; keep polling
+    console.warn('poll error', err);
   }
 }
 
@@ -143,8 +140,8 @@ if (els.go) {
       setStatus('Submitting…'); if (els.prog) els.prog.hidden = false; if (els.bar) els.bar.style.width = '10%';
 
       const fd = new FormData();
-      if (els.file?.files[0]) fd.append('file', els.file.files[0]);           // MUST be 'file'
-      if (els.yt?.value)      fd.append('youtube_url', els.yt.value.trim()); // MUST be 'youtube_url'
+      if (els.file?.files[0]) fd.append('file', els.file.files[0]);
+      if (els.yt?.value)      fd.append('youtube_url', els.yt.value.trim());
       if (!fd.has('file') && !fd.has('youtube_url')) throw new Error('Select a file or paste a YouTube link.');
 
       const res = await fetch(submitUrl, { method: 'POST', body: fd, mode: 'cors' });
@@ -168,7 +165,7 @@ if (els.go) {
   });
 }
 
-// =================== DUAL-OUTPUT ROUTING + BEEP TEST ===================
+// =================== DUAL-OUTPUT ROUTING + BEEP TEST + PROPER CONTROLS ===================
 const vocalsEl  = document.getElementById('vocalsEl');
 const bandEl    = document.getElementById('bandEl');
 const vocalsOut = document.getElementById('vocalsOut');
@@ -178,12 +175,18 @@ const playBtn   = document.getElementById('play');
 const pauseBtn  = document.getElementById('pause');
 const restartBtn= document.getElementById('restart'); // optional (player page)
 const offsetIn  = document.getElementById('offset');
+const trackTitle= document.getElementById('trackTitle'); // optional display
 
-// Optional status span in HTML: <span id="deviceMsg" class="help" aria-live="polite"></span>
+function showTrackTitle(t){ if (trackTitle) trackTitle.textContent = t || ''; }
+
 const deviceMsg = document.getElementById('deviceMsg');
 function setDeviceMsg(t){ if (deviceMsg) deviceMsg.textContent = t || ''; }
 
 const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
+
+// Playback state flags
+let isLoaded  = false; // sources loaded & canplay fired at least once
+let isPlaying = false;
 
 async function ensurePermission() {
   try {
@@ -241,13 +244,12 @@ initBtn?.addEventListener('click', async () => {
     setDeviceMsg('Output selection not supported here. Use Chrome or Edge on desktop.');
     return;
   }
-  const ok = await ensurePermission(); // needed so device labels show up
+  const ok = await ensurePermission();
   if (!ok) return;
 
   const count = await listOutputs();
   initBtn.textContent = count ? 'Device list ready' : 'Device list (default only)';
 
-  // Refresh list when devices change (BT connect/disconnect, etc.)
   try {
     navigator.mediaDevices.addEventListener('devicechange', async () => {
       await listOutputs();
@@ -273,62 +275,111 @@ function pauseAll() {
   try { bandEl?.pause(); } catch {}
   if (vocalsEl) vocalsEl.playbackRate = 1;
   if (bandEl)   bandEl.playbackRate   = 1;
+  isPlaying = false;
 }
 
-async function playSynced(offsetMs=0) {
-  if (!vocalsUrl || !bandUrl || vocalsUrl === '#' || bandUrl === '#') { alert('No tracks loaded yet.'); return; }
-  if (!vocalsEl || !bandEl) return;
-
-  // stop anything already playing before we start
-  pauseAll();
-
-  vocalsEl.src = vocalsUrl; bandEl.src = bandUrl;
+async function preloadIfNeeded() {
+  if (isLoaded) return;
+  if (!vocalsUrl || !bandUrl || vocalsUrl === '#' || bandUrl === '#') {
+    throw new Error('No tracks loaded yet.');
+  }
+  vocalsEl.src = vocalsUrl; 
+  bandEl.src   = bandUrl;
   await applySinks();
-
-  // Preload/prime
-  await Promise.all([vocalsEl.play().catch(()=>{}), bandEl.play().catch(()=>{})]);
-  vocalsEl.pause(); bandEl.pause();
-
+  // Preload using .load() and wait for canplay on both
+  vocalsEl.load(); bandEl.load();
   await Promise.all([
     new Promise(r => vocalsEl.addEventListener('canplay', r, {once:true})),
     new Promise(r => bandEl.addEventListener('canplay', r, {once:true})),
   ]);
+  isLoaded = true;
+}
 
-  vocalsEl.currentTime = 0; bandEl.currentTime = 0;
+// Start from current positions (resume) without resetting times
+async function resumePlay() {
+  await Promise.all([
+    vocalsEl.play().catch(()=>{}),
+    bandEl.play().catch(()=>{}),
+  ]);
+  isPlaying = true;
+  startDriftCorrection(currentOffsetMs());
+}
 
-  if (offsetMs >= 0) { await bandEl.play(); await sleep(offsetMs); await vocalsEl.play(); }
-  else { await vocalsEl.play(); await sleep(-offsetMs); await bandEl.play(); }
+// Start from 0 with offset sequencing
+async function startFromZeroWithOffset(offsetMs) {
+  vocalsEl.currentTime = 0;
+  bandEl.currentTime   = 0;
 
+  if (offsetMs >= 0) {
+    await bandEl.play();
+    await sleep(offsetMs);
+    await vocalsEl.play();
+  } else {
+    await vocalsEl.play();
+    await sleep(-offsetMs);
+    await bandEl.play();
+  }
+  isPlaying = true;
+  startDriftCorrection(offsetMs);
+}
+
+// Determine current intended offset (read input)
+function currentOffsetMs() {
+  return parseInt(offsetIn?.value || '0', 10) || 0;
+}
+
+function startDriftCorrection(offsetMs) {
   clearSyncTimer();
   window._syncTimer = setInterval(() => {
+    if (!isPlaying) return;
     const driftMs = (vocalsEl.currentTime - bandEl.currentTime) * 1000 - offsetMs;
     if (Math.abs(driftMs) > 60) {
       if (driftMs > 0) {
-        const r=vocalsEl.playbackRate; vocalsEl.playbackRate=Math.max(0.9,r-0.05);
-        setTimeout(()=>{ vocalsEl.playbackRate=r; }, 300);
+        const r = vocalsEl.playbackRate; vocalsEl.playbackRate = Math.max(0.9, r - 0.05);
+        setTimeout(() => { vocalsEl.playbackRate = r; }, 300);
       } else {
-        const r=bandEl.playbackRate; bandEl.playbackRate=Math.max(0.9,r-0.05);
-        setTimeout(()=>{ bandEl.playbackRate=r; }, 300);
+        const r = bandEl.playbackRate; bandEl.playbackRate = Math.max(0.9, r - 0.05);
+        setTimeout(() => { bandEl.playbackRate = r; }, 300);
       }
     }
   }, 2000);
 }
 
-playBtn?.addEventListener('click', () => {
-  const off = parseInt(offsetIn?.value || '0', 10);
-  playSynced(off);
+// PLAY: resume if paused; otherwise load if needed then start from 0 with offset
+playBtn?.addEventListener('click', async () => {
+  try {
+    if (!vocalsEl || !bandEl) return;
+    if (isPlaying) return;          // already playing → no-op
+    await preloadIfNeeded();
+    if (vocalsEl.paused && bandEl.paused && (vocalsEl.currentTime > 0 || bandEl.currentTime > 0)) {
+      // Resume from where paused
+      await resumePlay();
+    } else {
+      // Fresh start from beginning with offset
+      await startFromZeroWithOffset(currentOffsetMs());
+    }
+  } catch (e) {
+    console.warn('play failed', e);
+    alert(e.message || 'Could not start playback.');
+  }
 });
 
+// PAUSE: pause both, keep positions
 pauseBtn?.addEventListener('click', () => {
   pauseAll();
 });
 
-restartBtn?.addEventListener('click', () => {
-  if (!vocalsEl || !bandEl) return;
-  vocalsEl.currentTime = 0;
-  bandEl.currentTime   = 0;
-  const off = parseInt(offsetIn?.value || '0', 10);
-  playSynced(off);
+// RESTART: jump to 0 and start again with offset
+restartBtn?.addEventListener('click', async () => {
+  try {
+    if (!vocalsEl || !bandEl) return;
+    await preloadIfNeeded();
+    pauseAll();
+    await startFromZeroWithOffset(currentOffsetMs());
+  } catch (e) {
+    console.warn('restart failed', e);
+    alert(e.message || 'Could not restart playback.');
+  }
 });
 
 // ======= Beep test to selected output (vocals/band) =======
@@ -339,14 +390,8 @@ _beepElBand.setAttribute('playsinline','');   _beepElBand.style.display='none';
 document.body.appendChild(_beepElVocals);
 document.body.appendChild(_beepElBand);
 
-/**
- * Play a short beep to a given sinkId via a hidden <audio>.
- * @param {'vocals'|'band'} which
- * @param {string} sinkId deviceId or 'default'
- * @param {number} freq Hz (default 880)
- * @param {number} ms duration (default 600)
- */
 async function playBeep(which, sinkId, freq=880, ms=600) {
+  const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
   if (!supportSink) { alert('Output selection not supported in this browser.'); return; }
   const outEl = which === 'band' ? _beepElBand : _beepElVocals;
 
@@ -367,7 +412,7 @@ async function playBeep(which, sinkId, freq=880, ms=600) {
 
   try {
     osc.start();
-    await outEl.play(); // should be a user gesture (button click)
+    await outEl.play();
     const endT = ac.currentTime + ms / 1000;
     gain.gain.exponentialRampToValueAtTime(0.0001, endT - 0.05);
     osc.stop(endT);
@@ -394,12 +439,13 @@ testBandBtn?.addEventListener('click', async () => {
 // =================== PLAYER MODE: list & load via SAS ===================
 if (window.KARAOKE_MODE === 'player') {
   (function(){
-    const LIST_URL = document.querySelector('meta[name="karaoke-list"]')?.content || '';
+    const LIST_META = document.querySelector('meta[name="karaoke-list"]');
+    const LIST_URL  = LIST_META?.content || '';
 
-    const pick = document.getElementById('songPick');
-    const useBtn = document.getElementById('useSelection');
-    const refreshBtn = document.getElementById('refreshList');
-    const status = document.getElementById('listStatus');
+    const pick        = document.getElementById('songPick');
+    const useBtn      = document.getElementById('useSelection');
+    const refreshBtn  = document.getElementById('refreshList');
+    const status      = document.getElementById('listStatus');
 
     const vocalsUrlIn = document.getElementById('vocalsUrl'); // hidden
     const bandUrlIn   = document.getElementById('bandUrl');   // hidden
@@ -430,7 +476,7 @@ if (window.KARAOKE_MODE === 'player') {
 
         for (const it of items) {
           const opt = document.createElement('option');
-          opt.value = JSON.stringify({ vocals: it.vocals_url, band: it.band_url });
+          opt.value = JSON.stringify({ vocals: it.vocals_url, band: it.band_url, title: it.title || it.job_id });
           opt.textContent = it.title || it.job_id;
           pick?.appendChild(opt);
         }
@@ -448,10 +494,16 @@ if (window.KARAOKE_MODE === 'player') {
         const sel = JSON.parse(val);
         vocalsUrl = sel.vocals || '';
         bandUrl   = sel.band   || '';
+        showTrackTitle(sel.title || 'Unknown Track');
+
+        // Reset playback state because sources changed
+        isLoaded = false;
+        isPlaying = false;
+        pauseAll();
 
         if (vocalsUrlIn) vocalsUrlIn.value = vocalsUrl;
         if (bandUrlIn)   bandUrlIn.value   = bandUrl;
-        loadBtn?.click(); // existing loader (if any) will pick these up
+        loadBtn?.click();
         if (loadStatus) loadStatus.textContent = 'Tracks loaded.';
       } catch (e) {
         console.warn('Invalid selection', e);
