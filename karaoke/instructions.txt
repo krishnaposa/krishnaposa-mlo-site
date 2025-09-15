@@ -6,7 +6,7 @@ Functions in karaoke-func:
         Invoke url: https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/submit
 
 Refresh SAS URLs
-curl -s https://https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/list
+curl -s https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/list
 
 Delete old blobs and force re-upload
 # Delete a job’s output blobs (replace JOBID)
