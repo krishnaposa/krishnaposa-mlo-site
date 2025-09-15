@@ -50,12 +50,19 @@
       <button id="refreshList" class="btn btn-outline" type="button">Refresh list</button>
     </div>
 
+    <!-- Now Playing display -->
+    <div class="now-playing" style="margin-top:.75rem">
+      <strong>Now Playing:</strong> <span id="trackTitle">—</span>
+    </div>
+
     <div id="listStatus" class="help" aria-live="polite"></div>
   </section>
 
   <!-- Route outputs -->
   <section class="card">
     <h2>Route outputs</h2>
+    <p class="help">Click “Enable device list” first (Chrome/Edge desktop) to pick Bluetooth or other outputs.</p>
+
     <div class="grid-2">
       <div class="field">
         <label for="vocalsOut">Vocals output</label>
@@ -71,6 +78,7 @@
       <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
       <button id="testVocals" class="btn btn-outline" type="button">Test Vocals</button>
       <button id="testBand" class="btn btn-outline" type="button">Test Band</button>
+      <span id="deviceMsg" class="help" style="margin-left:.5rem" aria-live="polite"></span>
     </div>
   </section>
 
@@ -111,7 +119,7 @@
 <script>window.KARAOKE_MODE = "player";</script>
 <script src="https://www.krishposa.com/assets/js/karaoke.js"></script>
 
-<!-- List → use SAS URLs → load -->
+<!-- List → use SAS URLs → load + update title -->
 <script>
 (function(){
   const LIST_URL = document.querySelector('meta[name="karaoke-list"]')?.content || '';
@@ -120,6 +128,7 @@
   const useBtn = document.getElementById('useSelection');
   const refreshBtn = document.getElementById('refreshList');
   const status = document.getElementById('listStatus');
+  const trackTitle = document.getElementById('trackTitle');
 
   const vocalsUrlIn = document.getElementById('vocalsUrl'); // hidden
   const bandUrlIn   = document.getElementById('bandUrl');   // hidden
@@ -127,6 +136,7 @@
   const loadStatus  = document.getElementById('loadStatus');
 
   function setListStatus(t){ status.textContent = t || ''; }
+  function setTrackTitle(t){ trackTitle.textContent = t || '—'; }
 
   async function loadList(){
     try {
@@ -141,6 +151,7 @@
       pick.innerHTML = '';
       if (!items.length) {
         pick.innerHTML = '<option value="">No completed songs yet</option>';
+        setTrackTitle('—');
         setListStatus('');
         return;
       }
@@ -149,15 +160,16 @@
       items.sort((a,b) => (b.updated||'').localeCompare(a.updated||''));
 
       for (const it of items) {
-        // store SAS links as JSON in option value, display friendly title
+        // include title in JSON so we can show "Now Playing"
         const opt = document.createElement('option');
-        opt.value = JSON.stringify({ vocals: it.vocals_url, band: it.band_url });
+        opt.value = JSON.stringify({ vocals: it.vocals_url, band: it.band_url, title: it.title || it.job_id });
         opt.textContent = it.title || it.job_id;
         pick.appendChild(opt);
       }
       setListStatus(`Loaded ${items.length} song(s).`);
     } catch (e) {
       console.warn(e);
+      setTrackTitle('—');
       setListStatus('Could not load list. ' + (e.message || e));
     }
   }
@@ -171,7 +183,8 @@
       // Feed SAS URLs into hidden inputs for karaoke.js (player mode)
       vocalsUrlIn.value = sel.vocals || '';
       bandUrlIn.value   = sel.band   || '';
-      loadBtn.click(); // your existing loader in karaoke.js will pick these up
+      loadBtn.click(); // karaoke.js will pick these up
+      setTrackTitle(sel.title || 'Unknown Track');
       loadStatus.textContent = 'Tracks loaded.';
     } catch (e) {
       console.warn('Invalid selection', e);
