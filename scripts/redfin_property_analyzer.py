@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, re, json, sys, time
+import os, re, json, sys, time, random
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
