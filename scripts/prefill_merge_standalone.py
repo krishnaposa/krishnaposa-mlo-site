@@ -27,7 +27,108 @@ from bs4 import BeautifulSoup
 from dateutil import parser as dtparser
 from playwright.sync_api import sync_playwright
 from urllib.parse import unquote
+from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+import time, random, re
 
+def redfin_url_via_site(address: str, *, headless: bool = True, slow_mo: int = 50, timeout_ms: int = 45000) -> str | None:
+    """
+    Drive redfin.com to resolve a property page for the given address.
+    Returns a URL like .../home/######## or None.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless, slow_mo=slow_mo)
+        ctx = browser.new_context(
+            viewport={"width": 1366, "height": 900},
+            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0 Safari/124.0"),
+            locale="en-US"
+        )
+        page = ctx.new_page()
+        try:
+            page.goto("https://www.redfin.com/", wait_until="domcontentloaded", timeout=timeout_ms)
+
+            # cookie banner best-effort
+            for sel in ["button:has-text('Accept')", "button:has-text('I agree')", "button[aria-label='Accept all']"]:
+                try:
+                    if page.locator(sel).first.is_visible():
+                        page.locator(sel).first.click(); break
+                except Exception:
+                    pass
+
+            # search input (Redfin uses #search-box-input on home)
+            box = page.locator("#search-box-input")
+            box.fill(address)
+            time.sleep(random.uniform(0.2, 0.6))
+
+            # pick the first autocomplete row if it appears; otherwise press Enter
+            row = page.locator(".autoCompleteRow").first
+            try:
+                row.wait_for(state="visible", timeout=3000)
+                row.click()
+            except PWTimeout:
+                box.press("Enter")
+
+            # wait for property page URL
+            page.wait_for_url(re.compile(r".*/home/\d+.*"), timeout=timeout_ms)
+            url = page.url
+            return url
+        except Exception:
+            return None
+        finally:
+            browser.close()
+
+def zillow_url_via_site(address: str, *, headless: bool = True, slow_mo: int = 50, timeout_ms: int = 45000) -> str | None:
+    """
+    Drive zillow.com to resolve a property page for the given address.
+    Returns a URL like .../homedetails/.../_zpid/ or None.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless, slow_mo=slow_mo)
+        ctx = browser.new_context(
+            viewport={"width": 1366, "height": 900},
+            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0 Safari/124.0"),
+            locale="en-US"
+        )
+        page = ctx.new_page()
+        try:
+            page.goto("https://www.zillow.com/", wait_until="domcontentloaded", timeout=timeout_ms)
+
+            # cookie banner best-effort
+            for sel in ["button:has-text('Accept')", "button:has-text('I agree')", "button[aria-label='Accept all']"]:
+                try:
+                    if page.locator(sel).first.is_visible():
+                        page.locator(sel).first.click(); break
+                except Exception:
+                    pass
+
+            # search input can be #search-box-input or aria-label based
+            box = page.locator("input#search-box-input, input[aria-label*='Enter an address']").first
+            box.fill(address)
+            time.sleep(random.uniform(0.2, 0.6))
+
+            # try autocomplete
+            opt = page.locator("[data-testid='search-suggestion'], li[role='option']").first
+            try:
+                opt.wait_for(state="visible", timeout=3000)
+                opt.click()
+            except PWTimeout:
+                box.press("Enter")
+
+            # Wait for a homedetails page (ideally with _zpid)
+            try:
+                page.wait_for_url(re.compile(r".*/homedetails/.*?_zpid/?$"), timeout=timeout_ms)
+            except PWTimeout:
+                # fall back to any homedetails (we can still scrape network JSON)
+                page.wait_for_url(re.compile(r".*/homedetails/.*"), timeout=timeout_ms)
+
+            return page.url
+        except Exception:
+            return None
+        finally:
+            browser.close()
 # ---------- basic log helpers ----------
 def log(s):  print(f"[INFO] {s}", flush=True)
 def warn(s): print(f"[WARN] {s}", flush=True)
