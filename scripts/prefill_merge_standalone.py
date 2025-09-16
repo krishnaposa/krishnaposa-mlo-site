@@ -680,8 +680,8 @@ def main():
     headless = not args.headful
 
     # Resolve URLs
-    rf_url = redfin_url_via_ddg(args.address) or redfin_url_via_site(address, headless=False)
-    zf_url = zillow_url_via_ddg(args.address) or zillow_url_via_site(address, headless=False)
+    rf_url = redfin_url_via_ddg(args.address) or redfin_url_via_site(args.address, headless=False)
+    zf_url = zillow_url_via_ddg(args.address) or zillow_url_via_site(args.address, headless=False)
 
     # Fetch (sequential; you can parallelize if you want)
     redfin = fetch_redfin_data_smart(rf_url, headless=headless) if rf_url else None
