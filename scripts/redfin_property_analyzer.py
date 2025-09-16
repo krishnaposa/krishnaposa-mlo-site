@@ -89,39 +89,101 @@ def redfin_url_via_ddg(address: str) -> str | None:
     return None
 
 # ---------- on-site resolver (fallback / most reliable) ----------
+
 def redfin_url_via_site(address: str, *, headless=True, slow_mo=50, timeout_ms=45000) -> str | None:
+    """
+    Drive redfin.com to resolve a property page for the given address.
+    - Types into the homepage search
+    - If we land on a results page, click the first card that links to /home/
+    - Returns final property URL or None
+    """
+    import re, time, random
+    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, slow_mo=slow_mo)
         ctx = browser.new_context(
             viewport={"width":1366,"height":900},
-            user_agent=UA_STR, locale="en-US"
+            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0 Safari/124.0"),
+            locale="en-US"
         )
         page = ctx.new_page()
         try:
             page.goto("https://www.redfin.com/", wait_until="domcontentloaded", timeout=timeout_ms)
-            for sel in ["button:has-text('Accept')","button:has-text('I agree')","button[aria-label='Accept all']"]:
+
+            # dismiss cookie banners (best effort)
+            for sel in ["button:has-text('Accept')","button:has-text('I agree')",
+                        "button[aria-label='Accept all']","button:has-text('Got it')"]:
                 try:
                     if page.locator(sel).first.is_visible():
-                        page.locator(sel).first.click(); break
+                        page.locator(sel).first.click()
+                        break
                 except Exception:
                     pass
-            box = page.locator("#search-box-input")
+
+            # homepage search box (avoid strict-mode violation by picking .first)
+            box = page.locator("input#search-box-input").first
             box.fill(address)
-            time.sleep(random.uniform(0.2,0.5))
-            row = page.locator(".autoCompleteRow").first
+            time.sleep(random.uniform(0.25, 0.6))
+
+            # try autocomplete; if none, press Enter
+            ac = page.locator(".autoCompleteRow").first
             try:
-                row.wait_for(state="visible", timeout=3000)
-                row.click()
+                ac.wait_for(state="visible", timeout=3000)
+                ac.click()
             except PWTimeout:
                 box.press("Enter")
-            page.wait_for_url(re.compile(r".*/home/\d+.*"), timeout=timeout_ms)
-            return page.url
+
+            # 1) happy path: we land directly on a property page
+            try:
+                page.wait_for_url(re.compile(r".*/home/\d+.*"), timeout=timeout_ms)
+                return page.url
+            except PWTimeout:
+                pass  # probably on a results page
+
+            # 2) results page: click the first card that links to /home/
+            # try a few common link patterns new/old UI
+            selectors = [
+                "a[href*='/home/']",
+                "a.HomeCardContainer, a.coverAll",
+                "[data-rf-test-id='home-card'] a[href*='/home/']",
+            ]
+            for sel in selectors:
+                try:
+                    link = page.locator(sel).first
+                    link.wait_for(state="visible", timeout=6000)
+                    # ensure the href really points to a property
+                    href = link.get_attribute("href") or ""
+                    if "/home/" not in href:
+                        link.click()  # may still navigate to details
+                    else:
+                        page.goto(href, wait_until="domcontentloaded")
+                    page.wait_for_url(re.compile(r".*/home/\d+.*"), timeout=timeout_ms)
+                    return page.url
+                except PWTimeout:
+                    continue
+                except Exception:
+                    continue
+
+            # 3) last chance: if any /home/ link exists, navigate to it directly
+            try:
+                hrefs = page.eval_on_selector_all("a[href*='/home/']", "els => els.map(e => e.href)")
+                for u in hrefs or []:
+                    if re.search(r"/home/\d+", u):
+                        page.goto(u, wait_until="domcontentloaded")
+                        page.wait_for_url(re.compile(r".*/home/\d+.*"), timeout=timeout_ms)
+                        return page.url
+            except Exception:
+                pass
+
+            return None
         except Exception as e:
             warn(f"Site resolver failed: {e}")
             return None
         finally:
             browser.close()
-
 # ---------- page capture ----------
 def _extract_globals(page):
     keys = ["__NEXT_DATA__", "__REDUX_STATE__", "__APOLLO_STATE__", "__PREFETCHED_QUERIES__", "__RF_PAGE_DATA__", "__INITIAL_STATE__"]
