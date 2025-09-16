@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Redfin-only analyzer with JSON dumping
+Redfin-only analyzer with JSON dumping + rent parsing
 - URL resolution: --redfin-url → DuckDuckGo → Redfin Autocomplete JSON
 - Scrapes property page: window globals + JSON network calls + DOM heuristics
 - Dumps captured JSON blobs to ./rf_dumps/ for debugging
+- Extracts rent range from Stingray comparable rentals responses (payload[0].url)
 - Defensive math when scrape fails
 """
 
@@ -84,6 +85,32 @@ def _dump_index(meta: dict):
         log(f"Wrote dump index → {path}")
     except Exception as e:
         warn(f"Failed to write dump index: {e}")
+
+# ---- rent range parsing helpers (from payload URL) ----
+def _parse_k_amount(tok: str) -> float | None:
+    """
+    Convert '3.3k' -> 3300, '3900' -> 3900, '4k' -> 4000
+    """
+    if tok is None: return None
+    tok = tok.strip().lower()
+    if tok.endswith('k'):
+        base = _to_float(tok[:-1])
+        return base * 1000 if base is not None else None
+    return _to_float(tok)
+
+def _rent_from_payload_url(u: str) -> tuple[float|None, float|None]:
+    """
+    Extract min/max rent from a payload url query like:
+      ...min-price=3.3k,max-price=3.9k...
+    Returns (min_rent, max_rent)
+    """
+    if not isinstance(u, str): return (None, None)
+    # accept 'min-price=' or 'min_price=' just in case
+    m1 = re.search(r"(?:^|[?&,])min[-_]?price=([^&,]+)", u, re.I)
+    m2 = re.search(r"(?:^|[?&,])max[-_]?price=([^&,]+)", u, re.I)
+    lo = _parse_k_amount(m1.group(1)) if m1 else None
+    hi = _parse_k_amount(m2.group(1)) if m2 else None
+    return (lo, hi)
 
 # ---------------- URL resolution ----------------
 def redfin_url_via_ddg(address: str) -> str | None:
@@ -221,7 +248,7 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
       - window globals
       - JSON network responses (GraphQL / stingray / api)
       - DOM heuristics (HOA / taxes)
-    Optionally dumps JSON blobs to ./rf_dumps/
+    Also parses rent range from Stingray comparable rentals responses.
     """
     caps = {"globals": {}, "network_json": [], "dom": None}
     log(f"Loading property page: {url}")
@@ -289,6 +316,7 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
     # ---- Mine values ----
     address_parts = {}
     hoa=None; tax_annual=None; last_price=None
+    rent_lo=None; rent_hi=None
 
     # Broadened search keys to catch more variants
     wanted = {
@@ -303,6 +331,7 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
         "lastsaleprice","lastsoldprice","price","listprice","amount"
     }
 
+    # JSON blobs from globals / DOM / network (generic mining)
     candidates = []
     for v in (caps["globals"] or {}).values():
         if v: candidates.append(v)
@@ -344,7 +373,7 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
                     if tv is not None: tax_annual = tv
                 if tax_annual is not None: log(f"Property tax (from JSON): {tax_annual}")
 
-            # Price
+            # Price (sale/list)
             if last_price is None:
                 p = hits.get("lastsaleprice") or hits.get("lastsoldprice") or hits.get("listprice") or hits.get("price")
                 if isinstance(p, dict) and "amount" in p:
@@ -356,19 +385,49 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
         except Exception:
             continue
 
+    # Special pass: look for comparable rentals payload → parse min/max from URL
+    for item in caps["network_json"]:
+        try:
+            src = (item.get("url") or "").lower()
+            j = item.get("json")
+            if not isinstance(j, dict): continue
+            if "stingray/api/comparablerentals" in src and "payload" in j:
+                payload = j.get("payload") or []
+                if payload and isinstance(payload, list):
+                    pl_url = payload[0].get("url")
+                    lo, hi = _rent_from_payload_url(pl_url)
+                    if lo or hi:
+                        rent_lo = lo or rent_lo
+                        rent_hi = hi or rent_hi
+                        log(f"Rent range from payload: min={rent_lo} max={rent_hi}")
+                        break
+        except Exception:
+            continue
+
     heur = (caps["dom"] or {}).get("heuristic") or {}
     if hoa is None and heur.get("hoa") is not None:
         hoa = heur["hoa"]; log(f"HOA (heuristic fallback): {hoa}")
     if tax_annual is None and heur.get("tax_annual") is not None:
         tax_annual = heur["tax_annual"]; log(f"Property tax (heuristic fallback): {tax_annual}")
 
+    # Build estimates
+    rent_est = None
+    if rent_lo and rent_hi:
+        rent_est = round((rent_lo + rent_hi) / 2.0, 2)
+    elif rent_lo:
+        rent_est = rent_lo
+    elif rent_hi:
+        rent_est = rent_hi
+
     estimates = {
         "hoa_monthly": hoa if hoa is not None else None,
         "property_tax_annual": tax_annual if tax_annual is not None else None,
         "suggested_price": last_price,
-        "insurance_monthly": 100  # baseline
+        "insurance_monthly": 100,             # baseline
+        "rent_monthly_est": rent_est,         # <-- NEW
+        "rent_range": [rent_lo, rent_hi]      # <-- NEW
     }
-    ok = bool(address_parts) or any([hoa, tax_annual, last_price])
+    ok = bool(address_parts) or any([hoa, tax_annual, last_price, rent_est])
 
     log(f"Capture summary → globals:{len([v for v in (caps['globals'] or {}).values() if v])} "
         f"network_json:{len(caps['network_json'])} ok:{ok}")
@@ -391,6 +450,8 @@ def parse_property(url: str, *, headless=True):
             "hoa_monthly": est.get("hoa_monthly"),
             "property_tax_annual": est.get("property_tax_annual"),
             "last_sale_price": est.get("suggested_price"),
+            "rent_monthly_est": est.get("rent_monthly_est"),
+            "rent_range": est.get("rent_range"),
         }
     }
 
@@ -472,13 +533,18 @@ def analyze(address: str, redfin_url_cli: str|None, price: float, down_pct: floa
     ins_m = (ins_annual/12) if ins_annual is not None else 100
     hoa_m = hoa_monthly if hoa_monthly is not None else (prop_details.get("hoa_monthly") or 0)
     maint_m = price*(maint_pct/100)/12
-    vac_m = (rent_monthly or 0)*(vacancy_pct/100)
+
+    # Prefer caller-provided rent; otherwise use our estimate (if present)
+    rent_for_vac = rent_monthly if rent_monthly is not None else prop_details.get("rent_monthly_est")
+    vac_m = (rent_for_vac or 0)*(vacancy_pct/100)
+
     op_ex = round(tax_m + ins_m + hoa_m + maint_m + vac_m, 2)
 
     cashflow = noi = cap_rate = coc = None
-    if rent_monthly is not None:
-        cashflow = round(rent_monthly - (pi + op_ex), 2)
-        noi = round((rent_monthly - vac_m) * 12 - (tax_m + ins_m + hoa_m + maint_m)*12, 2)
+    rent_used = rent_monthly if rent_monthly is not None else prop_details.get("rent_monthly_est")
+    if rent_used is not None:
+        cashflow = round(rent_used - (pi + op_ex), 2)
+        noi = round((rent_used - (rent_used*(vacancy_pct/100))) * 12 - (tax_m + ins_m + hoa_m + maint_m)*12, 2)
         cap_rate = round(noi/price*100, 2) if price else None
         coc = round((cashflow*12)/dp * 100, 2) if dp>0 else None
 
@@ -503,19 +569,18 @@ def analyze(address: str, redfin_url_cli: str|None, price: float, down_pct: floa
             "cash_on_cash_pct": coc
         },
         "notes": [
-            "Resolver order: --redfin-url → DuckDuckGo → Redfin Autocomplete JSON.",
-            "Property page scraped via globals + network JSON + DOM heuristics.",
-            "All captured JSON blobs are dumped to ./rf_dumps/ for inspection.",
-            "Math is defensive if scrape fails (fields default to 0 unless overridden).",
-            "Insurance defaults to $100/mo if not provided.",
-            "Provide rent_monthly to compute cash flow, cap rate, and CoC."
+            "Resolver: --redfin-url → DuckDuckGo → Redfin Autocomplete JSON.",
+            "Scrape: window globals + network JSON + DOM heuristics.",
+            "JSON blobs dumped to ./rf_dumps/; rent parsed from comparable rentals payload URL.",
+            "Math is defensive; fields default to 0 unless overridden.",
+            "Insurance defaults to $100/mo if not provided."
         ]
     }
 
 # ---------------- CLI ----------------
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description="Redfin analyzer with DDG+Autocomplete and JSON blob dumping.")
+    ap = argparse.ArgumentParser(description="Redfin analyzer with blob dumping and rent parsing.")
     ap.add_argument("address", help="Street, City, State ZIP")
     ap.add_argument("--redfin-url", default=None, help="Known Redfin property URL to skip search.")
     ap.add_argument("--price", type=float, required=True)
