@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Redfin-only analyzer
-- URL resolution order: --redfin-url → DuckDuckGo → Redfin Autocomplete JSON
-- No homepage automation (avoids "Oops!" popup)
+Redfin-only analyzer with JSON dumping
+- URL resolution: --redfin-url → DuckDuckGo → Redfin Autocomplete JSON
 - Scrapes property page: window globals + JSON network calls + DOM heuristics
+- Dumps captured JSON blobs to ./rf_dumps/ for debugging
 - Defensive math when scrape fails
 """
 
-import re, json, time, random
+import os, re, io, json, time, random
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -17,6 +17,7 @@ UA_STR = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/124.0")
 UA_HDRS = {"User-Agent": UA_STR, "Accept-Language": "en-US,en;q=0.9"}
 REDFIN_MEDIAN_CSV = "https://redfin-public-data.s3.us-west-2.amazonaws.com/housing-market-data/market-tracker/median_sale_price.csv"
+DUMP_DIR = "rf_dumps"
 
 # ---------------- logging ----------------
 def log(s):  print(f"[INFO] {s}", flush=True)
@@ -54,10 +55,35 @@ def _deep_find_keys(obj, keys_lower:set[str]):
 def normalize_hoa(val):
     v = _to_float(val)
     if v is None: return None
-    # sanity: monthly HOA rarely exceeds $5000; ignore zeros / negatives / absurd
-    if v <= 0 or v > 5000:
+    if v <= 0 or v > 5000:  # monthly sanity bounds
         return None
     return v
+
+def _ensure_dump_dir():
+    try:
+        os.makedirs(DUMP_DIR, exist_ok=True)
+    except Exception:
+        pass
+
+def _dump_json_blob(idx: int, url: str, payload):
+    _ensure_dump_dir()
+    path = os.path.join(DUMP_DIR, f"blob_{idx:02d}.json")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"source_url": url, "json": payload}, f, indent=2)
+        log(f"Dumped JSON blob #{idx} → {path}")
+    except Exception as e:
+        warn(f"Failed to dump blob #{idx}: {e}")
+
+def _dump_index(meta: dict):
+    _ensure_dump_dir()
+    path = os.path.join(DUMP_DIR, "_index.json")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+        log(f"Wrote dump index → {path}")
+    except Exception as e:
+        warn(f"Failed to write dump index: {e}")
 
 # ---------------- URL resolution ----------------
 def redfin_url_via_ddg(address: str) -> str | None:
@@ -189,12 +215,13 @@ def _extract_from_dom(html):
 
     return {"__NEXT_DATA__": next_data, "heuristic": {"hoa": hoa, "tax_annual": tax_annual}}
 
-def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45000):
+def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45000, dump_blobs=True):
     """
-    Loads a *property page* and captures:
+    Loads a property page and captures:
       - window globals
       - JSON network responses (GraphQL / stingray / api)
       - DOM heuristics (HOA / taxes)
+    Optionally dumps JSON blobs to ./rf_dumps/
     """
     caps = {"globals": {}, "network_json": [], "dom": None}
     log(f"Loading property page: {url}")
@@ -219,8 +246,10 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
                     j = resp.json()
                     if isinstance(j, (dict, list)):
                         caps["network_json"].append({"url": resp.url, "json": j})
-                        if len(caps["network_json"]) <= 3:
-                            log(f"Captured JSON response: {resp.url}")
+                        idx = len(caps["network_json"])
+                        log(f"Captured JSON response #{idx}: {resp.url}")
+                        if dump_blobs:
+                            _dump_json_blob(idx, resp.url, j)
             except Exception:
                 pass
 
@@ -233,7 +262,12 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
             time.sleep(random.uniform(0.2, 0.5))
 
         caps["globals"] = _extract_globals(page)
-        caps["dom"]     = _extract_from_dom(page.content())
+        if dump_blobs and caps["globals"]:
+            # dump each captured global as a blob too
+            for i, (k, v) in enumerate(caps["globals"].items(), start=1):
+                _dump_json_blob(100 + i, f"window.{k}", v)
+
+        caps["dom"] = _extract_from_dom(page.content())
 
         try:
             page.screenshot(path="redfin_debug.png", full_page=True)
@@ -243,16 +277,30 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
 
         browser.close()
 
+    # write a small index file
+    if dump_blobs:
+        _dump_index({
+            "url": url,
+            "globals_dumped": list((caps["globals"] or {}).keys()),
+            "network_blob_count": len(caps["network_json"]),
+            "have_dom_next_data": bool(caps["dom"] and caps["dom"].get("__NEXT_DATA__"))
+        })
+
     # ---- Mine values ----
     address_parts = {}
     hoa=None; tax_annual=None; last_price=None
 
+    # Broadened search keys to catch more variants
     wanted = {
         # address variants
         "address","streetline","streetline1","line1","street","streetaddress",
         "city","state","zipcode","zip","postalcode",
-        # fields
-        "monthlyhoa","hoadues","propertytax","lastsaleprice","price"
+        # HOA
+        "hoa","monthlyhoa","hoadues",
+        # tax
+        "propertytax","annualtax","tax",
+        # prices
+        "lastsaleprice","lastsoldprice","price","listprice","amount"
     }
 
     candidates = []
@@ -281,12 +329,12 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
 
             # HOA
             if hoa is None:
-                hoa = normalize_hoa(hits.get("monthlyhoa") or hits.get("hoadues"))
+                hoa = normalize_hoa(hits.get("hoa") or hits.get("monthlyhoa") or hits.get("hoadues"))
                 if hoa is not None: log(f"HOA (from JSON): {hoa}")
 
             # Taxes
             if tax_annual is None:
-                t = hits.get("propertytax")
+                t = hits.get("propertytax") or hits.get("annualtax") or hits.get("tax")
                 if isinstance(t, dict):
                     for k in ("amount","annual","value"):
                         if k in t:
@@ -298,7 +346,7 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
 
             # Price
             if last_price is None:
-                p = hits.get("lastsaleprice") or hits.get("price")
+                p = hits.get("lastsaleprice") or hits.get("lastsoldprice") or hits.get("listprice") or hits.get("price")
                 if isinstance(p, dict) and "amount" in p:
                     last_price = _to_float(p["amount"])
                 else:
@@ -329,7 +377,7 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
 
 # ---------------- top-level parse ----------------
 def parse_property(url: str, *, headless=True):
-    smart = fetch_redfin_data_smart(url, headless=headless)
+    smart = fetch_redfin_data_smart(url, headless=headless, dump_blobs=True)
     if not smart.get("ok"):
         return {"error":"no_data_from_redfin", "redfin_url": url}
     parts = smart.get("address_parts") or {}
@@ -352,11 +400,15 @@ def extract_zip_from_any(s: str):
     return m.group(1) if m else None
 
 def redfin_zip_trend(zip_code: str):
+    # Fetch with headers to avoid 403, then read from memory
     try:
-        df = pd.read_csv(REDFIN_MEDIAN_CSV)
+        r = requests.get(REDFIN_MEDIAN_CSV, headers={"User-Agent": UA_STR, "Accept": "text/csv"}, timeout=30)
+        r.raise_for_status()
+        df = pd.read_csv(io.StringIO(r.text))
     except Exception as e:
         warn(f"CSV load error: {e}")
         return {"error":"csv_load"}
+
     need = {"region_type","region","period_end","median_sale_price"}
     if not need.issubset(df.columns):
         return {"columns": list(df.columns)[:20]}
@@ -453,6 +505,7 @@ def analyze(address: str, redfin_url_cli: str|None, price: float, down_pct: floa
         "notes": [
             "Resolver order: --redfin-url → DuckDuckGo → Redfin Autocomplete JSON.",
             "Property page scraped via globals + network JSON + DOM heuristics.",
+            "All captured JSON blobs are dumped to ./rf_dumps/ for inspection.",
             "Math is defensive if scrape fails (fields default to 0 unless overridden).",
             "Insurance defaults to $100/mo if not provided.",
             "Provide rent_monthly to compute cash flow, cap rate, and CoC."
@@ -462,7 +515,7 @@ def analyze(address: str, redfin_url_cli: str|None, price: float, down_pct: floa
 # ---------------- CLI ----------------
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description="Redfin-only analyzer with DDG + Autocomplete fallback and verbose logging.")
+    ap = argparse.ArgumentParser(description="Redfin analyzer with DDG+Autocomplete and JSON blob dumping.")
     ap.add_argument("address", help="Street, City, State ZIP")
     ap.add_argument("--redfin-url", default=None, help="Known Redfin property URL to skip search.")
     ap.add_argument("--price", type=float, required=True)
