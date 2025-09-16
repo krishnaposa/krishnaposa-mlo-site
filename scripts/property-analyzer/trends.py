@@ -1,68 +1,48 @@
 # trends.py
-import io
-import requests
+import io, zipfile, tempfile, pathlib
 import pandas as pd
-
 from utils import warn, log
 
-# 1) Primary: RedfinEngineering GitHub mirror (most reliable)
-PRIMARY_CSV = (
-    "https://raw.githubusercontent.com/RedfinEngineering/public-data/main/"
-    "housing-market-data/market-tracker/median_sale_price.csv"
-)
+# Hardcoded Kaggle dataset + file
+KAGGLE_DATASET = "redfin/usa-housing-market"
+KAGGLE_FILENAME = "market-tracker/median_sale_price.csv"
 
-# 2) Fallback: Original S3 object (sometimes 403 without Referer)
-FALLBACK_CSV = (
-    "https://redfin-public-data.s3.us-west-2.amazonaws.com/"
-    "housing-market-data/market-tracker/median_sale_price.csv"
-)
-
-# 3) Community mirror (last resort)
-ALT_CSV = "https://raw.githubusercontent.com/justinledwards/redfin-data/main/median_sale_price.csv"
-
-UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/124.0"
-)
-
-
-def _fetch_csv_text() -> str | None:
-    # 1) GitHub mirror
+def _fetch_via_kaggle() -> str | None:
     try:
-        log("ZIP trends: fetching CSV from GitHub mirror…")
-        r = requests.get(PRIMARY_CSV, headers={"User-Agent": UA, "Accept": "text/csv"}, timeout=30)
-        r.raise_for_status()
-        return r.text
+        from kaggle import api as kaggle_api
     except Exception as e:
-        warn(f"GitHub CSV fetch failed: {e}")
+        warn(f"Kaggle package not installed. Run `pip install kaggle`. ({e})")
+        return None
 
-    # 2) S3 original (with Referer + UA)
-    try:
-        log("ZIP trends: fetching CSV from S3 (fallback)…")
-        r = requests.get(
-            FALLBACK_CSV,
-            headers={"User-Agent": UA, "Accept": "text/csv", "Referer": "https://www.redfin.com/"},
-            timeout=30,
-        )
-        r.raise_for_status()
-        return r.text
-    except Exception as e:
-        warn(f"S3 CSV fetch failed: {e}")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            log(f"Kaggle: downloading {KAGGLE_FILENAME} from {KAGGLE_DATASET}")
+            kaggle_api.dataset_download_file(
+                KAGGLE_DATASET, KAGGLE_FILENAME, path=tmpdir, force=True, quiet=True
+            )
+        except Exception as e:
+            warn(f"Kaggle download failed: {e}")
+            return None
 
-    # 3) Community-maintained mirror
-    try:
-        log("ZIP trends: fetching CSV from alt GitHub mirror…")
-        r = requests.get(ALT_CSV, headers={"User-Agent": UA, "Accept": "text/csv"}, timeout=30)
-        r.raise_for_status()
-        return r.text
-    except Exception as e:
-        warn(f"Alt CSV fetch failed: {e}")
+        raw = pathlib.Path(tmpdir) / KAGGLE_FILENAME
+        zipped = pathlib.Path(tmpdir) / (KAGGLE_FILENAME + ".zip")
+
+        if zipped.exists():
+            with zipfile.ZipFile(zipped, "r") as zf:
+                names = zf.namelist()
+                if not names:
+                    return None
+                with zf.open(names[0]) as f:
+                    return f.read().decode("utf-8")
+
+        if raw.exists():
+            return raw.read_text(encoding="utf-8")
 
     return None
 
 
 def redfin_zip_trend(zip_code: str):
-    text = _fetch_csv_text()
+    text = _fetch_via_kaggle()
     if text is None:
         return {"error": "csv_load"}
 
@@ -72,14 +52,14 @@ def redfin_zip_trend(zip_code: str):
         warn(f"CSV parse error: {e}")
         return {"error": "csv_load"}
 
-    need = {"region_type", "region", "period_end", "median_sale_price"}
-    if not need.issubset(df.columns):
+    required = {"region_type", "region", "period_end", "median_sale_price"}
+    if not required.issubset(df.columns):
         return {"columns": list(df.columns)[:20]}
 
     z = df[(df.region_type == "zip") & (df.region.astype(str) == str(zip_code))].copy()
     if z.empty:
         warn(f"No ZIP data for {zip_code}")
-        return {"zip": zip_code, "found": False}
+        return {"zip": str(zip_code), "found": False}
 
     z["period_end"] = pd.to_datetime(z["period_end"])
     z = z.sort_values("period_end")
@@ -88,8 +68,7 @@ def redfin_zip_trend(zip_code: str):
     latest_price = float(latest["median_sale_price"]) if pd.notna(latest["median_sale_price"]) else None
     latest_date = str(latest["period_end"].date())
 
-    yoy = None
-    cagr5 = None
+    yoy, cagr5 = None, None
     if len(z) > 12:
         prev = float(z.iloc[-13]["median_sale_price"]) if pd.notna(z.iloc[-13]["median_sale_price"]) else None
         if latest_price and prev:
