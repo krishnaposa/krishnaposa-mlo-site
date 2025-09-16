@@ -5,19 +5,25 @@ import pandas as pd
 
 from utils import warn, log
 
-# Primary: GitHub mirror of Redfin public data (avoids S3 403)
+# 1) Primary: RedfinEngineering GitHub mirror (most reliable)
 PRIMARY_CSV = (
     "https://raw.githubusercontent.com/RedfinEngineering/public-data/main/"
     "housing-market-data/market-tracker/median_sale_price.csv"
 )
 
-# Fallback: original S3 object (sometimes 403s)
+# 2) Fallback: Original S3 object (sometimes 403 without Referer)
 FALLBACK_CSV = (
     "https://redfin-public-data.s3.us-west-2.amazonaws.com/"
     "housing-market-data/market-tracker/median_sale_price.csv"
 )
 
-UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/124.0"
+# 3) Community mirror (last resort)
+ALT_CSV = "https://raw.githubusercontent.com/justinledwards/redfin-data/main/median_sale_price.csv"
+
+UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/124.0"
+)
 
 
 def _fetch_csv_text() -> str | None:
@@ -30,7 +36,7 @@ def _fetch_csv_text() -> str | None:
     except Exception as e:
         warn(f"GitHub CSV fetch failed: {e}")
 
-    # 2) S3 (with Referer + UA — helps in some regions)
+    # 2) S3 original (with Referer + UA)
     try:
         log("ZIP trends: fetching CSV from S3 (fallback)…")
         r = requests.get(
@@ -42,6 +48,15 @@ def _fetch_csv_text() -> str | None:
         return r.text
     except Exception as e:
         warn(f"S3 CSV fetch failed: {e}")
+
+    # 3) Community-maintained mirror
+    try:
+        log("ZIP trends: fetching CSV from alt GitHub mirror…")
+        r = requests.get(ALT_CSV, headers={"User-Agent": UA, "Accept": "text/csv"}, timeout=30)
+        r.raise_for_status()
+        return r.text
+    except Exception as e:
+        warn(f"Alt CSV fetch failed: {e}")
 
     return None
 
