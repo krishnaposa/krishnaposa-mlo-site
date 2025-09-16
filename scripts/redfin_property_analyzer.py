@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
-Redfin-only analyzer (DDG + manual URL only; no homepage automation)
-
-Flow:
-  1) Resolve property URL via DuckDuckGo (or --redfin-url)
-  2) Load property page with Playwright (headless by default)
-  3) Scrape window globals, JSON network calls, DOM fallbacks
-  4) Normalize HOA/taxes; compute basic ROI metrics
+Redfin-only analyzer
+- URL resolution: --redfin-url OR DuckDuckGo → Redfin Autocomplete JSON fallback
+- No homepage automation
+- Scrape property page with Playwright (globals + network JSON + DOM heuristics)
 """
 
 import re, json, time, random
@@ -14,18 +11,18 @@ import requests
 import pandas as pd
 from bs4 import BeautifulSoup
 from dateutil import parser as dtparser
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+from playwright.sync_api import sync_playwright
 
 UA_STR = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/124.0")
-UA_HDRS = {"User-Agent": UA_STR, "Accept-Language": "en-US,en;q=0.9"}
+UA_HDRS = {"User-Agent": UA_STR, "Accept-Language":"en-US,en;q=0.9"}
 REDFIN_MEDIAN_CSV = "https://redfin-public-data.s3.us-west-2.amazonaws.com/housing-market-data/market-tracker/median_sale_price.csv"
 
 # ---------- logging ----------
 def log(s):  print(f"[INFO] {s}", flush=True)
 def warn(s): print(f"[WARN] {s}", flush=True)
 
-# ---------- utils ----------
+# ---------- small utils ----------
 def _to_float(x):
     if x is None: return None
     try:
@@ -57,13 +54,13 @@ def _deep_find_keys(obj, keys_lower:set[str]):
 def normalize_hoa(val):
     v = _to_float(val)
     if v is None: return None
-    # sanity: monthly HOA rarely exceeds $1500; ignore insane values or zeros
-    if v <= 0 or v > 5000:
+    if v <= 0 or v > 5000:  # monthly sanity bounds
         return None
     return v
 
-# ---------- resolve Redfin property URL (DDG only) ----------
+# ---------- URL resolution ----------
 def redfin_url_via_ddg(address: str) -> str | None:
+    """Try DuckDuckGo search results; unwrap redirect links."""
     queries = [
         f"site:redfin.com {address} home",
         f"{address} site:redfin.com/home",
@@ -73,12 +70,10 @@ def redfin_url_via_ddg(address: str) -> str | None:
     for q in queries:
         log(f"DDG query: {q}")
         try:
-            r = requests.get(
-                "https://duckduckgo.com/html/",
-                params={"q": q, "kl": "us-en"},
-                headers={"User-Agent": UA_STR},
-                timeout=20
-            )
+            r = requests.get("https://duckduckgo.com/html/",
+                             params={"q": q, "kl": "us-en"},
+                             headers={"User-Agent": UA_STR},
+                             timeout=20)
             r.raise_for_status()
         except Exception as e:
             warn(f"DDG error: {e}")
@@ -87,19 +82,79 @@ def redfin_url_via_ddg(address: str) -> str | None:
         soup = BeautifulSoup(r.text, "html.parser")
         for a in soup.select("a"):
             href = a.get("href") or ""
-            # unwrap /l/?...&uddg=<encoded>
             m = re.search(r"[?&]uddg=([^&]+)", href)
             if m:
                 from urllib.parse import unquote
                 href = unquote(m.group(1))
             if re.match(r"^https?://(?:www|m)\.redfin\.com/.+/home/\d+", href, re.I):
-                log(f"DDG found: {href}")
+                log(f"DDG found Redfin property URL: {href}")
                 return href
 
-    warn("No Redfin property URL found via DDG.")
+    warn("DDG did not return a Redfin property link.")
     return None
 
-# ---------- capture helpers ----------
+def _redfin_strip_json_prefix(text: str) -> str:
+    # Redfin JSON often starts with )]}'
+    return re.sub(r"^\)\]\}'\s*", "", text or "")
+
+def redfin_url_via_autocomplete(address: str) -> str | None:
+    """
+    Call Redfin's public autocomplete JSON to get a property link.
+    This avoids UI and the homepage 'Oops!' modal.
+    """
+    ep = "https://www.redfin.com/stingray/do/location-autocomplete"
+    params = {
+        "location": address,
+        "v": 2,          # newer response format
+        "market": "true" # signal we want market/addresses
+    }
+    log(f"Autocomplete: GET {ep} …")
+    try:
+        r = requests.get(ep, params=params, headers=UA_HDRS, timeout=20)
+        r.raise_for_status()
+    except Exception as e:
+        warn(f"Autocomplete HTTP error: {e}")
+        return None
+
+    txt = _redfin_strip_json_prefix(r.text)
+    try:
+        j = json.loads(txt)
+    except Exception as e:
+        warn(f"Autocomplete JSON parse error: {e}")
+        return None
+
+    # The structure can vary; walk it generously for 'url' values
+    def _walk_urls(node):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k.lower() == "url" and isinstance(v, str):
+                    yield v
+                else:
+                    yield from _walk_urls(v)
+        elif isinstance(node, list):
+            for it in node:
+                yield from _walk_urls(it)
+
+    for url in _walk_urls(j):
+        # Prefer direct property pages
+        if "/home/" in url:
+            full = url if url.startswith("http") else ("https://www.redfin.com" + url)
+            log(f"Autocomplete found property URL: {full}")
+            return full
+
+    warn("Autocomplete returned no property URL.")
+    return None
+
+def resolve_redfin_url(address: str, redfin_url_cli: str | None) -> str | None:
+    if redfin_url_cli:
+        log("Using --redfin-url (skipping search).")
+        return redfin_url_cli
+    url = redfin_url_via_ddg(address)
+    if url: return url
+    log("Falling back to Redfin autocomplete…")
+    return redfin_url_via_autocomplete(address)
+
+# ---------- property page capture ----------
 def _extract_globals(page):
     keys = ["__NEXT_DATA__", "__REDUX_STATE__", "__APOLLO_STATE__",
             "__PREFETCHED_QUERIES__", "__RF_PAGE_DATA__", "__INITIAL_STATE__"]
@@ -107,7 +162,9 @@ def _extract_globals(page):
     for k in keys:
         try:
             val = page.evaluate(f"() => window.{k}")
-            if val: out[k] = val
+            if val:
+                out[k] = val
+                log(f"Captured window global: {k}")
         except Exception:
             pass
     return out
@@ -116,74 +173,73 @@ def _extract_from_dom(html):
     soup = BeautifulSoup(html, "html.parser")
     tag = soup.find("script", {"id": "__NEXT_DATA__"})
     next_data = json.loads(tag.string) if tag and tag.string else None
+    if next_data: log("Found embedded __NEXT_DATA__ in DOM.")
 
     text = soup.get_text(" ", strip=True)
     hoa = None
     tax_annual = None
 
     m = re.search(r"\bHOA[^$]*\$\s*([0-9,]+)\s*(?:/mo|per month|monthly)?", text, re.I)
-    if m: hoa = normalize_oa(m.group(1)) if (normalize_oa:=normalize_hoa) else None  # keep linter happy
+    if m: 
+        hoa = normalize_hoa(m.group(1))
+        if hoa is not None: log(f"Heuristic HOA parsed from DOM: {hoa}")
 
     m = re.search(r"(?:Property\s+tax(?:es)?|Annual\s+tax)[^$]*\$\s*([0-9,]+)", text, re.I)
-    if m: tax_annual = _to_float(m.group(1))
+    if m:
+        tax_annual = _to_float(m.group(1))
+        if tax_annual is not None: log(f"Heuristic property tax parsed from DOM: {tax_annual}")
 
     return {"__NEXT_DATA__": next_data, "heuristic": {"hoa": hoa, "tax_annual": tax_annual}}
 
-# ---------- fetch one Redfin property page (no homepage automation) ----------
 def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45000):
     """
-    Loads a *property page* URL and captures:
-      - window globals (__NEXT_DATA__, etc.)
+    Loads a *property page* and captures:
+      - window globals
       - JSON network responses (GraphQL / stingray / api)
-      - DOM heuristics for HOA/Taxes
+      - DOM heuristics (HOA / taxes)
     """
     caps = {"globals": {}, "network_json": [], "dom": None}
+    log(f"Loading property page: {url}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, slow_mo=slow_mo)
         ctx = browser.new_context(
-            viewport={"width": 1366, "height": 900},
+            viewport={"width":1366,"height":900},
             user_agent=UA_STR,
             locale="en-US"
         )
         ctx.set_default_timeout(timeout_ms)
         page = ctx.new_page()
 
-        # capture JSON responses
         def on_response(resp):
             try:
-                ct = resp.headers.get("content-type", "")
-                if "application/json" not in ct:
-                    return
-                u = resp.url.lower()
-                if "redfin.com" in u or "graphql" in u or "stingray" in u or "api" in u:
+                ct = (resp.headers or {}).get("content-type","")
+                if "application/json" not in ct: return
+                ul = resp.url.lower()
+                if "redfin.com" in ul or "graphql" in ul or "stingray" in ul or "api" in ul:
                     j = resp.json()
                     if isinstance(j, (dict, list)):
                         caps["network_json"].append({"url": resp.url, "json": j})
+                        if len(caps["network_json"]) <= 3:
+                            log(f"Captured JSON response: {resp.url}")
             except Exception:
                 pass
-        page.on("response", on_response)
 
+        page.on("response", on_response)
         page.goto(url, wait_until="domcontentloaded")
 
-        # Cookie dialogs (best-effort)
-        for sel in ["button:has-text('Accept')","button:has-text('I agree')",
-                    "button[aria-label='Accept all']","button:has-text('Got it')"]:
-            try:
-                if page.locator(sel).first.is_visible():
-                    page.locator(sel).first.click(); time.sleep(0.3); break
-            except Exception:
-                pass
-
-        # Nudge lazy loads
+        # Nudge lazy data
         for _ in range(3):
-            page.mouse.wheel(0, 1600); time.sleep(random.uniform(0.2, 0.5))
+            page.mouse.wheel(0, 1500); time.sleep(random.uniform(0.2, 0.5))
 
         caps["globals"] = _extract_globals(page)
         caps["dom"]     = _extract_from_dom(page.content())
 
-        try: page.screenshot(path="redfin_debug.png", full_page=True)
-        except Exception: pass
+        try: 
+            page.screenshot(path="redfin_debug.png", full_page=True)
+            log("Saved screenshot: redfin_debug.png")
+        except Exception:
+            pass
 
         browser.close()
 
@@ -207,6 +263,7 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
     for it in caps["network_json"]:
         candidates.append(it["json"])
 
+    log(f"Mining {len(candidates)} JSON blob(s) for keys…")
     for blob in candidates:
         try:
             hits = _deep_find_keys(blob, wanted)
@@ -220,10 +277,12 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
             zipc   = _clean_str(hits.get("zipcode") or hits.get("zip") or hits.get("postalcode"))
             if any([street,city,state,zipc]) and not address_parts:
                 address_parts = {"street": street, "city": city, "state": state, "zip": zipc}
+                log(f"Address parsed: {address_parts}")
 
             # HOA
             if hoa is None:
                 hoa = normalize_hoa(hits.get("monthlyhoa") or hits.get("hoadues"))
+                if hoa is not None: log(f"HOA (from JSON): {hoa}")
 
             # Taxes
             if tax_annual is None:
@@ -235,6 +294,7 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
                 else:
                     tv = _to_float(t)
                     if tv is not None: tax_annual = tv
+                if tax_annual is not None: log(f"Property tax (from JSON): {tax_annual}")
 
             # Price
             if last_price is None:
@@ -244,26 +304,29 @@ def fetch_redfin_data_smart(url: str, *, headless=True, slow_mo=0, timeout_ms=45
                 else:
                     pv = _to_float(p)
                     if pv is not None: last_price = pv
+                if last_price is not None: log(f"Price (from JSON): {last_price}")
         except Exception:
             continue
 
     heur = (caps["dom"] or {}).get("heuristic") or {}
-    if hoa is None and heur.get("hoa") is not None: hoa = heur["hoa"]
-    if tax_annual is None and heur.get("tax_annual") is not None: tax_annual = heur["tax_annual"]
+    if hoa is None and heur.get("hoa") is not None:
+        hoa = heur["hoa"]; log(f"HOA (heuristic fallback): {hoa}")
+    if tax_annual is None and heur.get("tax_annual") is not None:
+        tax_annual = heur["tax_annual"]; log(f"Property tax (heuristic fallback): {tax_annual}")
 
     estimates = {
         "hoa_monthly": hoa if hoa is not None else None,
         "property_tax_annual": tax_annual if tax_annual is not None else None,
         "suggested_price": last_price,
-        "insurance_monthly": 100  # baseline; tune per state if desired
+        "insurance_monthly": 100  # baseline
     }
     ok = bool(address_parts) or any([hoa, tax_annual, last_price])
 
+    log(f"Capture summary → globals:{len([v for v in (caps['globals'] or {}).values() if v])} "
+        f"network_json:{len(caps['network_json'])} ok:{ok}")
+
     return {"ok": ok, "url": url, "address_parts": address_parts,
-            "estimates": estimates, "captures": {"counts": {
-                "globals": len([v for v in (caps["globals"] or {}).values() if v]),
-                "network_json": len(caps["network_json"])
-            }}}
+            "estimates": estimates}
 
 # ---------- top-level parse ----------
 def parse_property(url: str, *, headless=True):
@@ -330,15 +393,16 @@ def mortgage_pi(price, down, rate_pct, years):
     return round(pmt,2)
 
 # ---------- main analysis ----------
-def analyze(address: str, redfin_url: str|None, price: float, down_pct: float, rate_pct: float, years: int,
+def analyze(address: str, redfin_url_cli: str|None, price: float, down_pct: float, rate_pct: float, years: int,
             tax_annual: float|None=None, ins_annual: float|None=None, hoa_monthly: float|None=None,
             maint_pct: float=1.0, vacancy_pct: float=5.0, rent_monthly: float|None=None,
             *, headless=True):
     t0=time.time()
-    url = redfin_url or redfin_url_via_ddg(address)
+
+    url = resolve_redfin_url(address, redfin_url_cli)
     if not url:
         return {"ok":False, "error":"redfin_url_not_found",
-                "hint":"Pass --redfin-url with a property link to skip search.",
+                "hint":"Provide --redfin-url with a property link.",
                 "input_address":address}
 
     prop = parse_property(url, headless=headless)
@@ -384,8 +448,8 @@ def analyze(address: str, redfin_url: str|None, price: float, down_pct: float, r
             "cash_on_cash_pct": coc
         },
         "notes": [
-            "URL resolution uses DuckDuckGo only (no Redfin homepage automation).",
-            "Scrape uses window globals + network JSON + DOM heuristics.",
+            "Resolver order: --redfin-url → DuckDuckGo → Redfin Autocomplete JSON.",
+            "Property page scraped via globals + network JSON + DOM heuristics.",
             "Insurance defaults to $100/mo if not provided.",
             "Provide rent_monthly to compute cash flow, cap rate, and CoC."
         ]
@@ -394,9 +458,9 @@ def analyze(address: str, redfin_url: str|None, price: float, down_pct: float, r
 # ---------- CLI ----------
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description="Redfin-only analyzer without homepage automation.")
+    ap = argparse.ArgumentParser(description="Redfin-only analyzer with DDG + Autocomplete fallback and verbose logging.")
     ap.add_argument("address", help="Street, City, State ZIP")
-    ap.add_argument("--redfin-url", default=None, help="Pass a known Redfin property URL to skip search.")
+    ap.add_argument("--redfin-url", default=None, help="Known Redfin property URL to skip search.")
     ap.add_argument("--price", type=float, required=True)
     ap.add_argument("--down-pct", type=float, default=20)
     ap.add_argument("--rate-pct", type=float, default=6.5)
@@ -407,11 +471,11 @@ def main():
     ap.add_argument("--maintenance-pct", type=float, default=1.0)
     ap.add_argument("--vacancy-pct", type=float, default=5.0)
     ap.add_argument("--rent-monthly", type=float, default=None)
-    ap.add_argument("--headful", action="store_true", help="Show browser (debug). Default headless.")
+    ap.add_argument("--headful", action="store_true", help="Show browser when scraping the property page.")
     args = ap.parse_args()
 
     res = analyze(
-        address=args.address, redfin_url=args.redfin_url, price=args.price, down_pct=args.down_pct,
+        address=args.address, redfin_url_cli=args.redfin_url, price=args.price, down_pct=args.down_pct,
         rate_pct=args.rate_pct, years=args.years, tax_annual=args.tax_annual, ins_annual=args.ins_annual,
         hoa_monthly=args.hoa_monthly, maint_pct=args.maintenance_pct, vacancy_pct=args.vacancy_pct,
         rent_monthly=args.rent_monthly, headless=not args.headful
