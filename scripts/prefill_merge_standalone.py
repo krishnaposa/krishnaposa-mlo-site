@@ -32,6 +32,17 @@ from urllib.parse import unquote
 def log(s):  print(f"[INFO] {s}", flush=True)
 def warn(s): print(f"[WARN] {s}", flush=True)
 
+def normalize_hoa(val):
+    if not val:
+        return None
+    try:
+        v = float(val)
+        # sanity check: discard insane values
+        if v > 5000:  # monthly HOA rarely exceeds $5k
+            return None
+        return v
+    except:
+        return None
 # ---------- tiny utils ----------
 def _num(x):
     if x is None: return None
