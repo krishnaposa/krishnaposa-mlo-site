@@ -74,32 +74,107 @@ def _first_non_null(*vals):
     return None
 
 # ---------- DDG URL finders ----------
-def _ddg_first_result(query: str, host_filter: str, path_must_contain: str) -> str | None:
-    log(f"DDG query: {query}")
-    r = requests.get("https://duckduckgo.com/html/", params={"q": query},
-                     headers={"User-Agent":"Mozilla/5.0"}, timeout=20)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
-    for a in soup.select("a.result__a"):
-        href = a.get("href") or ""
-        # unwrap uddg redirect if present
-        m = re.search(r"uddg=([^&]+)", href)
-        if m:
-            from urllib.parse import unquote
-            href = unquote(m.group(1))
-        if host_filter in href and path_must_contain in href:
-            log(f"DDG found: {href}")
-            return href
-    warn(f"No result found for host={host_filter} path={path_must_contain}")
+_DDG_ENDPOINTS = (
+    "https://duckduckgo.com/html/",
+    "https://duckduckgo.com/lite/",
+)
+
+# --- generic DDG fetch that returns a list of unwrapped links ---
+def _ddg_links(query: str, max_results: int = 10) -> list[str]:
+    ua = "Mozilla/5.0"
+    out: list[str] = []
+    for ep in _DDG_ENDPOINTS:
+        try:
+            r = requests.get(
+                ep,
+                params={"q": query, "kl": "us-en"},
+                headers={"User-Agent": ua},
+                timeout=20,
+            )
+            r.raise_for_status()
+        except Exception:
+            continue
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        # both html and lite layouts expose anchors; grab generously
+        for a in soup.select("a"):
+            href = a.get("href") or ""
+            if not href:
+                continue
+            # unwrap /l/?…&uddg=<encoded>
+            m = re.search(r"[?&]uddg=([^&]+)", href)
+            if m:
+                href = unquote(m.group(1))
+            out.append(href)
+
+        if out:
+            break
+
+    # keep uniques, preserve order
+    seen = set()
+    uniq = []
+    for u in out:
+        if u in seen: 
+            continue
+        seen.add(u)
+        uniq.append(u)
+    return uniq[:max_results]
+
+# --- validators (robust) ---
+_REDFIN_PATTERNS = [
+    re.compile(r"^https?://(?:www|m)\.redfin\.com/.+/home/\d+", re.I),
+    re.compile(r"^https?://(?:www|m)\.redfin\.com/address/.+", re.I),
+]
+_ZILLOW_PATTERNS = [
+    re.compile(r"^https?://(?:www|m)\.zillow\.com/homedetails/.+?/\d+_zpid/?$", re.I),
+    re.compile(r"^https?://(?:www|m)\.zillow\.com/homedetails/.+?$", re.I),  # fallback if _zpid missing
+]
+
+def _first_match(links: list[str], patterns: list[re.Pattern]) -> str | None:
+    for u in links:
+        low = u.lower()
+        # quick host filter for speed
+        if "redfin" in low or "zillow" in low:
+            for p in patterns:
+                if p.match(u):
+                    return u
     return None
 
+# --- public resolvers you can call ---
 def redfin_url_via_ddg(address: str) -> str | None:
-    return _ddg_first_result(f"site:redfin.com {address}", "redfin.com", "/home/")
+    # Try several query phrasings; DDG can be fickle
+    queries = [
+        f"site:redfin.com {address} home",
+        f"{address} site:redfin.com/home",
+        f"{address} Redfin home details",
+        f"site:redfin.com address {address}",
+    ]
+    for q in queries:
+        log(f"DDG query: {q}")
+        links = _ddg_links(q)
+        url = _first_match(links, _REDFIN_PATTERNS)
+        if url:
+            log(f"DDG found Redfin: {url}")
+            return url
+    warn("No Redfin property URL found via DDG.")
+    return None
 
 def zillow_url_via_ddg(address: str) -> str | None:
-    # Zillow property pages usually contain /homedetails/
-    return _ddg_first_result(f"site:zillow.com homedetails {address}", "zillow.com", "/homedetails/")
-
+    queries = [
+        f"site:zillow.com homedetails {address} zpid",
+        f"{address} site:zillow.com/homedetails",
+        f"{address} Zillow home details zpid",
+        f"site:zillow.com {address} _zpid",
+    ]
+    for q in queries:
+        log(f"DDG query: {q}")
+        links = _ddg_links(q)
+        url = _first_match(links, _ZILLOW_PATTERNS)
+        if url:
+            log(f"DDG found Zillow: {url}")
+            return url
+    warn("No Zillow property URL found via DDG.")
+    return None
 # ---------- common Playwright helpers ----------
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
       "AppleWebKit/537.36 (KHTML, like Gecko) "
