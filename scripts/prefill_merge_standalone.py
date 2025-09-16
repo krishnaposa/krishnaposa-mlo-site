@@ -162,10 +162,10 @@ def redfin_url_via_ddg(address: str) -> str | None:
 
 def zillow_url_via_ddg(address: str) -> str | None:
     queries = [
-        f"site:zillow.com homedetails {address} zpid",
-        f"{address} site:zillow.com/homedetails",
-        f"{address} Zillow home details zpid",
+        f"site:zillow.com homedetails {address} _zpid",
         f"site:zillow.com {address} _zpid",
+        f"{address} Zillow _zpid",
+        f"site:zillow.com homedetails {address}",
     ]
     for q in queries:
         log(f"DDG query: {q}")
