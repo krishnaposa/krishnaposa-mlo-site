@@ -2,134 +2,164 @@
 """
 ZIP-level housing trends using Kaggle Redfin dataset.
 Creates/uses ./kaggle_data/median_sale_price.csv (cached).
+Auto-discovers the correct file path inside the Kaggle dataset to avoid 404s.
 """
 
-import os, io, re, zipfile, shutil, sys
+import os, re, sys, json, shutil, zipfile
 import pandas as pd
 
-# Optional shared log helpers
-try:
-    from utils import log, warn
-except Exception:
-    def log(m):  print(f"[INFO] {m}", flush=True)
-    def warn(m): print(f"[WARN] {m}", flush=True)
+# Simple logging
+def log(m):  print(f"[INFO] {m}", flush=True)
+def warn(m): print(f"[WARN] {m}", flush=True)
 
-# Kaggle dataset & target file inside the dataset
-DATASET      = "redfin/usa-housing-market"
-ZIP_MEMBER   = "market-tracker/median_sale_price.csv"  # path within the dataset
-CACHE_DIR    = "./kaggle_data"
-CACHE_PATH   = os.path.join(CACHE_DIR, "median_sale_price.csv")
+# Kaggle dataset slug (adjust if you use a forked dataset)
+DATASET   = "redfin/usa-housing-market"
+CACHE_DIR = "./kaggle_data"
+CACHE_PATH = os.path.join(CACHE_DIR, "median_sale_price.csv")
 
+# Patterns we accept for the target CSV (order = priority)
+CANDIDATE_PATTERNS = [
+    r"^market[-_/]tracker/median_sale_price\.csv$",
+    r"^housing[-_/]market[-_/]data/.*/median_sale_price\.csv$",
+    r"^median_sale_price\.csv$",
+    r"median_sale_price\.csv$",              # anywhere inside subfolders
+]
 
 def _authenticate_kaggle():
-    """
-    Ensures Kaggle API is importable and user is authenticated.
-    Requires kaggle.json at:
-      Windows: %USERPROFILE%\\.kaggle\\kaggle.json
-      macOS/Linux: ~/.kaggle/kaggle.json  (chmod 600 recommended)
-    """
+    """Authenticate with Kaggle API (requires kaggle.json in ~/.kaggle/)."""
     try:
         from kaggle.api.kaggle_api_extended import KaggleApi
     except Exception as e:
-        raise RuntimeError(
-            "Kaggle package not installed. Run: pip install kaggle\n"
-            f"Import error: {e}"
-        )
+        raise RuntimeError("Kaggle not installed. Run: pip install kaggle") from e
     api = KaggleApi()
-    try:
-        api.authenticate()
-    except Exception as e:
-        raise RuntimeError(
-            "Kaggle authentication failed. Ensure kaggle.json is in the standard location.\n"
-            f"Auth error: {e}"
-        )
+    api.authenticate()
     return api
 
+def _find_candidate_name(file_names):
+    """Pick the best-matching file name from dataset file list."""
+    # normalize to forward slashes
+    norm = [f.replace("\\", "/") for f in file_names]
+    # 1) regex patterns in priority order
+    for pat in CANDIDATE_PATTERNS:
+        rx = re.compile(pat, re.IGNORECASE)
+        for name in norm:
+            if rx.search(name):
+                return name
+    # 2) fallback: anything ending with the base filename
+    base = "median_sale_price.csv"
+    for name in norm:
+        if name.lower().endswith("/" + base) or name.lower().endswith(base):
+            return name
+    return None
 
-def _safe_extract_member(zf: zipfile.ZipFile, member_name: str, dest_path: str):
-    """
-    Extracts `member_name` from zip into `dest_path` (file path, not folder).
-    If the member is nested in subfolders, this flattens it to `dest_path`.
-    """
-    with zf.open(member_name) as src, open(dest_path, "wb") as out:
-        shutil.copyfileobj(src, out)
+def _list_dataset_files(api):
+    """Return a list of file names inside the dataset."""
+    log(f"Listing files for Kaggle dataset '{DATASET}' …")
+    meta = api.dataset_list_files(DATASET)
+    names = [f.ref for f in meta.files] if hasattr(meta, "files") else []
+    if not names:
+        warn("No files listed by Kaggle; dataset may be unavailable.")
+    else:
+        log(f"Dataset contains {len(names)} files (showing first 10): {names[:10]}")
+    return names
 
+def _download_exact_file(api, member_name, dest_dir):
+    """
+    Try Kaggle single-file download (creates a .zip). Return path to extracted CSV.
+    Raise on failure so caller can try full-dataset download.
+    """
+    log(f"Downloading single file from Kaggle: '{member_name}' …")
+    api.dataset_download_file(DATASET, file_name=member_name, path=dest_dir, force=True, quiet=False)
+    # Kaggle writes a zip next to it; name may be either <basename>.zip or <fullpath>.zip
+    zip_guess = os.path.join(dest_dir, os.path.basename(member_name) + ".zip")
+    if not os.path.exists(zip_guess):
+        zips = [os.path.join(dest_dir, f) for f in os.listdir(dest_dir) if f.endswith(".zip")]
+        if not zips:
+            raise FileNotFoundError("Single-file download zip not found after Kaggle download.")
+        zip_guess = max(zips, key=os.path.getmtime)
 
-def _ensure_csv_on_disk() -> str:
+    with zipfile.ZipFile(zip_guess, "r") as zf:
+        names = zf.namelist()
+        # prefer exact member path
+        target = member_name if member_name in names else None
+        if not target:
+            base = os.path.basename(member_name)
+            picks = [n for n in names if n.lower().endswith("/" + base.lower()) or n.lower().endswith(base.lower())]
+            if picks:
+                target = picks[0]
+        if not target:
+            raise FileNotFoundError(f"Expected '{member_name}' not in zip. Members sample: {names[:10]}")
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        out_path = os.path.join(CACHE_DIR, "median_sale_price.csv")
+        log(f"Extracting '{target}' → {out_path}")
+        with zf.open(target) as src, open(out_path, "wb") as out:
+            shutil.copyfileobj(src, out)
+
+    try: os.remove(zip_guess)
+    except: pass
+
+    if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+        raise FileNotFoundError("CSV write failed after single-file extraction.")
+    return out_path
+
+def _download_full_dataset(api, dest_dir):
     """
-    Guarantee that ./kaggle_data/median_sale_price.csv exists.
-    If not, download from Kaggle and extract it.
-    Returns the absolute path to the CSV.
+    Download & unzip the entire dataset, then locate median_sale_price.csv
+    and copy it to CACHE_PATH. Return CACHE_PATH or raise on failure.
     """
+    log("Single-file download failed; downloading full dataset …")
+    api.dataset_download_files(DATASET, path=dest_dir, force=True, quiet=False, unzip=True)
+    # Search recursively for the CSV
+    candidates = []
+    for root, _, files in os.walk(dest_dir):
+        for f in files:
+            path = os.path.join(root, f)
+            rel  = os.path.relpath(path, dest_dir).replace("\\", "/")
+            if _find_candidate_name([rel]):
+                candidates.append(path)
+    if not candidates:
+        raise FileNotFoundError("Full-dataset unzip complete, but median_sale_price.csv not found.")
+    # Pick best match (first by our priority fn)
+    best_rel = _find_candidate_name([os.path.relpath(p, dest_dir).replace("\\", "/") for p in candidates])
+    best = None
+    for p in candidates:
+        if os.path.relpath(p, dest_dir).replace("\\", "/") == best_rel:
+            best = p; break
+    if best is None:
+        best = candidates[0]
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    shutil.copyfile(best, CACHE_PATH)
+    log(f"Copied '{best}' → {CACHE_PATH}")
+    return CACHE_PATH
+
+def _ensure_csv_on_disk():
+    """Ensure CACHE_PATH exists, using auto-discovery & robust fallbacks."""
     os.makedirs(CACHE_DIR, exist_ok=True)
     if os.path.exists(CACHE_PATH) and os.path.getsize(CACHE_PATH) > 0:
         log(f"Using cached CSV: {CACHE_PATH}")
         return os.path.abspath(CACHE_PATH)
 
     api = _authenticate_kaggle()
+    names = _list_dataset_files(api)
+    if not names:
+        # as a last resort, try full dataset right away
+        return _download_full_dataset(api, CACHE_DIR)
 
-    # Download the specific file (Kaggle saves as a .zip next to it)
-    log(f"Downloading '{ZIP_MEMBER}' from Kaggle dataset '{DATASET}'…")
-    api.dataset_download_file(
-        DATASET,
-        file_name=ZIP_MEMBER,
-        path=CACHE_DIR,
-        force=True,
-        quiet=False,
-    )
+    candidate = _find_candidate_name(names)
+    if not candidate:
+        warn("Did not find a matching median_sale_price.csv in file list; trying full dataset.")
+        return _download_full_dataset(api, CACHE_DIR)
 
-    zip_path = os.path.join(CACHE_DIR, os.path.basename(ZIP_MEMBER) + ".zip")
-    # Some Kaggle versions save the zip using the *full* member path as the base name.
-    # So if the file isn't there, try a looser search for a .zip we just downloaded.
-    if not os.path.exists(zip_path):
-        # Look for any new .zip in CACHE_DIR
-        zips = [os.path.join(CACHE_DIR, f) for f in os.listdir(CACHE_DIR) if f.endswith(".zip")]
-        if not zips:
-            raise FileNotFoundError("Downloaded zip not found in ./kaggle_data after Kaggle download.")
-        # Heuristic: pick the newest zip
-        zip_path = max(zips, key=os.path.getmtime)
-
-    # Extract exactly the CSV we need
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        names = zf.namelist()
-        # Try exact member first
-        target = None
-        if ZIP_MEMBER in names:
-            target = ZIP_MEMBER
-        else:
-            # Fall back: find any entry that ends with the filename (flatten subfolders)
-            base = os.path.basename(ZIP_MEMBER)
-            matches = [n for n in names if n.endswith("/" + base) or n.endswith(base)]
-            if matches:
-                target = matches[0]
-
-        if not target:
-            raise FileNotFoundError(
-                f"Expected '{ZIP_MEMBER}' not found in zip. Members seen: {names[:10]}…"
-            )
-
-        log(f"Extracting '{target}' → {CACHE_PATH}")
-        _safe_extract_member(zf, target, CACHE_PATH)
-
-    # Clean up the zip; keep only the extracted CSV
+    # Try single-file download first; if it 404s, fall back to full dataset
     try:
-        os.remove(zip_path)
-    except Exception:
-        pass
-
-    if not os.path.exists(CACHE_PATH) or os.path.getsize(CACHE_PATH) == 0:
-        raise FileNotFoundError("CSV write failed; file is missing or empty after extraction.")
-
-    log(f"CSV ready: {CACHE_PATH}")
-    return os.path.abspath(CACHE_PATH)
-
+        return _download_exact_file(api, candidate, CACHE_DIR)
+    except Exception as e:
+        warn(f"Single-file download failed ({e}); trying full dataset …")
+        return _download_full_dataset(api, CACHE_DIR)
 
 def redfin_zip_trend(zip_code: str):
     """
-    Load ./kaggle_data/median_sale_price.csv and compute:
-      - latest median price
-      - YoY change
-      - 5-year CAGR
+    Compute median, YoY, and 5-year CAGR for a ZIP using the Kaggle dataset.
     """
     try:
         csv_path = _ensure_csv_on_disk()
@@ -176,10 +206,8 @@ def redfin_zip_trend(zip_code: str):
         "csv_path": os.path.abspath(CACHE_PATH),
     }
 
-
-# ---------- tiny CLI for quick testing ----------
+# Tiny CLI for quick testing: python trends.py 30009
 if __name__ == "__main__":
-    # Example: python trends.py 30009
     if len(sys.argv) < 2:
         print("Usage: python trends.py <ZIP>")
         sys.exit(1)
