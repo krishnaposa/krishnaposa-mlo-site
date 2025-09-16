@@ -1,65 +1,60 @@
 # trends.py
-import io, zipfile, tempfile, pathlib
-import pandas as pd
-from utils import warn, log
+"""
+ZIP-level housing trends using Kaggle Redfin dataset.
+"""
 
-# Hardcoded Kaggle dataset + file
-KAGGLE_DATASET = "redfin/usa-housing-market"
-KAGGLE_FILENAME = "market-tracker/median_sale_price.csv"
+import os, pandas as pd
+from kaggle.api.kaggle_api_extended import KaggleApi
+from utils import log, warn
 
-def _fetch_via_kaggle() -> str | None:
-    try:
-        from kaggle import api as kaggle_api
-    except Exception as e:
-        warn(f"Kaggle package not installed. Run `pip install kaggle`. ({e})")
-        return None
+DATASET = "redfin/usa-housing-market"
+FILENAME = "market-tracker/median_sale_price.csv"
+CACHE_DIR = "./kaggle_data"
+CACHE_PATH = os.path.join(CACHE_DIR, "median_sale_price.csv")
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        try:
-            log(f"Kaggle: downloading {KAGGLE_FILENAME} from {KAGGLE_DATASET}")
-            kaggle_api.dataset_download_file(
-                KAGGLE_DATASET, KAGGLE_FILENAME, path=tmpdir, force=True, quiet=True
-            )
-        except Exception as e:
-            warn(f"Kaggle download failed: {e}")
-            return None
 
-        raw = pathlib.Path(tmpdir) / KAGGLE_FILENAME
-        zipped = pathlib.Path(tmpdir) / (KAGGLE_FILENAME + ".zip")
+def ensure_kaggle_csv():
+    """Download Redfin ZIP-level CSV via Kaggle API if not already cached."""
+    if os.path.exists(CACHE_PATH):
+        return CACHE_PATH
 
-        if zipped.exists():
-            with zipfile.ZipFile(zipped, "r") as zf:
-                names = zf.namelist()
-                if not names:
-                    return None
-                with zf.open(names[0]) as f:
-                    return f.read().decode("utf-8")
+    log(f"Downloading {FILENAME} from Kaggle dataset {DATASET} …")
+    os.makedirs(CACHE_DIR, exist_ok=True)
 
-        if raw.exists():
-            return raw.read_text(encoding="utf-8")
+    api = KaggleApi()
+    api.authenticate()
+    api.dataset_download_file(DATASET, file_name=FILENAME, path=CACHE_DIR, force=True)
 
-    return None
+    # Kaggle delivers as .zip, so unzip
+    zip_path = os.path.join(CACHE_DIR, FILENAME + ".zip")
+    if os.path.exists(zip_path):
+        import zipfile
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(CACHE_DIR)
+        os.remove(zip_path)
+
+    if not os.path.exists(CACHE_PATH):
+        raise FileNotFoundError("CSV not found after Kaggle download.")
+    return CACHE_PATH
 
 
 def redfin_zip_trend(zip_code: str):
-    text = _fetch_via_kaggle()
-    if text is None:
-        return {"error": "csv_load"}
-
+    """Return latest, YoY, and 5-year CAGR metrics for a ZIP from Kaggle dataset."""
     try:
-        df = pd.read_csv(io.StringIO(text))
+        csv_path = ensure_kaggle_csv()
+        df = pd.read_csv(csv_path)
     except Exception as e:
-        warn(f"CSV parse error: {e}")
+        warn(f"CSV load error: {e}")
         return {"error": "csv_load"}
 
-    required = {"region_type", "region", "period_end", "median_sale_price"}
-    if not required.issubset(df.columns):
-        return {"columns": list(df.columns)[:20]}
+    need = {"region_type", "region", "period_end", "median_sale_price"}
+    if not need.issubset(df.columns):
+        return {"error": "bad_columns", "columns": list(df.columns)[:20]}
 
     z = df[(df.region_type == "zip") & (df.region.astype(str) == str(zip_code))].copy()
     if z.empty:
         warn(f"No ZIP data for {zip_code}")
-        return {"zip": str(zip_code), "found": False}
+        return {"zip": zip_code, "found": False}
 
     z["period_end"] = pd.to_datetime(z["period_end"])
     z = z.sort_values("period_end")
@@ -68,7 +63,8 @@ def redfin_zip_trend(zip_code: str):
     latest_price = float(latest["median_sale_price"]) if pd.notna(latest["median_sale_price"]) else None
     latest_date = str(latest["period_end"].date())
 
-    yoy, cagr5 = None, None
+    yoy = None
+    cagr5 = None
     if len(z) > 12:
         prev = float(z.iloc[-13]["median_sale_price"]) if pd.notna(z.iloc[-13]["median_sale_price"]) else None
         if latest_price and prev:
