@@ -26,6 +26,7 @@ import requests
 from bs4 import BeautifulSoup
 from dateutil import parser as dtparser
 from playwright.sync_api import sync_playwright
+from urllib.parse import unquote
 
 # ---------- basic log helpers ----------
 def log(s):  print(f"[INFO] {s}", flush=True)
