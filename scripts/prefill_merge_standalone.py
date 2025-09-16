@@ -322,6 +322,7 @@ def fetch_redfin_data_smart(url: str, *, headless=False, slow_mo=60, timeout_ms=
                 address_parts = {"street":street,"city":city,"state":state,"zip":zipc}
             if hoa is None:
                 h = hits.get("monthlyhoa") or hits.get("hoadues")
+                h = normalize_hoa(h)
                 hv = _num(h); 
                 if hv is not None: hoa = hv
             if tax_annual is None:
