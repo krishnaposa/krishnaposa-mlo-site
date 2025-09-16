@@ -21,6 +21,9 @@ def extract_redfin_json_from_html(html: str):
 
 
 def fetch_redfin_json_playwright(url: str) -> dict | None:
+    from playwright.sync_api import sync_playwright
+    import time, random
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False, slow_mo=80)
         context = browser.new_context(
@@ -30,49 +33,39 @@ def fetch_redfin_json_playwright(url: str) -> dict | None:
                         "Chrome/124.0 Safari/124.0"),
             locale="en-US"
         )
-        # Make waits more forgiving
-        context.set_default_timeout(45000)
-
         page = context.new_page()
-
-        # Small human-like delay
-        time.sleep(random.uniform(0.3, 1.0))
-
-        # Don’t rely on networkidle; just wait for DOM
         page.goto(url, wait_until="domcontentloaded")
 
-        # If cookie banner shows up, accept it (best-effort)
+        # accept cookie banners if present
         for sel in [
             "button:has-text('Accept')",
             "button:has-text('I agree')",
             "button[aria-label='Accept all']",
-            "button:has-text('Got it')",
         ]:
             try:
                 if page.locator(sel).first.is_visible():
                     page.locator(sel).first.click()
-                    time.sleep(0.5)
                     break
-            except Exception:
+            except:
                 pass
 
-        # Scroll a bit to trigger any lazy chunks
-        for _ in range(2):
-            page.mouse.wheel(0, 1200)
+        # Scroll down to trigger lazy scripts
+        for _ in range(3):
+            page.mouse.wheel(0, 2000)
             time.sleep(0.5)
 
-        # Robust wait: poll for the __NEXT_DATA__ script rather than networkidle
         try:
+            # longer wait — 45s
             page.wait_for_selector("script#__NEXT_DATA__", timeout=45000)
         except Exception:
-            # One more nudge: a tiny wait + another scroll, then try again
-            time.sleep(1.0)
-            page.mouse.wheel(0, 1500)
-            page.wait_for_selector("script#__NEXT_DATA__", timeout=15000)
+            # fallback: grab content anyway
+            print("[WARN] __NEXT_DATA__ not found in time, dumping page for debug")
+            page.screenshot(path="redfin_timeout.png", full_page=True)
 
         html = page.content()
-        page.screenshot(path="redfin_page.png", full_page=True)
         browser.close()
+    return extract_redfin_json_from_html(html)
+    
 
     return extract_redfin_json_from_html(html)
 def redfin_url_via_ddg(address: str) -> str | None:
