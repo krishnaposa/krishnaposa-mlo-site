@@ -117,3 +117,37 @@ curl -sS "$ENDPOINT/openai/deployments/$DEPLOYMENT/chat/completions?api-version=
   -H "api-key: $KEY" -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"ping"}],"temperature":0}' | python -m json.tool
 
+curl "https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/tax-estimate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": {
+      "address": "123 Main St",
+      "city": "Atlanta",
+      "state": "GA",
+      "zip": "30340",
+      "purchasePrice": 250000
+    }
+  }'| python -m json.tool
+
+curl  "https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/rent-prefetch" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": {
+      "address": "456 Oak Ave",
+      "city": "Alpharetta",
+      "state": "GA",
+      "zip": "30004",
+      "purchasePrice": 400000,
+      "propertyType": "Single Family",
+      "units": 1
+    }
+  }'| python -m json.tool
+
+curl "https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/portfolio-rank" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      { "address":"123 Main St, Atlanta, GA", "metrics":{"cashFlowMonthly":200,"cashOnCash":0.07,"dscr":1.3,"price":250000} },
+      { "address":"456 Oak Ave, Alpharetta, GA", "metrics":{"cashFlowMonthly":-50,"cashOnCash":0.02,"dscr":0.9,"price":400000} }
+    ]
+  }'| python -m json.tool
