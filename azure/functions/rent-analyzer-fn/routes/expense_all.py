@@ -1,37 +1,20 @@
-# routes/expense_all.py
-from function_app import app
-import azure.functions as func
+# routes/all_expense.py
 import json
 from utils.common import cors_headers, bad_request, n
 from services.tax_providers import fetch_from_county, estimate_fallback
 from services.aoai_expenses import ai_expense_pack
 
-# Confidence gating for AI tax override
 _CONF = {"low": 0, "medium": 1, "high": 2}
-OVERRIDE_CONF = _CONF["high"]  # require "high" to override county/fallback tax
-
+OVERRIDE_CONF = _CONF["high"]
 def _rank(c): return _CONF.get(str(c or "").lower(), 0)
 
-@app.function_name(name="all_expense")
-@app.route(route="all-expense", methods=["POST","OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
-def all_expense(req: func.HttpRequest) -> func.HttpResponse:
-    if req.method == "OPTIONS":
-        return func.HttpResponse(status_code=204, headers=cors_headers())
-
-    try:
-        body = req.get_json()
-    except ValueError:
-        return bad_request("Invalid JSON body.")
-
-    inputs = (body or {}).get("inputs") or {}
+def run_all_expense(inputs: dict) -> dict:
     if not (inputs.get("state") or inputs.get("zip")):
-        return bad_request("Provide at least 'state' or 'zip' for expense estimation.")
+        raise ValueError("Provide at least 'state' or 'zip' for expense estimation.")
 
-    # 1) County/fallback taxes first
     county = fetch_from_county(inputs) or estimate_fallback(inputs)
     chosen_tax = dict(county) if isinstance(county, dict) else {}
 
-    # 2) Ask AOAI for the full expense pack (including its own tax view)
     ai_payload = {
         "address": inputs.get("address"), "city": inputs.get("city"),
         "state": inputs.get("state"), "zip": inputs.get("zip"), "county": inputs.get("county"),
@@ -47,7 +30,6 @@ def all_expense(req: func.HttpRequest) -> func.HttpResponse:
     }
     ai = ai_expense_pack(ai_payload)
 
-    # 3) Merge logic (prefer county unless AI is high-confidence and plausible)
     if ai and "tax" in ai:
         ai_conf = _rank(ai["tax"].get("confidence"))
         ai_curr = n(ai["tax"].get("current_year_est"))
@@ -60,9 +42,8 @@ def all_expense(req: func.HttpRequest) -> func.HttpResponse:
                 "source": "ai_expense"
             }
 
-    # Build normalized expense pack
     pack = {
-        "taxes": chosen_tax,  # {prior_year, prior_amount, current_year_est, source}
+        "taxes": chosen_tax,
         "insurance_annual_est": n(ai.get("insurance_annual_est")) if ai else None,
         "hoa_monthly_est": n(ai.get("hoa_monthly_est")) if ai else None,
         "utilities_monthly_est": n(ai.get("utilities_monthly_est")) if ai else None,
@@ -73,11 +54,9 @@ def all_expense(req: func.HttpRequest) -> func.HttpResponse:
         "confidence": (ai or {}).get("confidence")
     }
 
-    out = {
+    return {
         "ok": True,
         "address": ", ".join([s for s in [inputs.get("address"), inputs.get("city"),
                                           inputs.get("state"), inputs.get("zip")] if s]),
         "expense_pack": pack
     }
-    return func.HttpResponse(json.dumps(out, ensure_ascii=False),
-                             mimetype="application/json", headers=cors_headers())
