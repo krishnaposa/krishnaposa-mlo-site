@@ -53,7 +53,7 @@ def all_expense(req: func.HttpRequest) -> func.HttpResponse:
     inputs = (body or {}).get("inputs") or {}
 
     try:
-        from routes.all_expense import run_all_expense
+        from routes.expense_all import run_all_expense
         out = run_all_expense(inputs)  # returns dict
         return _ok(out)
     except Exception as e:
