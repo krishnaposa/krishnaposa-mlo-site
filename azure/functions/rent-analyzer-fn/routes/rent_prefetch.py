@@ -4,14 +4,19 @@ import azure.functions as func
 import json
 
 from utils.common import cors_headers, bad_request, n
+from utils.cache import make_cache_key, blob_cache_get, blob_cache_put, cache_headers
 from services.tax_providers import fetch_from_county, estimate_fallback
 from services.aoai_expenses import ai_expense_pack       # unified expense AI (tax + insurance + HOA + utilities + PM% + maint%)
 from services.aoai import prefetch_estimate              # rent AI (estimates rent band)
-from services.aoai_appreciation import ai_appreciation   # <-- NEW: appreciation AI
+from services.aoai_appreciation import ai_appreciation   # appreciation AI
 
 # Confidence gating for AI tax replacing county/fallback
 _CONF = {"low": 0, "medium": 1, "high": 2}
 OVERRIDE_CONF = _CONF["high"]  # require "high" confidence to override county/fallback tax
+
+# Cache settings
+CACHE_GROUP = "rent-prefetch"
+CACHE_TTL_SEC = 12 * 60 * 60  # 12h
 
 def _rank(label: str) -> int:
     return _CONF.get(str(label or "").lower(), 0)
@@ -19,11 +24,9 @@ def _rank(label: str) -> int:
 @app.function_name(name="rent_prefetch")
 @app.route(route="rent-prefetch", methods=["POST","OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
-    # CORS preflight
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=204, headers=cors_headers())
 
-    # Parse body
     try:
         body = req.get_json()
     except ValueError:
@@ -33,11 +36,35 @@ def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
     if not (inputs.get("state") or inputs.get("zip")):
         return bad_request("Provide at least 'state' or 'zip' for better estimates.")
 
+    # ---------- CACHE LOOKUP ----------
+    # Use a stable subset that affects results as the key
+    key_payload = {
+        "address": inputs.get("address"),
+        "city": inputs.get("city"),
+        "state": inputs.get("state"),
+        "zip": inputs.get("zip"),
+        "county": inputs.get("county"),
+        "purchasePrice": inputs.get("purchasePrice") or inputs.get("homeValue"),
+        "propertyType": inputs.get("propertyType"),
+        "units": inputs.get("units") or 1,
+        "yearBuilt": inputs.get("yearBuilt"),
+        "sqft": inputs.get("sqft"),
+        "ownerOccupied": bool(inputs.get("ownerOccupied")),
+        "assessedValue": inputs.get("assessedValue"),
+        "millage": inputs.get("millage"),
+    }
+    cache_key = make_cache_key(key_payload, version="prefetch-v3")
+    cached = blob_cache_get(CACHE_GROUP, cache_key, max_age_sec=CACHE_TTL_SEC)
+    if cached:
+        hdrs = {**cors_headers(), **cache_headers(True)}
+        return func.HttpResponse(json.dumps(cached, ensure_ascii=False),
+                                 mimetype="application/json", headers=hdrs)
+
     # ---------- 1) BASE TAX via county provider or heuristic fallback ----------
     county = fetch_from_county(inputs) or estimate_fallback(inputs)
     chosen_tax = dict(county) if isinstance(county, dict) else {}
 
-    # ---------- 2) ALL-EXPENSE AI (tax + insurance + HOA + utilities + PM% + maint%) ----------
+    # ---------- 2) ALL-EXPENSE AI ----------
     ai_payload = {
         "address": inputs.get("address"), "city": inputs.get("city"),
         "state": inputs.get("state"), "zip": inputs.get("zip"), "county": inputs.get("county"),
@@ -67,7 +94,7 @@ def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
                 "source": "ai_expense"
             }
 
-    # Build normalized expense block from AI (always include the final chosen tax)
+    # Build normalized expense block from AI
     expense_block = {
         "tax_current_year_est": chosen_tax.get("current_year_est"),
         "insurance_annual_est": n(ai_exp.get("insurance_annual_est")) if ai_exp else None,
@@ -80,7 +107,7 @@ def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
         "confidence": (ai_exp or {}).get("confidence")
     }
 
-    # ---------- 3) APPRECIATION AI (NEW) ----------
+    # ---------- 3) APPRECIATION AI ----------
     appr_payload = {
         "address": inputs.get("address"),
         "city": inputs.get("city"),
@@ -94,19 +121,16 @@ def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
     }
     ai_appr = ai_appreciation(appr_payload)  # may be None
 
-    # ---------- 4) RENT AI using the chosen taxes & expense context ----------
-    # (So rent model knows the carrying costs and locale.)
-    rent_ai_inputs = dict(inputs)  # shallow copy is fine (we only read)
-    # Note: current prefetch_estimate signature takes (inputs, tax_block).
-    # If you later update it to accept full expense context, pass 'expense_block' too.
+    # ---------- 4) RENT AI ----------
+    rent_ai_inputs = dict(inputs)  # shallow copy
     rent_ai = prefetch_estimate(rent_ai_inputs, chosen_tax)  # may be None
 
-    # ---------- 5) Return a single normalized prefetch object ----------
+    # ---------- 5) Normalized output ----------
     out = {
         "ok": True,
         "address": ", ".join([s for s in [inputs.get("address"), inputs.get("city"),
                                           inputs.get("state"), inputs.get("zip")] if s]),
-        "taxes": chosen_tax,            # {prior_year, prior_amount, current_year_est, source}
+        "taxes": chosen_tax,
         "ai": {
             "rent": (rent_ai or {}).get("rent") if isinstance(rent_ai, dict) else None,
             "expenses": expense_block,
@@ -114,5 +138,8 @@ def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
         }
     }
 
+    # STORE in cache and return
+    blob_cache_put(CACHE_GROUP, cache_key, out)
+    hdrs = {**cors_headers(), **cache_headers(False)}
     return func.HttpResponse(json.dumps(out, ensure_ascii=False),
-                             mimetype="application/json", headers=cors_headers())
+                             mimetype="application/json", headers=hdrs)
