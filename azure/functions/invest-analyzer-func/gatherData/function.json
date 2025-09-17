@@ -1,5 +1,0 @@
-{
-  "bindings": [
-    { "name": "analysis_id", "type": "activityTrigger", "direction": "in" }
-  ]
-}
