@@ -1,0 +1,21 @@
+{
+  "name": "rent-analyzer-fn",
+  "version": "1.0.0",
+  "description": "HTTP Azure Function that analyzes rental deals and optionally uses Azure OpenAI for narrative output.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "func start",
+    "watch": "tsc -w",
+    "prestart": "npm run build"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.4.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
