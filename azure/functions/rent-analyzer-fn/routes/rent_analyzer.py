@@ -1,5 +1,5 @@
 # routes/rent_analyze.py
-from app import app
+from function_app import app
 import azure.functions as func
 import json
 from utils.common import cors_headers, bad_request, n

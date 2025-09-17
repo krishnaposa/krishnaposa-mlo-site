@@ -1,5 +1,5 @@
 # routes/health.py
-from app import app
+from function_app import app
 import azure.functions as func
 from utils.common import cors_headers
 

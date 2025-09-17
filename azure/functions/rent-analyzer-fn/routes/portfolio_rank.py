@@ -1,5 +1,5 @@
 # routes/portfolio_rank.py
-from app import app
+from function_app import app
 import azure.functions as func
 import json, os, logging
 from typing import Any, Dict, List, Optional
