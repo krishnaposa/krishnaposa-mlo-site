@@ -5,8 +5,9 @@ import json
 
 from utils.common import cors_headers, bad_request, n
 from services.tax_providers import fetch_from_county, estimate_fallback
-from services.aoai_expenses import ai_expense_pack       # <— unified expense AI (tax + others)
-from services.aoai import prefetch_estimate              # <— rent AI
+from services.aoai_expenses import ai_expense_pack       # unified expense AI (tax + insurance + HOA + utilities + PM% + maint%)
+from services.aoai import prefetch_estimate              # rent AI (estimates rent band)
+from services.aoai_appreciation import ai_appreciation   # <-- NEW: appreciation AI
 
 # Confidence gating for AI tax replacing county/fallback
 _CONF = {"low": 0, "medium": 1, "high": 2}
@@ -18,9 +19,11 @@ def _rank(label: str) -> int:
 @app.function_name(name="rent_prefetch")
 @app.route(route="rent-prefetch", methods=["POST","OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
+    # CORS preflight
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=204, headers=cors_headers())
 
+    # Parse body
     try:
         body = req.get_json()
     except ValueError:
@@ -64,7 +67,7 @@ def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
                 "source": "ai_expense"
             }
 
-    # Build normalized expense block from AI
+    # Build normalized expense block from AI (always include the final chosen tax)
     expense_block = {
         "tax_current_year_est": chosen_tax.get("current_year_est"),
         "insurance_annual_est": n(ai_exp.get("insurance_annual_est")) if ai_exp else None,
@@ -77,13 +80,28 @@ def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
         "confidence": (ai_exp or {}).get("confidence")
     }
 
-    # ---------- 3) RENT AI using the chosen taxes & expense context ----------
+    # ---------- 3) APPRECIATION AI (NEW) ----------
+    appr_payload = {
+        "address": inputs.get("address"),
+        "city": inputs.get("city"),
+        "state": inputs.get("state"),
+        "zip": inputs.get("zip"),
+        "propertyType": inputs.get("propertyType"),
+        "purchasePrice": inputs.get("purchasePrice") or inputs.get("homeValue"),
+        "year_built": inputs.get("yearBuilt"),
+        "sqft": inputs.get("sqft"),
+        "horizon_years": [1, 3, 5]
+    }
+    ai_appr = ai_appreciation(appr_payload)  # may be None
+
+    # ---------- 4) RENT AI using the chosen taxes & expense context ----------
     # (So rent model knows the carrying costs and locale.)
     rent_ai_inputs = dict(inputs)  # shallow copy is fine (we only read)
-    rent_context   = { "taxes": chosen_tax, "expenses": expense_block }
-    rent_ai = prefetch_estimate(rent_ai_inputs, chosen_tax)  # your existing rent prefetch (kept simple)
+    # Note: current prefetch_estimate signature takes (inputs, tax_block).
+    # If you later update it to accept full expense context, pass 'expense_block' too.
+    rent_ai = prefetch_estimate(rent_ai_inputs, chosen_tax)  # may be None
 
-    # ---------- 4) Return a single normalized prefetch object ----------
+    # ---------- 5) Return a single normalized prefetch object ----------
     out = {
         "ok": True,
         "address": ", ".join([s for s in [inputs.get("address"), inputs.get("city"),
@@ -91,7 +109,8 @@ def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
         "taxes": chosen_tax,            # {prior_year, prior_amount, current_year_est, source}
         "ai": {
             "rent": (rent_ai or {}).get("rent") if isinstance(rent_ai, dict) else None,
-            "expenses": expense_block
+            "expenses": expense_block,
+            "appreciation": ai_appr or None
         }
     }
 
