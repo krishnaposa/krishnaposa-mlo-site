@@ -108,7 +108,7 @@ curl -sS http://localhost:7071/api/tax-estimate \
     }
   }' | python -m json.tool
 
-ENDPOINT="https://rent-analyzer-ai.openai.azure.com"
+ENDPOINT="https://stocks-ai.openai.azure.com/"
 KEY="<your-aoai-key>"
 DEPLOYMENT="gpt-4o"
 API_VER="2024-10-21"
