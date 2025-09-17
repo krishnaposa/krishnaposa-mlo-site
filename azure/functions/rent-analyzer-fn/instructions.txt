@@ -96,6 +96,12 @@ export AOAI_BACKOFF_BASE=0.8
 # Blob cache (Functions needs it)
 export AzureWebJobsStorage="UseDevelopmentStorage=true"   # if using Azurite locally
 
+cd path\to\azure\functions\rent-analyzer-fn
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --upgrade pip wheel
+pip install -r requirements.txt
+python -c "import openai; import azure.functions; print('openai', openai.__version__)"
 func start
 
 curl -sS http://localhost:7071/api/tax-estimate \
