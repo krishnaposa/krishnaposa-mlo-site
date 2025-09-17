@@ -1,0 +1,21 @@
+func start
+curl -s http://localhost:7071/api/rent-analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": {
+      "address":"3739 Jamestown Ct","city":"Atlanta","state":"GA","zip":"30340",
+      "propertyType":"Townhome","units":1,
+      "purchasePrice":215999,"downPct":25,"rate":7.35,"termYears":30,
+      "closingCosts":6000,"pointsPct":0.0,
+      "rent":2084,"otherIncome":0,"vacancyPct":5,
+      "taxAnnual":3896,"insAnnual":1400,"hoaMonthly":0,
+      "pmPct":8,"maintPct":8,"utilitiesMonthly":0,
+      "rentalRules":"No HOA / No Restrictions"
+    }
+  }' | jq .
+
+AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com
+AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
+AZURE_OPENAI_API_KEY=YOUR_KEY
+# optional simple buydown model
+RATE_BUYDOWN_BPS_PER_POINT=25
