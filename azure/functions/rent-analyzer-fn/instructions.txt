@@ -7,7 +7,7 @@ AZURE_OPENAI_API_VER    = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-prev
 
 curl -i https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/health
 
-curl -i -X POST https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/rent-prefetch \
+curl https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/rent-prefetch \
   -H "Content-Type: application/json" \
   -d '{
     "inputs": {
@@ -21,7 +21,7 @@ curl -i -X POST https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azure
       "yearBuilt": 1984,
       "sqft": 1450
     }
-  }'
+  }' | python -m json.tool
 
 curl https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/rent-analyzer \
   -H "Content-Type: application/json" \

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from utils.cache import make_cache_key, blob_cache_get, blob_cache_put
 from openai import AzureOpenAI
 
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "https://rent-analyzer-ai.openai.azure.com/")
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "https://stocks-ai.openai.azure.com/")
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
 AZURE_OPENAI_API_VER = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
