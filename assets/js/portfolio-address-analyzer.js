@@ -1,4 +1,3 @@
-<script>
 (function(){
   const FN_BASE = 'https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net';
 
@@ -21,7 +20,7 @@
   function showErr(m){ err.textContent=m; err.style.display='block'; }
   function hideErr(){ err.style.display='none'; }
 
-  // --- Places autocomplete (as you had) ---
+  // Google Places
   let placesService, sessionToken, autocompleteService;
   function initPlaces(){
     if (!('google' in window) || !google.maps || !google.maps.places) return;
@@ -100,11 +99,9 @@
   }
 
   async function analyzeOne(shared, picked){
-    // Ask user for price per property (you could also add UI fields)
     const price = Number(prompt(`Enter Purchase Price for:\n${picked.label}`, '0') || '0');
     if (!price) throw new Error('Purchase Price required.');
 
-    // 1) Prefetch
     const prefetch = await postJSON(`${FN_BASE}/api/rent-prefetch`, {
       inputs: {
         address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
@@ -112,7 +109,6 @@
       }
     });
 
-    // 2) Analyze
     const inputs = {
       address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
       propertyType: '', units: 1, purchasePrice: price,
@@ -122,8 +118,7 @@
       otherIncome: 0, vacancyPct: shared.vacancyPct
     };
     const analyzed = await postJSON(`${FN_BASE}/api/rent-analyze`, { inputs, prefetch });
-
-    analyzed.prefetch = prefetch; // keep for ranker context
+    analyzed.prefetch = prefetch;
     return analyzed;
   }
 
@@ -177,14 +172,14 @@
         results.push(out);
       }
 
-      // 3) Rank (use aiMode 'auto' to allow fallback on server)
+      // Rank (server: { items, aiMode })
       let rankResp;
       try{
         rankResp = await postJSON(`${FN_BASE}/api/portfolio-rank`, { items: results, aiMode: 'auto' });
         const order = Array.isArray(rankResp.order) ? rankResp.order : null;
         renderTable(results, order, { ok: !!rankResp.ok, summary: rankResp.summary });
-      } catch (e2){
-        // Client-side fallback: sort by CoC then Cash Flow
+      } catch {
+        // client fallback
         const idx = results.map((_, i)=> i);
         idx.sort((i, j)=>{
           const a = results[i].metrics||{}, b = results[j].metrics||{};
@@ -208,4 +203,3 @@
 
   window.addEventListener('load', ()=> initPlaces());
 })();
-</script>
