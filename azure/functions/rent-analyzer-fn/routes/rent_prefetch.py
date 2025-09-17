@@ -4,6 +4,7 @@ from utils.cache import make_cache_key, blob_cache_get, blob_cache_put, cache_he
 from services.tax_providers import fetch_from_county, estimate_fallback
 from services.aoai_expenses import ai_expense_pack
 from services.aoai import prefetch_estimate
+from services.aoai_tax import ai_tax_estimate
 from services.aoai_appreciation import ai_appreciation
 
 _CONF = {"low": 0, "medium": 1, "high": 2}
