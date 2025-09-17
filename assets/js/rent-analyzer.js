@@ -246,7 +246,7 @@
 
       // IMPORTANT: Replace with your deployed AI endpoint
       // Suggestion: Cloudflare Worker / Azure Function / Vercel Edge
-      const API_URL = 'https://rental-analyzer.krishna-posa.workers.dev';
+      const API_URL = 'https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/rent-analyzer';
 
       // Shape we send to AI (add anything else your model needs)
       const payload = {

@@ -1,5 +1,5 @@
 (function(){
-  const API_BASE = 'https://<YOUR-FUNCTION-APP>.azurewebsites.net/api'; // set your Functions base
+  const API_BASE = 'https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/portfolio-rank'; // set your Functions base
 
   // DOM
   const form      = document.getElementById('portfolio-form');
