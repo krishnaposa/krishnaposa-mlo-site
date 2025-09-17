@@ -1,3 +1,4 @@
+<script>
 (function () {
   const FN_BASE = 'https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net';
   const form = document.getElementById('rental-form');
@@ -227,4 +228,5 @@
       submitBtn.disabled = false; submitBtn.textContent = 'Analyze Deal';
     }
   });
-})
+})();
+</script>
