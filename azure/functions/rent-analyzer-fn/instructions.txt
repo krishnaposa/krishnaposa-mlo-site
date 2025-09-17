@@ -24,7 +24,7 @@ curl -i -X POST https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azure
     }
   }'
 
-curl -i -X POST https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/rent-analyzer \
+curl https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/rent-analyzer \
   -H "Content-Type: application/json" \
   -d '{
     "inputs": {
@@ -48,9 +48,10 @@ curl -i -X POST https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azure
         "appreciation": {"1y": 3.5, "3y": 12, "5y": 20}
       }
     }
-  }'
+  }'| python -m json.tool
 
-curl -i -X POST https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/portfolio-rank \
+
+curl https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/portfolio-rank \
   -H "Content-Type: application/json" \
   -d '{
     "items": [
@@ -77,7 +78,7 @@ curl -i -X POST https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azure
         }
       }
     ]
-  }'
+  }' | python -m json.tool
 
 curl -i -X OPTIONS https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net/api/rent-prefetch \
   -H "Access-Control-Request-Method: POST" \
