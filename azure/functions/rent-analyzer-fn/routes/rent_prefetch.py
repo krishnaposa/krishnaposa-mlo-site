@@ -6,32 +6,30 @@ from services.aoai_expenses import ai_expense_pack
 from services.aoai import prefetch_estimate
 from services.aoai_appreciation import ai_appreciation
 from services.aoai_tax import ai_tax_estimate
-from services.tax_providers import estimate_fallback  # keep heuristic fallback only
+from services.tax_providers import estimate_fallback  # fallback only
 
 _CONF = {"low": 0, "medium": 1, "high": 2}
 OVERRIDE_CONF = _CONF["high"]
+def _rank(label: str) -> int: return _CONF.get(str(label or "").lower(), 0)
 
 CACHE_GROUP = "rent-prefetch"
 CACHE_TTL_SEC = 12 * 60 * 60
 
-def _rank(label: str) -> int:
-    return _CONF.get(str(label or "").lower(), 0)
-
-def _normalize_tax(ai_tax: dict | None) -> dict:
-    if not isinstance(ai_tax, dict):
+def _normalize_tax(tax: dict | None, source: str) -> dict:
+    if not isinstance(tax, dict):
         return {}
     return {
-        "prior_year":  ai_tax.get("prior_year"),
-        "prior_amount": n(ai_tax.get("prior_amount")),
-        "current_year_est": n(ai_tax.get("current_year_est")),
-        "source": "ai_tax"
+        "prior_year": tax.get("prior_year"),
+        "prior_amount": n(tax.get("prior_amount")),
+        "current_year_est": n(tax.get("current_year_est")),
+        "source": source
     }
 
 def run_rent_prefetch(inputs: dict) -> dict:
     if not (inputs.get("state") or inputs.get("zip")):
         raise ValueError("Provide at least 'state' or 'zip' for better estimates.")
 
-    # ---------- CACHE LOOKUP ----------
+    # ---------- Cache key (stable subset) ----------
     key_payload = {
         "address": inputs.get("address"),
         "city": inputs.get("city"),
@@ -47,35 +45,30 @@ def run_rent_prefetch(inputs: dict) -> dict:
         "assessedValue": inputs.get("assessedValue"),
         "millage": inputs.get("millage"),
     }
-    cache_key = make_cache_key(key_payload, version="prefetch-v4-aitax")
+    cache_key = make_cache_key(key_payload, version="prefetch-v5-aitax-first")
     cached = blob_cache_get(CACHE_GROUP, cache_key, max_age_sec=CACHE_TTL_SEC)
     if cached:
         return cached
 
-    # ---------- 1) TAX via AOAI (primary) ----------
+    # ---------- 1) Taxes: AI first ----------
     chosen_tax = {}
     try:
-        ai_tax = ai_tax_estimate(inputs)
+        ai_tax = ai_tax_estimate(inputs)  # may be None
         if ai_tax:
-            chosen_tax = _normalize_tax(ai_tax)
+            chosen_tax = _normalize_tax(ai_tax, "ai_tax")
     except Exception:
         logging.exception("[tax] ai_tax_estimate failed")
 
-    # Fallback heuristic if AI unavailable or produced no usable current_year_est
+    # Fallback if AI absent/unusable
     if not chosen_tax or n(chosen_tax.get("current_year_est")) <= 0:
         try:
             fb = estimate_fallback(inputs)
             if isinstance(fb, dict) and n(fb.get("current_year_est")) > 0:
-                chosen_tax = {
-                    "prior_year": fb.get("prior_year"),
-                    "prior_amount": n(fb.get("prior_amount")),
-                    "current_year_est": n(fb.get("current_year_est")),
-                    "source": "fallback"
-                }
+                chosen_tax = _normalize_tax(fb, "fallback")
         except Exception:
             logging.exception("[tax] estimate_fallback failed")
 
-    # ---------- 2) ALL-EXPENSE AI ----------
+    # ---------- 2) Expense AI (may include its own tax) ----------
     ai_payload = {
         "address": inputs.get("address"), "city": inputs.get("city"),
         "state": inputs.get("state"), "zip": inputs.get("zip"), "county": inputs.get("county"),
@@ -95,16 +88,16 @@ def run_rent_prefetch(inputs: dict) -> dict:
     except Exception:
         logging.exception("[expense] ai_expense_pack failed")
 
-    # If expense AI has a strong tax and it’s plausible, allow it to override
+    # Let expense-AI override tax only if high-confidence & plausible
     if ai_exp and "tax" in ai_exp:
-        ai_tax2 = ai_exp["tax"] or {}
-        ai_conf = _rank(ai_tax2.get("confidence"))
-        ai_curr = n(ai_tax2.get("current_year_est"))
+        t = ai_exp["tax"] or {}
+        ai_conf = _rank(t.get("confidence"))
+        ai_curr = n(t.get("current_year_est"))
         base_curr = n(chosen_tax.get("current_year_est"))
-        if (ai_conf >= OVERRIDE_CONF and ai_curr > 0 and (base_curr == 0 or 0.5*base_curr <= ai_curr <= 1.5*base_curr)):
+        if (ai_conf >= OVERRIDE_CONF and ai_curr > 0 and (base_curr == 0 or 0.5 * base_curr <= ai_curr <= 1.5 * base_curr)):
             chosen_tax = {
-                "prior_year": ai_tax2.get("prior_year"),
-                "prior_amount": n(ai_tax2.get("prior_amount")),
+                "prior_year": t.get("prior_year"),
+                "prior_amount": n(t.get("prior_amount")),
                 "current_year_est": ai_curr,
                 "source": "ai_expense"
             }
@@ -118,10 +111,10 @@ def run_rent_prefetch(inputs: dict) -> dict:
         "maint_pct_est": n((ai_exp or {}).get("maint_pct_est")),
         "restriction_hint": (ai_exp or {}).get("restriction_hint"),
         "notes": (ai_exp or {}).get("notes"),
-        "confidence": (ai_exp or {}).get("confidence")
+        "confidence": (ai_exp or {}).get("confidence"),
     }
 
-    # ---------- 3) APPRECIATION AI ----------
+    # ---------- 3) Appreciation AI ----------
     ai_appr = None
     try:
         ai_appr = ai_appreciation({
@@ -138,14 +131,14 @@ def run_rent_prefetch(inputs: dict) -> dict:
     except Exception:
         logging.exception("[appr] ai_appreciation failed")
 
-    # ---------- 4) RENT AI ----------
+    # ---------- 4) Rent AI (fed with chosen tax) ----------
     rent_ai = None
     try:
         rent_ai = prefetch_estimate(dict(inputs), chosen_tax)
     except Exception:
         logging.exception("[rent] prefetch_estimate failed")
 
-    # ---------- 5) Normalized output ----------
+    # ---------- 5) Output + cache ----------
     out = {
         "ok": True,
         "address": ", ".join([s for s in [inputs.get("address"), inputs.get("city"),
