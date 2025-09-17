@@ -52,12 +52,13 @@
   <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="https://www.krishposa.com/assets/img/apple-touch-icon.png">
 
-  <!-- Styles -->
+  <!-- Global styles/scripts -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/cobrand.css?v=1">
+  <!-- Page-specific CSS -->
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/rental-analyzer.css?v=1">
 
-  <!-- JS (global) -->
   <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
   <script defer src="https://www.krishposa.com/assets/js/cobrand.js?v=1"></script>
 
@@ -116,41 +117,12 @@
     "@type":"FAQPage",
     "mainEntity":[
       {"@type":"Question","name":"What does the analyzer calculate?",
-       "acceptedAnswer":{"@type":"Answer","text":"Monthly and annual cash flow, cap rate, cash-on-cash return, DSCR, and a line-item expense breakdown based on your inputs."}},
+       "acceptedAnswer":{"@type":"Answer","text":"Monthly and annual cash flow, cap rate, cash-on-cash return, DSCR, and a line-item expense breakdown based on your inputs. It can also estimate rent and typical expenses when you leave them blank."}},
       {"@type":"Question","name":"Is this financial advice?",
        "acceptedAnswer":{"@type":"Answer","text":"No. This tool is for education. Results are estimates only. Verify all numbers with professionals before investing."}}
     ]
   }
   </script>
-
-  <style>
-    /* Page-specific light styles */
-    .tool-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px; box-shadow:0 10px 14px rgba(0,0,0,.03); }
-    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-    .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
-    .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
-    @media (max-width: 900px){ .grid-4 { grid-template-columns:1fr 1fr; } }
-    @media (max-width: 640px){ .grid-2, .grid-3, .grid-4 { grid-template-columns:1fr; } }
-    .field label { display:block; font-weight:600; margin:6px 0; }
-    .field input, .field select { width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; }
-    .helper { color:#475569; font-size:.9rem; }
-    .error-box { display:none; background:#fff5f5; border:1px solid #fecaca; color:#991b1b; padding:10px; border-radius:8px; margin-top:10px; }
-    .result-wrap { display:none; margin-top:18px; }
-    .result-wrap h2 { margin-top:0; }
-    .muted { color:#475569; font-size:.9rem; }
-    .disclosure { font-size:.85rem; color:#475569; margin-top:14px; }
-    .label-ai { display:inline-block; padding:.1rem .4rem; font-size:.8rem; background:#0b5fff; color:#fff; border-radius:6px; vertical-align:middle; }
-    .mini-metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
-    .mini-metrics .card { border:1px solid #e5e7eb; border-radius:10px; padding:12px; text-align:center; }
-    .table-wrap { overflow:auto; border:1px solid #e5e7eb; border-radius:10px; }
-    table { width:100%; border-collapse:collapse; }
-    th, td { padding:10px 12px; border-bottom:1px solid #f1f5f9; text-align:left; white-space:nowrap; }
-    th { background:#f8fafc; font-weight:600; }
-    .badge { display:inline-block; padding:.15rem .45rem; font-size:.75rem; border-radius:999px; background:#eef2ff; }
-    .note { font-size:.85rem; color:#475569; }
-    .page-hero .small { margin: 0.25rem 0 0; }
-    .sticky-cta .btn { min-width: 84px; text-align: center; }
-  </style>
 </head>
 <body>
   <!-- Google Tag Manager (noscript) -->
@@ -216,7 +188,7 @@
               </div>
             </div>
 
-            <!-- Price / Financing -->
+            <!-- Purchase / Financing -->
             <h3>Purchase & Financing</h3>
             <div class="grid-3">
               <div class="field">
@@ -258,8 +230,8 @@
             <h3>Income</h3>
             <div class="grid-3">
               <div class="field">
-                <label for="rent">Monthly Rent (target)</label>
-                <input id="rent" name="rent" type="number" min="500" step="25" placeholder="2084" required>
+                <label for="rent">Monthly Rent (leave blank to estimate)</label>
+                <input id="rent" name="rent" type="number" min="0" step="25" placeholder="0">
               </div>
               <div class="field">
                 <label for="otherIncome">Other Monthly Income</label>
@@ -276,30 +248,30 @@
             <div class="grid-3">
               <div class="field">
                 <label for="taxAnnual">Property Taxes (annual)</label>
-                <input id="taxAnnual" name="taxAnnual" type="number" min="0" step="50" placeholder="3896">
+                <input id="taxAnnual" name="taxAnnual" type="number" min="0" step="50" placeholder="">
               </div>
               <div class="field">
                 <label for="insAnnual">Insurance (annual)</label>
-                <input id="insAnnual" name="insAnnual" type="number" min="0" step="50" placeholder="1400">
+                <input id="insAnnual" name="insAnnual" type="number" min="0" step="50" placeholder="">
               </div>
               <div class="field">
                 <label for="hoaMonthly">HOA Dues (monthly)</label>
-                <input id="hoaMonthly" name="hoaMonthly" type="number" min="0" step="10" placeholder="0">
+                <input id="hoaMonthly" name="hoaMonthly" type="number" min="0" step="10" placeholder="">
               </div>
             </div>
 
             <div class="grid-3">
               <div class="field">
                 <label for="pmPct">Property Management (%)</label>
-                <input id="pmPct" name="pmPct" type="number" min="0" max="20" step="0.5" placeholder="8">
+                <input id="pmPct" name="pmPct" type="number" min="0" max="20" step="0.5" placeholder="">
               </div>
               <div class="field">
                 <label for="maintPct">Maintenance/CapEx (%)</label>
-                <input id="maintPct" name="maintPct" type="number" min="0" max="30" step="0.5" placeholder="8">
+                <input id="maintPct" name="maintPct" type="number" min="0" max="30" step="0.5" placeholder="">
               </div>
               <div class="field">
                 <label for="utilitiesMonthly">Landlord-paid Utilities (monthly)</label>
-                <input id="utilitiesMonthly" name="utilitiesMonthly" type="number" min="0" step="10" placeholder="0">
+                <input id="utilitiesMonthly" name="utilitiesMonthly" type="number" min="0" step="10" placeholder="">
               </div>
             </div>
 
@@ -359,28 +331,18 @@
             <div class="table-wrap" style="margin-top:12px">
               <table id="monthlyTable" aria-label="Monthly breakdown">
                 <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th>Monthly</th>
-                  </tr>
+                  <tr><th>Item</th><th>Monthly</th></tr>
                 </thead>
-                <tbody>
-                  <!-- filled by JS -->
-                </tbody>
+                <tbody></tbody>
               </table>
             </div>
 
             <div class="table-wrap" style="margin-top:12px">
               <table id="annualTable" aria-label="Annual summary">
                 <thead>
-                  <tr>
-                    <th>Metric</th>
-                    <th>Annual</th>
-                  </tr>
+                  <tr><th>Metric</th><th>Annual</th></tr>
                 </thead>
-                <tbody>
-                  <!-- filled by JS -->
-                </tbody>
+                <tbody></tbody>
               </table>
             </div>
 
@@ -391,7 +353,7 @@
                 <thead>
                   <tr><th>Rent</th><th>Cash Flow / mo</th><th>DSCR</th></tr>
                 </thead>
-                <tbody><!-- filled by JS --></tbody>
+                <tbody></tbody>
               </table>
             </div>
 
@@ -419,8 +381,7 @@
   <div id="footer"></div>
   <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
-  <!-- Your implementation script (mirrors the loan-advisor pattern) -->
-  <!-- Replace the endpoint inside with your serverless/AI function as needed -->
-  <script defer src="https://www.krishposa.com/assets/js/rental-analyzer.js"></script>
+  <!-- Page script -->
+  <script defer src="https://www.krishposa.com/assets/js/rental-analyzer.js?v=1"></script>
 </body>
 </html>
