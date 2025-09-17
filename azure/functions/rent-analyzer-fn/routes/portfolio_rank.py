@@ -3,18 +3,18 @@ import os
 import json
 import logging
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from utils.cache import make_cache_key, blob_cache_get, blob_cache_put
 from openai import AzureOpenAI
 
 # --- AOAI config (do not default to someone else's endpoint) ---
-AZURE_OPENAI_ENDPOINT   = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-AZURE_OPENAI_API_KEY    = os.getenv("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
-AZURE_OPENAI_API_VER    = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
+AZURE_OPENAI_API_VER = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
 
 # --- Caching ---
-CACHE_GROUP   = "portfolio-rank"
+CACHE_GROUP = "portfolio-rank"
 CACHE_TTL_SEC = int(os.getenv("PORTFOLIO_RANK_TTL_SEC", "21600"))  # 6h
 
 
@@ -22,11 +22,13 @@ def _client() -> AzureOpenAI:
     """
     Create an AOAI client or raise with a clear message if misconfigured.
     """
-    missing = [k for k, v in {
-        "AZURE_OPENAI_ENDPOINT": AZURE_OPENAI_ENDPOINT,
-        "AZURE_OPENAI_API_KEY": AZURE_OPENAI_API_KEY,
-        "AZURE_OPENAI_DEPLOYMENT": AZURE_OPENAI_DEPLOYMENT
-    }.items() if not v]
+    missing = [
+        k for k, v in {
+            "AZURE_OPENAI_ENDPOINT": AZURE_OPENAI_ENDPOINT,
+            "AZURE_OPENAI_API_KEY": AZURE_OPENAI_API_KEY,
+            "AZURE_OPENAI_DEPLOYMENT": AZURE_OPENAI_DEPLOYMENT
+        }.items() if not v
+    ]
     if missing:
         raise RuntimeError(f"AOAI env missing: {', '.join(missing)}")
     return AzureOpenAI(
@@ -38,8 +40,8 @@ def _client() -> AzureOpenAI:
 
 def _compact_item(x: Dict[str, Any], idx: int) -> Dict[str, Any]:
     """
-    Normalize incoming items for the ranker prompt. Keeps only the fields
-    that the AI needs and our fallback sorter can use.
+    Normalize incoming items for the ranker prompt.
+    Keeps only fields that AI and the fallback sorter need.
     """
     m = (x or {}).get("metrics") or {}
     pre = (x or {}).get("prefetch") or {}
@@ -86,16 +88,22 @@ def _rank_with_ai(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     schema = {
         "type": "object",
         "properties": {
-            "order":  {"type": "array", "items": {"type": "integer"}},
-            "ranked": {"type": "array", "items": {"type": "object", "properties": {
-                "idx": {"type": "integer"},
-                "rank": {"type": "integer"},
-                "score": {"type": "number"},
-                "rationale": {"type": "string"},
-                "pros": {"type": "array", "items": {"type": "string"}},
-                "cons": {"type": "array", "items": {"type": "string"}},
-                "flags": {"type": "string"}
-            }}}},
+            "order": {"type": "array", "items": {"type": "integer"}},
+            "ranked": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "idx": {"type": "integer"},
+                        "rank": {"type": "integer"},
+                        "score": {"type": "number"},
+                        "rationale": {"type": "string"},
+                        "pros": {"type": "array", "items": {"type": "string"}},
+                        "cons": {"type": "array", "items": {"type": "string"}},
+                        "flags": {"type": "string"}
+                    }
+                }
+            },
             "summary": {"type": "string"}
         },
         "required": ["order", "ranked"]
@@ -112,12 +120,12 @@ def _rank_with_ai(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         ]
     }
     resp = client.chat.completions.create(
-        model=AZURE_OPENAI_DEPLOYMENT,  # deployment name
+        model=AZURE_OPENAI_DEPLOYMENT,
         temperature=0.1,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system},
-            {"role": "user",   "content": json.dumps(user)},
+            {"role": "user", "content": json.dumps(user)},
         ],
     )
     return json.loads(resp.choices[0].message.content)
@@ -164,7 +172,14 @@ def run_portfolio_rank(items_raw: List[Dict[str, Any]], ai_mode: str = "auto") -
     # OFF: skip AI altogether
     if ai_mode == "off":
         order = _fallback_order(compact)
-        out = {"ok": True, "mode": "off", "order": order, "ranked": [], "summary": "", "items": compact}
+        out = {
+            "ok": True,
+            "mode": "off",
+            "order": order,
+            "ranked": [],
+            "summary": "",
+            "items": compact
+        }
         try:
             blob_cache_put(CACHE_GROUP, cache_key, out)
         except Exception as e:
@@ -194,7 +209,6 @@ def run_portfolio_rank(items_raw: List[Dict[str, Any]], ai_mode: str = "auto") -
     except Exception as e:
         logging.exception("portfolio-rank AI error")
         if ai_mode == "required":
-            # Fail fast: do NOT fallback
             return {
                 "ok": False,
                 "mode": "required",
@@ -218,10 +232,7 @@ def run_portfolio_rank(items_raw: List[Dict[str, Any]], ai_mode: str = "auto") -
             "ranked": [],
             "summary": "",
             "items": compact,
-            "debug": {
-                "ai_failed": True,
-                "error": str(e)
-            }
+            "debug": {"ai_failed": True, "error": str(e)}
         }
         try:
             blob_cache_put(CACHE_GROUP, cache_key, out)
