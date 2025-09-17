@@ -1,20 +1,19 @@
+# routes/rent_prefetch.py
 from app import app
 import azure.functions as func
-import json, math
+import json
 
 from utils.common import cors_headers, bad_request, n
 from services.tax_providers import fetch_from_county, estimate_fallback
-from services.aoai import prefetch_estimate       # AI rent + expenses
-from services.aoai_tax import ai_tax_estimate     # AI tax
+from services.aoai_expenses import ai_expense_pack       # <— unified expense AI (tax + others)
+from services.aoai import prefetch_estimate              # <— rent AI
 
-# Confidence gating for AI tax to override county/fallback
-AI_TAX_MIN_CONFIDENCE = (  # low < medium < high
-    {"low": 0, "medium": 1, "high": 2}
-)
-AI_TAX_OVERRIDE_THRESHOLD = AI_TAX_MIN_CONFIDENCE["high"]  # require "high" to override
+# Confidence gating for AI tax replacing county/fallback
+_CONF = {"low": 0, "medium": 1, "high": 2}
+OVERRIDE_CONF = _CONF["high"]  # require "high" confidence to override county/fallback tax
 
-def _conf_rank(label: str) -> int:
-    return AI_TAX_MIN_CONFIDENCE.get(str(label or "").lower(), 0)
+def _rank(label: str) -> int:
+    return _CONF.get(str(label or "").lower(), 0)
 
 @app.function_name(name="rent_prefetch")
 @app.route(route="rent-prefetch", methods=["POST","OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -31,50 +30,69 @@ def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
     if not (inputs.get("state") or inputs.get("zip")):
         return bad_request("Provide at least 'state' or 'zip' for better estimates.")
 
-    # ---------- 1) TAX from county provider or heuristic ----------
+    # ---------- 1) BASE TAX via county provider or heuristic fallback ----------
     county = fetch_from_county(inputs) or estimate_fallback(inputs)
     chosen_tax = dict(county) if isinstance(county, dict) else {}
 
-    # ---------- 2) AI TAX (optional) ----------
-    # Give AOAI any hints we have (address/value/assessed/millage)
-    ai_tax_payload = {
+    # ---------- 2) ALL-EXPENSE AI (tax + insurance + HOA + utilities + PM% + maint%) ----------
+    ai_payload = {
         "address": inputs.get("address"), "city": inputs.get("city"),
-        "state": inputs.get("state"), "zip": inputs.get("zip"),
-        "county": inputs.get("county"),
+        "state": inputs.get("state"), "zip": inputs.get("zip"), "county": inputs.get("county"),
         "value": inputs.get("purchasePrice") or inputs.get("homeValue"),
         "assessed_value": inputs.get("assessedValue"),
         "millage_per_1000": inputs.get("millage"),
+        "propertyType": inputs.get("propertyType"),
+        "units": inputs.get("units") or 1,
+        "year_built": inputs.get("yearBuilt"),
+        "sqft": inputs.get("sqft"),
         "owner_occupied": bool(inputs.get("ownerOccupied")),
-        "raw_assessor_text": inputs.get("rawAssessorText")  # optional
+        "raw_assessor_text": inputs.get("rawAssessorText")
     }
-    ai_tax = ai_tax_estimate(ai_tax_payload)
+    ai_exp = ai_expense_pack(ai_payload)  # may be None
 
-    # Decide whether AI tax should override county/fallback
-    if ai_tax:
-        # if county is missing OR AI has high confidence and numbers are plausible (within 50% band)
-        ai_conf = _conf_rank(ai_tax.get("confidence"))
-        if not chosen_tax or ai_conf >= AI_TAX_OVERRIDE_THRESHOLD:
-            # sanity check: avoid wild outliers
-            ai_curr = n(ai_tax.get("current_year_est"))
-            base_curr = n(chosen_tax.get("current_year_est"))
-            if ai_curr > 0 and (base_curr == 0 or 0.5 * base_curr <= ai_curr <= 1.5 * base_curr):
-                chosen_tax = {
-                    "prior_year": ai_tax.get("prior_year"),
-                    "prior_amount": n(ai_tax.get("prior_amount")),
-                    "current_year_est": n(ai_tax.get("current_year_est")),
-                    "source": "ai_tax"
-                }
+    # Decide if AI tax should override the county/fallback tax
+    if ai_exp and "tax" in ai_exp:
+        ai_tax = ai_exp["tax"]
+        ai_conf = _rank(ai_tax.get("confidence"))
+        ai_curr = n(ai_tax.get("current_year_est"))
+        base_curr = n(chosen_tax.get("current_year_est"))
+        if (not chosen_tax) or (ai_conf >= OVERRIDE_CONF and ai_curr > 0 and (base_curr == 0 or 0.5*base_curr <= ai_curr <= 1.5*base_curr)):
+            chosen_tax = {
+                "prior_year": ai_tax.get("prior_year"),
+                "prior_amount": n(ai_tax.get("prior_amount")),
+                "current_year_est": n(ai_tax.get("current_year_est")),
+                "source": "ai_expense"
+            }
 
-    # ---------- 3) AI RENT + EXPENSES, with chosen tax fed as context ----------
-    ai_rent_exp = prefetch_estimate(inputs, chosen_tax)  # may be None
+    # Build normalized expense block from AI
+    expense_block = {
+        "tax_current_year_est": chosen_tax.get("current_year_est"),
+        "insurance_annual_est": n(ai_exp.get("insurance_annual_est")) if ai_exp else None,
+        "hoa_monthly_est": n(ai_exp.get("hoa_monthly_est")) if ai_exp else None,
+        "utilities_monthly_est": n(ai_exp.get("utilities_monthly_est")) if ai_exp else None,
+        "pm_pct_est": n(ai_exp.get("pm_pct_est")) if ai_exp else None,
+        "maint_pct_est": n(ai_exp.get("maint_pct_est")) if ai_exp else None,
+        "restriction_hint": (ai_exp or {}).get("restriction_hint"),
+        "notes": (ai_exp or {}).get("notes"),
+        "confidence": (ai_exp or {}).get("confidence")
+    }
 
-    # Normalize output shape for the analyzer
+    # ---------- 3) RENT AI using the chosen taxes & expense context ----------
+    # (So rent model knows the carrying costs and locale.)
+    rent_ai_inputs = dict(inputs)  # shallow copy is fine (we only read)
+    rent_context   = { "taxes": chosen_tax, "expenses": expense_block }
+    rent_ai = prefetch_estimate(rent_ai_inputs, chosen_tax)  # your existing rent prefetch (kept simple)
+
+    # ---------- 4) Return a single normalized prefetch object ----------
     out = {
         "ok": True,
         "address": ", ".join([s for s in [inputs.get("address"), inputs.get("city"),
                                           inputs.get("state"), inputs.get("zip")] if s]),
-        "taxes": chosen_tax,        # {prior_year, prior_amount, current_year_est, source}
-        "ai": ai_rent_exp or None   # { rent:{est,low,high,confidence,notes}, expenses:{...} }
+        "taxes": chosen_tax,            # {prior_year, prior_amount, current_year_est, source}
+        "ai": {
+            "rent": (rent_ai or {}).get("rent") if isinstance(rent_ai, dict) else None,
+            "expenses": expense_block
+        }
     }
 
     return func.HttpResponse(json.dumps(out, ensure_ascii=False),
