@@ -1,4 +1,3 @@
-<script>
 (function () {
   const FN_BASE = 'https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net';
   const form = document.getElementById('rental-form');
@@ -206,11 +205,9 @@
       let analyzed;
       try {
         analyzed = await postJSON(`${FN_BASE}/api/rent-analyze`, { inputs, prefetch });
-      } catch (e2) {
-        // fallback to local math if server errors out
-        analyzed = localAnalyze(inputs);
+      } catch {
+        analyzed = localAnalyze(inputs); // fallback
       }
-      // Ensure we can render even if function returned only partials
       if (!analyzed.metrics) {
         const fallback = localAnalyze(inputs);
         analyzed = { ...fallback, ...analyzed, metrics: { ...fallback.metrics, ...(analyzed.metrics||{}) } };
@@ -229,4 +226,3 @@
     }
   });
 })();
-</script>
