@@ -19,3 +19,82 @@ AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
 AZURE_OPENAI_API_KEY=YOUR_KEY
 # optional simple buydown model
 RATE_BUYDOWN_BPS_PER_POINT=25
+
+curl -i https://<your-app>.azurewebsites.net/api/health
+
+curl -i -X POST https://<your-app>.azurewebsites.net/api/rent-prefetch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": {
+      "address": "3739 Jamestown Ct",
+      "city": "Atlanta",
+      "state": "GA",
+      "zip": "30340",
+      "purchasePrice": 250000,
+      "propertyType": "Townhome",
+      "units": 1,
+      "yearBuilt": 1984,
+      "sqft": 1450
+    }
+  }'
+
+curl -i -X POST https://<your-app>.azurewebsites.net/api/rent-analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": {
+      "purchasePrice": 250000,
+      "downPct": 25,
+      "rate": 7.0,
+      "termYears": 30,
+      "rent": 2100,
+      "vacancyPct": 5,
+      "pmPct": 8,
+      "maintPct": 8,
+      "hoaMonthly": 200,
+      "taxAnnual": 3900,
+      "insAnnual": 1400
+    },
+    "prefetch": {
+      "taxes": {"current_year_est": 3900},
+      "ai": {
+        "rent": {"est": 2100},
+        "expenses": {"hoa_monthly_est": 200},
+        "appreciation": {"1y": 3.5, "3y": 12, "5y": 20}
+      }
+    }
+  }'
+
+curl -i -X POST https://<your-app>.azurewebsites.net/api/portfolio-rank \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {
+        "address": "3739 Jamestown Ct, Atlanta, GA 30340",
+        "inputs": {"purchasePrice": 250000, "rent": 2100},
+        "metrics": {
+          "cashFlowMonthly": 250,
+          "capRate": 6.1,
+          "cashOnCash": 8.2,
+          "dscr": 1.25,
+          "totalReturnPctProjected": 42
+        }
+      },
+      {
+        "address": "2450 Clairview St, Alpharetta, GA 30009",
+        "inputs": {"purchasePrice": 430000, "rent": 2900},
+        "metrics": {
+          "cashFlowMonthly": 150,
+          "capRate": 5.2,
+          "cashOnCash": 6.5,
+          "dscr": 1.15,
+          "totalReturnPctProjected": 35
+        }
+      }
+    ]
+  }'
+
+curl -i -X OPTIONS https://<your-app>.azurewebsites.net/api/rent-prefetch \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Origin: https://www.krishposa.com"
+
+
