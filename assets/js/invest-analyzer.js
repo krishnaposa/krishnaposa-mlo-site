@@ -1,274 +1,199 @@
-// invest-analyzer.js  — full client logic with "Fetch data" prefill + existing submit/status flow
+(function(){
+  const form      = document.getElementById('rental-form');
+  const submitBtn = document.getElementById('submitBtn');
+  const err       = document.getElementById('err');
+  const result    = document.getElementById('result');
 
-// ==== API endpoints (change to your app URLs) ====
-const API_SUBMIT  = "https://invest-analyzer-func.azurewebsites.net/api/submit";
-const API_STATUS  = "https://invest-analyzer-func.azurewebsites.net/api/status?id=";
-// If your Azure Function uses authLevel=function, append ?code=YOUR_FUNC_KEY
-const API_PREFILL = "https://invest-analyzer-func.azurewebsites.net/api/prefill";
+  // IMPORTANT: set your deployed Azure Functions base
+  const API_BASE = 'https://<YOUR-FUNCTION-APP>.azurewebsites.net/api';
 
-// ==== formatting helpers ====
-const fmtMoney = (v) => (isFinite(v) ? "$" + Number(v).toLocaleString() : "—");
-const fmtPct   = (v, d = 1) => (isFinite(v) ? (Number(v) * 100).toFixed(d) + "%" : "—");
+  // helpers
+  const dollars = (n)=> Number(n||0).toLocaleString(undefined,{style:'currency',currency:'USD'});
+  const pct     = (n, d=2)=> `${Number(n||0).toFixed(d)}%`;
+  const num     = (v)=> { const x = Number(v); return Number.isFinite(x) ? x : 0; };
+  const text    = (v)=> (v ?? '').toString().trim();
 
-// ==== fetch helper that surfaces server error text ====
-async function fetchJSON(url, opts) {
-  const r = await fetch(url, opts);
-  const text = await r.text();
-  try { return JSON.parse(text); }
-  catch {
-    const snippet = text ? text.slice(0, 300) : "(empty body)";
-    throw new Error(`Bad response ${r.status} ${r.statusText}: ${snippet}`);
+  function getInputs() {
+    const fd = new FormData(form);
+    return {
+      address: text(fd.get('address')),
+      city: text(fd.get('city')),
+      state: text(fd.get('state')),
+      zip: text(fd.get('zip')),
+      propertyType: text(fd.get('propertyType')),
+      units: num(fd.get('units') || 1),
+
+      purchasePrice: num(fd.get('purchasePrice')),
+      downPct: num(fd.get('downPct')),
+      rate: num(fd.get('rate')),
+      termYears: num(fd.get('termYears')),
+      closingCosts: num(fd.get('closingCosts')),
+      pointsPct: num(fd.get('pointsPct')),
+
+      rent: num(fd.get('rent')),
+      otherIncome: num(fd.get('otherIncome')),
+      vacancyPct: num(fd.get('vacancyPct') || 5),
+
+      taxAnnual: num(fd.get('taxAnnual')),
+      insAnnual: num(fd.get('insAnnual')),
+      hoaMonthly: num(fd.get('hoaMonthly')),
+      pmPct: num(fd.get('pmPct')),
+      maintPct: num(fd.get('maintPct')),
+      utilitiesMonthly: num(fd.get('utilitiesMonthly')),
+
+      hoaName: text(fd.get('hoaName')),
+      rentalRules: text(fd.get('rentalRules'))
+    };
   }
-}
 
-// ==== form helpers ====
-function getFormObj(form) {
-  const obj = Object.fromEntries(new FormData(form).entries());
-  // coerce numeric fields
-  ["dpPct","rate","term","vacancyPct","mgmtPct","rehab","hoa","insurance","taxes","holdYears"]
-    .forEach(k => obj[k] = Number(obj[k] ?? 0));
-  // single-line address for lookups
-  obj.addressOneLine = [obj.address, obj.unit, obj.city, obj.state, obj.zip]
-    .filter(Boolean).join(", ");
-  return obj;
-}
-function setIfEmpty(form, name, val) {
-  const el = form.querySelector(`[name="${name}"]`);
-  if (!el) return;
-  if (el.value === "" || el.value == null) el.value = (val ?? "");
-}
-function setVal(form, name, val) {
-  const el = form.querySelector(`[name="${name}"]`);
-  if (el) el.value = (val ?? "");
-}
+  function buildSummary(inputs, out, pre) {
+    const addr = [inputs.address, inputs.city, inputs.state, inputs.zip].filter(Boolean).join(', ');
+    const ltv = (out.metrics.loanAmount / Math.max(out.metrics.price,1)) * 100;
+    const rentSrc = out.rentSource ? out.rentSource.replace('_',' ') : (out.prefetchUsed ? 'ai estimate' : 'user input');
 
-// ==== main ====
-document.addEventListener("DOMContentLoaded", () => {
-  // ---------- Submit handler (Analyze) ----------
-  const form = document.getElementById("investForm");
-  if (form) {
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const elStatus = document.getElementById("submitStatus");
-      const data = getFormObj(form);
+    return `
+      <p><strong>Property</strong>: ${addr || '—'} · <strong>Type</strong>: ${inputs.propertyType || '—'} · <strong>Units</strong>: ${inputs.units||1}</p>
+      <p><strong>Price</strong>: ${dollars(out.metrics.price)} · <strong>Loan</strong>: ${dollars(out.metrics.loanAmount)} · <strong>LTV</strong>: ${ltv.toFixed(1)}% · <strong>Rate</strong>: ${inputs.rate || '—'}% / ${inputs.termYears||'—'}y</p>
+      <p class="muted">Taxes source: ${(pre?.taxes?.source || 'prefetch')} · Rent source: ${rentSrc}</p>
+    `;
+  }
 
-      elStatus.textContent = "Submitting…";
-      try {
-        const j = await fetchJSON(API_SUBMIT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        });
-        if (!j.ok) throw new Error(j.error || "Submission failed");
+  function fillTables(out){
+    // mini metrics
+    document.getElementById('mm_cashflow').textContent = dollars(out.metrics.cashFlowMonthly);
+    document.getElementById('mm_caprate').textContent  = pct(out.metrics.capRate, 2);
+    document.getElementById('mm_coc').textContent      = pct(out.metrics.cashOnCash, 1);
+    document.getElementById('mm_dscr').textContent     = (out.metrics.dscr || 0).toFixed(2);
 
-        const statusUrl = new URL("status.html", location.href);
-        statusUrl.searchParams.set("id", j.id);
-        location.href = statusUrl.toString();
-      } catch (err) {
-        elStatus.textContent = "Error: " + err.message;
-      }
+    // monthly breakdown
+    const mt = document.querySelector('#monthlyTable tbody');
+    mt.innerHTML = '';
+    const m = out.metrics;
+    const exp = m.monthlyExpenses || {};
+    [
+      ['Effective Income', m.monthlyIncome],
+      ['Vacancy', exp.vacancy],
+      ['Taxes', exp.taxes],
+      ['Insurance', exp.insurance],
+      ['HOA', exp.hoa],
+      ['Mgmt (PM)', exp.management],
+      ['Maintenance/CapEx', exp.maintenance],
+      ['Utilities', exp.utilities],
+      ['P&I (Mortgage)', exp.pi],
+      ['NOI', m.noiMonthly],
+      ['Cash Flow', m.cashFlowMonthly]
+    ].forEach(([k,v])=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${k}</td><td>${dollars(v)}</td>`;
+      mt.appendChild(tr);
+    });
+
+    // annual summary
+    const at = document.querySelector('#annualTable tbody');
+    at.innerHTML = '';
+    [
+      ['NOI (Annual)', m.noiAnnual],
+      ['Debt Service (Annual)', m.debtServiceAnnual || (m.monthlyExpenses?.pi*12)],
+      ['Cash Flow (Annual)', m.cashFlowAnnual],
+      ['Cap Rate', pct(m.capRate, 2)],
+      ['Cash-on-Cash', pct(m.cashOnCash, 2)],
+    ].forEach(([k,v])=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${k}</td><td>${typeof v === 'string' && v.endsWith('%') ? v : (k.includes('Rate') || k.includes('Cash-on-Cash') ? v : dollars(v))}</td>`;
+      at.appendChild(tr);
+    });
+
+    // sensitivity
+    const st = document.querySelector('#sensitivityTable tbody');
+    st.innerHTML = '';
+    (out.sensitivity || []).forEach(row=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${dollars(row.rent)}</td><td>${dollars(row.cashFlowMonthly)}</td><td>${(row.dscr||0).toFixed(2)}</td>`;
+      st.appendChild(tr);
     });
   }
 
-  // ---------- Prefill handler (Fetch data) ----------
-  const btnFetch = document.getElementById("btnFetch");
-  const fetchStatus = document.getElementById("fetchStatus");
-  if (btnFetch && form) {
-    btnFetch.addEventListener("click", async () => {
-      fetchStatus.textContent = "Fetching…";
-      try {
-        const payload = getFormObj(form);
-        const res = await fetchJSON(API_PREFILL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address: payload.addressOneLine })
-        });
-        if (!res.ok) throw new Error(res.error || "Lookup failed");
+  function validate(inputs){
+    if (!document.getElementById('consent').checked) {
+      throw new Error('Please accept the educational-only consent to proceed.');
+    }
+    if (!inputs.purchasePrice || !inputs.rate || !inputs.termYears) {
+      throw new Error('Please provide Purchase Price, Interest Rate, and Term.');
+    }
+  }
 
-        const est   = res.estimates || {};
-        const parts = res.address_parts || {};
-
-        // backfill address parts if user only typed street
-        setIfEmpty(form, "address", parts.street);
-        setIfEmpty(form, "city",    parts.city);
-        setIfEmpty(form, "state",   parts.state);
-        setIfEmpty(form, "zip",     parts.zip);
-
-        // costs (only fill if currently empty so user can override later)
-        if (est.hoa_monthly != null)       setIfEmpty(form, "hoa", est.hoa_monthly);
-        if (est.tax_monthly != null)       setIfEmpty(form, "taxes", est.tax_monthly);
-        if (est.insurance_monthly != null) setIfEmpty(form, "insurance", est.insurance_monthly);
-
-        // Optional: if your backend returns price & rent, inject fields if not present
-        if (est.suggested_price != null) {
-          if (!form.querySelector('[name="price"]')) {
-            const priceInput = document.createElement("input");
-            priceInput.name = "price";
-            priceInput.type = "number";
-            priceInput.placeholder = "Purchase price ($)";
-            priceInput.min = 0;
-            priceInput.value = est.suggested_price;
-            // insert right after the Street Address label
-            const streetLabel = form.querySelector('label > input[name="address"]').closest('label');
-            streetLabel.after(priceInput);
-          } else {
-            setIfEmpty(form, "price", est.suggested_price);
-          }
-        }
-        if (est.rent_monthly != null) {
-          if (!form.querySelector('[name="rent"]')) {
-            const rentInput = document.createElement("input");
-            rentInput.name = "rent";
-            rentInput.type = "number";
-            rentInput.placeholder = "Rent ($/mo)";
-            rentInput.min = 0;
-            rentInput.value = est.rent_monthly;
-            // add after the HOA/Insurance/Taxes grid
-            const grids = form.querySelectorAll('.grid-3');
-            const lastGrid = grids[grids.length - 1];
-            lastGrid.after(rentInput);
-          } else {
-            setIfEmpty(form, "rent", est.rent_monthly);
-          }
-        }
-
-        fetchStatus.textContent = res.note || "Filled estimates. Review & adjust, then click Analyze.";
-      } catch (err) {
-        console.error(err);
-        fetchStatus.textContent = "Couldn’t fetch data (you can fill manually).";
-      }
+  async function callJSON(url, payload){
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
     });
+    if (!res.ok) {
+      const t = await res.text().catch(()=> '');
+      throw new Error(t || ('Request failed: ' + res.status));
+    }
+    return res.json();
   }
 
-  // ---------- Status page poller ----------
-  const statusEl = document.getElementById("status");
-  if (statusEl) {
-    const summaryEl   = document.getElementById("summary");
-    const estimatesEl = document.getElementById("estimates");
-    const metricsEl   = document.getElementById("metricsWrap");
-    const errorEl     = document.getElementById("error");
+  form?.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    err.style.display = 'none';
+    result.style.display = 'none';
 
-    // helper: build {label, cls} and render badge
-    const src = (label, cls) => ({ label, cls });
-    const badgeHTML = (s) => `<span class="src-badge ${s.cls}">${s.label}</span>`;
+    try {
+      const inputs = getInputs();
+      validate(inputs);
 
-    function deriveSources(a, e) {
-      const pulls = a.pulls || {};
-      const raw = pulls.raw || {};
-      const dbg = pulls.debug || {};
-      const has = (obj, path) => path.split(".").reduce((p,k)=> (p && p[k]!==undefined ? p[k] : undefined), obj);
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Analyzing…';
 
-      const rentcastRentOK  = !!has(dbg, "rentcast_rent.ok")  || Object.keys(raw.rentcast_rent  || {}).length > 0;
-      const rentcastValueOK = !!has(dbg, "rentcast_value.ok") || Object.keys(raw.rentcast_value || {}).length > 0;
-      const zillowHOAOK     = !!has(dbg, "zillow.ok") && (has(dbg, "zillow.hoa") > 0);
+      // 1) Server-side PREFETCH (does all-expense AI + rent context + county/fallback merge)
+      const prefetch = await callJSON(`${API_BASE}/rent-prefetch`, { inputs: {
+        address: inputs.address,
+        city: inputs.city,
+        state: inputs.state,
+        zip: inputs.zip,
+        county: undefined,
+        propertyType: inputs.propertyType,
+        units: inputs.units,
+        purchasePrice: inputs.purchasePrice,
+        yearBuilt: undefined,
+        sqft: undefined,
+        ownerOccupied: false
+      }});
 
-      const rent_est =
-        rentcastRentOK ? src("RentCast", "api")
-        : (e.rent_est > 0 ? src("Estimated (from price)", "heuristic")
-        : src("Unknown", "na"));
+      // 2) ANALYZE — user inputs (override) + the entire prefetch object
+      const out = await callJSON(`${API_BASE}/rent-analyze`, {
+        inputs,
+        prefetch
+      });
 
-      const price_est =
-        rentcastValueOK ? src("RentCast AVM", "api")
-        : (e.price_est > 0 ? src("Estimated (from rent)", "heuristic")
-        : src("Unknown", "na"));
+      // Render
+      document.getElementById('summary').innerHTML = buildSummary(inputs, out, prefetch);
+      fillTables(out);
+      result.style.display = 'block';
 
-      const taxes_month =
-        (e.price_est > 0) ? src("Estimated (State Avg)", "heuristic")
-        : src("Unknown", "na");
+      // GTM/analytics
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: 'rental_analyzer_submit',
+        state: inputs.state,
+        city: inputs.city,
+        propertyType: inputs.propertyType || 'unknown',
+        units: inputs.units || 1,
+        price: inputs.purchasePrice,
+        downPct: inputs.downPct,
+        rate: inputs.rate,
+        termYears: inputs.termYears,
+        usedPrefetch: !!out.prefetchUsed
+      });
 
-      const ins_month =
-        (e.price_est > 0) ? src("Estimated (State Baseline)", "heuristic")
-        : src("Unknown", "na");
-
-      let hoa_month = src("N/A", "na");
-      if (zillowHOAOK && e.hoa_month > 0) hoa_month = src("Zillow (RapidAPI)", "api");
-      else if (e.hoa_month > 0)          hoa_month = src("User-supplied", "user");
-
-      const hpi_growth = src("FHFA/FRED (State HPI)", "api");
-
-      return { rent_est, price_est, taxes_month, ins_month, hoa_month, hpi_growth };
+    } catch (ex) {
+      err.textContent = ex.message || 'Something went wrong.';
+      err.style.display = 'block';
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Analyze Deal';
     }
-
-    async function tick() {
-      const id = new URLSearchParams(location.search).get("id");
-      if (!id) { if (errorEl) errorEl.textContent = "Missing analysis id."; return; }
-
-      try {
-        const j = await fetchJSON(API_STATUS + encodeURIComponent(id));
-        if (!j.ok) throw new Error(j.error || "Not found");
-
-        const a = j.analysis || {};
-        statusEl.textContent = (a.status || "unknown").toUpperCase();
-        if (a.error && errorEl) errorEl.textContent = a.error;
-
-        if (a.status === "done") {
-          summaryEl?.classList.remove("hidden");
-          estimatesEl?.classList.remove("hidden");
-          metricsEl?.classList.remove("hidden");
-
-          // summary
-          const verdictEl = document.getElementById("verdict");
-          const reasonsEl = document.getElementById("reasons");
-          if (verdictEl) verdictEl.textContent = "Verdict: " + (a.verdict || "").toUpperCase();
-          if (reasonsEl) reasonsEl.textContent = a.reasons || "";
-
-          // estimates + provenance
-          const e = a.estimates || {};
-          const s = deriveSources(a, e);
-          if (estimatesEl) {
-            estimatesEl.innerHTML = `
-              <h4>Key Estimates</h4>
-              <ul class="results-list">
-                <li><strong>Rent (est):</strong> ${fmtMoney(e.rent_est)} ${badgeHTML(s.rent_est)}</li>
-                <li><strong>Price (est):</strong> ${fmtMoney(e.price_est)} ${badgeHTML(s.price_est)}</li>
-                <li><strong>Taxes/mo:</strong> ${fmtMoney(e.taxes_month)} ${badgeHTML(s.taxes_month)}</li>
-                <li><strong>Insurance/mo:</strong> ${fmtMoney(e.ins_month)} ${badgeHTML(s.ins_month)}</li>
-                <li><strong>HOA/mo:</strong> ${fmtMoney(e.hoa_month)} ${badgeHTML(s.hoa_month)}</li>
-                <li><strong>Appreciation (HPI):</strong> ${
-                  isFinite(e.hpi_growth) ? (e.hpi_growth*100).toFixed(2) + "%" : "—"
-                } ${badgeHTML(s.hpi_growth)}</li>
-              </ul>
-              <div class="results-legend">
-                <span class="src-badge api">API</span> live provider data
-                <span class="src-badge heuristic">Estimated</span> rule-of-thumb / state averages
-                <span class="src-badge user">User</span> value you entered
-                <span class="src-badge na">N/A</span> not available
-              </div>`;
-          }
-
-          // metrics + explanations
-          const m = a.metrics || {};
-          if (metricsEl) {
-            metricsEl.innerHTML = `
-              <h4>Metrics</h4>
-              <ul class="results-list">
-                <li><strong>Cap Rate:</strong> ${fmtPct(m.cap_rate || 0, 2)}<br>
-                  <span class="small">Cap Rate = NOI ÷ Purchase Price.</span>
-                </li>
-                <li><strong>Cash Flow/mo:</strong> ${fmtMoney(m.cash_flow_month)}</li>
-                <li><strong>NOI/mo:</strong> ${fmtMoney(m.noi_month)}</li>
-                <li><strong>P&amp;I/mo:</strong> ${fmtMoney(m.pi_month)}</li>
-                <li><strong>Cash-on-Cash (CoC):</strong> ${fmtPct(m.coc || 0, 2)}<br>
-                  <span class="small">CoC = Annual Cash Flow ÷ Total Cash Invested.</span>
-                </li>
-                <li><strong>IRR (${m.irr_years ?? "—"} yrs):</strong> ${
-                  isFinite(m.irr) ? (m.irr*100).toFixed(2) + "%" : "—"
-                }<br>
-                  <span class="small">IRR includes cash flows and sale with payoff & selling costs.</span>
-                </li>
-              </ul>
-              <details style="margin-top:.5rem">
-                <summary class="small">Raw JSON</summary>
-                <pre class="metrics">${JSON.stringify({estimates:a.estimates, metrics:a.metrics, pulls:a.pulls}, null, 2)}</pre>
-              </details>`;
-          }
-        }
-      } catch (err) {
-        if (errorEl) errorEl.textContent = err.message;
-      }
-    }
-
-    tick();
-    setInterval(tick, 2000);
-  }
-});
+  });
+})();
