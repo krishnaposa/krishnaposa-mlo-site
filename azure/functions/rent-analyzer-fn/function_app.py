@@ -85,8 +85,8 @@ def rent_prefetch(req: func.HttpRequest) -> func.HttpResponse:
 # =========================================================
 # RENT-ANALYZE  -> routes/rent_analyze.py : run_rent_analyze(inputs, prefetch) -> dict
 # =========================================================
-@app.function_name(name="rent_analyze")
-@app.route(route="rent-analyze", methods=["POST","OPTIONS"])
+@app.function_name(name="rent_analyzer")
+@app.route(route="rent-analyzer", methods=["POST","OPTIONS"])
 def rent_analyze(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=204, headers=_cors_headers())
@@ -98,7 +98,7 @@ def rent_analyze(req: func.HttpRequest) -> func.HttpResponse:
     prefetch = (body or {}).get("prefetch") or {}
 
     try:
-        from routes.rent_analyze import run_rent_analyze
+        from routes.rent_analyzer import run_rent_analyze
         out = run_rent_analyze(inputs, prefetch)
         return _ok(out)
     except Exception as e:
