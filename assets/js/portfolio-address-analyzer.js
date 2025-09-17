@@ -1,4 +1,3 @@
-// /assets/js/portfolio-address-analyzer.js
 (function(){
   const API_BASE = 'https://<YOUR-FUNCTION-APP>.azurewebsites.net/api'; // set your Functions base
 
@@ -142,14 +141,12 @@
     pickedCount.textContent = `${c} of 10 selected`;
   }
 
-  // Networking
   async function callJSON(url, payload){
     const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     if (!res.ok){ const t = await res.text().catch(()=> ''); throw new Error(t || ('Request failed: '+res.status)); }
     return res.json();
   }
 
-  // Analyze a single property with shared financing
   async function analyzeOne(shared, picked){
     let price = Number(prompt(`Enter Purchase Price for:\n${picked.label}`, '0') || '0');
     if (!Number.isFinite(price) || price <= 0) throw new Error('Purchase Price required.');
@@ -168,12 +165,15 @@
       rent, otherIncome: 0, vacancyPct: shared.vacancyPct
     };
     const out = await callJSON(`${API_BASE}/rent-analyze`, { inputs, prefetch });
+    // carry prefetch into output to let ranker/renderer read flags
+    out.prefetch = prefetch;
     return out;
   }
 
   function renderTable(results, order, aiMeta){
     portTbl.innerHTML = '';
     const list = order ? order.map(i => results[i]) : results;
+
     list.forEach((r, i)=>{
       const addr = r.address || [r.inputs?.address, r.inputs?.city, r.inputs?.state, r.inputs?.zip].filter(Boolean).join(', ');
       const tr = document.createElement('tr');
@@ -188,16 +188,50 @@
         <td>${Number(r.metrics?.dscr||0).toFixed(2)}</td>
       `;
       portTbl.appendChild(tr);
+
+      // Details row (AI narrative)
+      const det = document.createElement('tr');
+      det.innerHTML = `
+        <td colspan="8" style="background:#fafafa">
+          <details>
+            <summary style="cursor:pointer">Details</summary>
+            <div class="muted" data-narrative>Loading…</div>
+          </details>
+        </td>
+      `;
+      portTbl.appendChild(det);
+
+      // Fill narrative if available
+      const idxInOriginal = order ? order[i] : i; // original index the ranker used
+      const map = aiMeta?.rankedMap || {};
+      const info = map[idxInOriginal];
+
+      const div = det.querySelector('[data-narrative]');
+      if (info){
+        const pros = (info.pros || []).map(p => `<li>${p}</li>`).join('');
+        const cons = (info.cons || []).map(c => `<li>${c}</li>`).join('');
+        div.innerHTML = `
+          <p><strong>AI Score:</strong> ${Number(info.score||0).toFixed(1)} · <strong>Rank:</strong> ${info.rank}</p>
+          ${info.rationale ? `<p>${info.rationale}</p>` : ''}
+          <div class="grid-2" style="gap:20px">
+            <div><strong>Pros</strong><ul>${pros || '<li>—</li>'}</ul></div>
+            <div><strong>Cons</strong><ul>${cons || '<li>—</li>'}</ul></div>
+          </div>
+          ${info.flags ? `<p><strong>Flags:</strong> ${info.flags}</p>` : ''}
+        `;
+      } else {
+        div.textContent = 'Ranked by fallback (Cash-on-Cash, Cash Flow).';
+      }
     });
+
     if (aiMeta?.ok) {
-      portNote.textContent = 'Ranked by AI (investment attractiveness).';
+      portNote.textContent = aiMeta.summary ? `Ranked by AI · ${aiMeta.summary}` : 'Ranked by AI (investment attractiveness).';
     } else {
       portNote.textContent = 'AI ranking unavailable — sorted by Cash-on-Cash (desc), then Monthly Cash Flow (desc).';
     }
     portRes.style.display = 'block';
   }
 
-  // Submit
   form.addEventListener('submit', async (e)=>{
     e.preventDefault(); hideErr(); portRes.style.display='none'; portTbl.innerHTML='';
 
@@ -220,21 +254,26 @@
       submitBtn.disabled = true; submitBtn.textContent = 'Analyzing…';
 
       const results = [];
-      // Simple sequential loop; you can switch to Promise.all for parallel if desired
       for (const p of items){
         const out = await analyzeOne(shared, p);
         results.push(out);
       }
 
-      // Call AI ranker
+      // AI ranker
       let rankResp = null;
       try {
         rankResp = await callJSON(`${API_BASE}/portfolio-rank`, { items: results });
-        const order = Array.isArray(rankResp.order) ? rankResp.order : null;
-        renderTable(results, order, rankResp);
+
+        // Build lookup by original idx for narratives
+        const rankedMap = {};
+        (rankResp.ranked || []).forEach(r => { if (typeof r?.idx === 'number') rankedMap[r.idx] = r; });
+
+        renderTable(results,
+          Array.isArray(rankResp.order) ? rankResp.order : null,
+          { ok: !!rankResp.ok, rankedMap, summary: rankResp.summary }
+        );
       } catch (rankErr) {
         console.warn('AI ranker failed, falling back:', rankErr);
-        // Fallback: sort by CoC desc, then CF desc
         const indices = results.map((_, i)=> i);
         indices.sort((i, j)=>{
           const a = results[i].metrics || {}, b = results[j].metrics || {};
@@ -243,10 +282,9 @@
           const f1 = Number(a.cashFlowMonthly || 0), f2 = Number(b.cashFlowMonthly || 0);
           return f2 - f1;
         });
-        renderTable(results, indices, { ok: false });
+        renderTable(results, indices, { ok: false, rankedMap: {}, summary: '' });
       }
 
-      // Analytics
       window.dataLayer = window.dataLayer || [];
       window.dataLayer.push({ event: 'portfolio_analyzer_submit', count: items.length });
 
@@ -257,8 +295,5 @@
     }
   });
 
-  // Init
-  window.addEventListener('load', ()=>{
-    initPlaces();
-  });
+  window.addEventListener('load', ()=> { initPlaces(); });
 })();
