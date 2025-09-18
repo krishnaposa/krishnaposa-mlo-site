@@ -1,12 +1,13 @@
 /* assets/js/karaoke.js
    Upload + poll (submit page) and "player mode" listing (private storage via SAS).
-   Robust output device listing, beep tests, and correct Play/Pause/Restart behavior.
+   Robust output device listing, beep tests, correct Play/Pause/Restart behavior,
+   and lyrics (synced LRC if available) via your Azure Function /api/lyrics.
 */
 
 // =================== CONFIG ===================
 const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net'; // your Function App
 const FUNCTION_CODE = ''; // optional: '...'; leave '' if authLevel="anonymous"
-const OUTPUT_BASE = ''; 
+const OUTPUT_BASE = '';
 // ^ For private containers, leave ''. We'll use SAS URLs from /api/list or /status.
 //   If you make the container public, set to: 'https://<account>.blob.core.windows.net/karaoke-output'
 
@@ -14,6 +15,7 @@ const OUTPUT_BASE = '';
 const submitUrl = `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
 const statusUrl = (jobId) =>
   `${API_BASE}/api/status/${encodeURIComponent(jobId)}${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
+const lyricsApiUrl = `${API_BASE}/api/lyrics${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
 
 // =================== ELEMENTS (upload page) ===================
 const els = {
@@ -276,6 +278,7 @@ function pauseAll() {
   if (vocalsEl) vocalsEl.playbackRate = 1;
   if (bandEl)   bandEl.playbackRate   = 1;
   isPlaying = false;
+  onPlaybackPaused(); // stop lyrics sync too
 }
 
 async function preloadIfNeeded() {
@@ -283,7 +286,7 @@ async function preloadIfNeeded() {
   if (!vocalsUrl || !bandUrl || vocalsUrl === '#' || bandUrl === '#') {
     throw new Error('No tracks loaded yet.');
   }
-  vocalsEl.src = vocalsUrl; 
+  vocalsEl.src = vocalsUrl;
   bandEl.src   = bandUrl;
   await applySinks();
   // Preload using .load() and wait for canplay on both
@@ -303,6 +306,7 @@ async function resumePlay() {
   ]);
   isPlaying = true;
   startDriftCorrection(currentOffsetMs());
+  onPlaybackStarted(); // start lyrics sync if available
 }
 
 // Start from 0 with offset sequencing
@@ -321,6 +325,7 @@ async function startFromZeroWithOffset(offsetMs) {
   }
   isPlaying = true;
   startDriftCorrection(offsetMs);
+  onPlaybackStarted(); // start lyrics sync if available
 }
 
 // Determine current intended offset (read input)
@@ -436,6 +441,109 @@ testBandBtn?.addEventListener('click', async () => {
   await playBeep('band', bandOut.value, 660, 500); // E5
 });
 
+// =================== LYRICS (Synced LRC if available) ===================
+const lyricsBtn  = document.getElementById('loadLyrics');
+const lyricsBox  = document.getElementById('lyricsBox');
+const lyrArtist  = document.getElementById('lyrArtist');
+
+let _lrcLines = null;     // [{t: seconds, text}]
+let _lyricsTimer = null;  // interval id
+
+function parseLRC(lrcText) {
+  const lines = [];
+  const re = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\](.*)/g;
+  let m;
+  while ((m = re.exec(lrcText)) !== null) {
+    const min = parseInt(m[1], 10);
+    const sec = parseInt(m[2], 10);
+    const ms  = m[3] ? parseInt(m[3].padEnd(3,'0'),10) : 0;
+    const t = min*60 + sec + ms/1000;
+    const text = (m[4] || '').trim();
+    lines.push({ t, text });
+  }
+  lines.sort((a,b)=>a.t-b.t);
+  return lines;
+}
+
+function renderUnsynced(text) {
+  if (lyricsBox) lyricsBox.textContent = text || 'No lyrics found.';
+}
+
+function stopLyricsSync() {
+  if (_lyricsTimer) { clearInterval(_lyricsTimer); _lyricsTimer = null; }
+}
+
+function startLyricsSync() {
+  if (!_lrcLines || !lyricsBox) return;
+  stopLyricsSync();
+  _lyricsTimer = setInterval(() => {
+    if (!bandEl || !vocalsEl) return;
+    // Sync based on band time (fallback to vocals)
+    const ct = bandEl.currentTime || vocalsEl.currentTime || 0;
+
+    let i = _lrcLines.findIndex(l => l.t > ct);
+    if (i === -1) i = _lrcLines.length;
+    const idx = Math.max(0, i - 1);
+    const prev = Math.max(0, idx - 3);
+    const next = Math.min(_lrcLines.length, idx + 4);
+    const chunk = _lrcLines.slice(prev, next)
+      .map((l) => (l === _lrcLines[idx] ? `> ${l.text}` : `  ${l.text}`))
+      .join('\n');
+    lyricsBox.textContent = chunk || '—';
+  }, 250);
+}
+
+function onPlaybackStarted(){ startLyricsSync(); }
+function onPlaybackPaused(){ stopLyricsSync(); }
+
+// Load lyrics when user clicks button
+lyricsBtn?.addEventListener('click', async () => {
+  try {
+    if (!vocalsUrl && !bandUrl) {
+      if (lyricsBox) lyricsBox.textContent = 'Load a song first.';
+      return;
+    }
+
+    // Title: prefer the visible Now Playing title; fallback to filename
+    const titleText = (trackTitle?.textContent || '').trim();
+    let title = (titleText && titleText !== '—' && titleText !== 'Unknown Track') ? titleText : '';
+    if (!title) {
+      const guess = (vocalsUrl || bandUrl || '').split('?')[0].split('/').pop();
+      title = guess ? guess.replace(/\.(wav|mp3|m4a|flac|aac)$/i,'') : '';
+    }
+    if (!title) { lyricsBox.textContent = 'Unable to determine track title.'; return; }
+
+    const artist = lyrArtist?.value?.trim() || '';
+    const duration = Math.round(bandEl?.duration || vocalsEl?.duration || 0);
+
+    const url = new URL(lyricsApiUrl);
+    url.searchParams.set('title', title);
+    if (artist)   url.searchParams.set('artist', artist);
+    if (duration) url.searchParams.set('duration', String(duration));
+
+    if (lyricsBox) lyricsBox.textContent = 'Fetching lyrics…';
+    const r = await fetch(url.toString(), { mode: 'cors' });
+    const data = await r.json();
+
+    stopLyricsSync(); _lrcLines = null;
+
+    if (!data || data.found === false) {
+      renderUnsynced('No lyrics found.');
+      return;
+    }
+    if (data.synced && data.lrc) {
+      _lrcLines = parseLRC(data.lrc);
+      lyricsBox.textContent = 'Synced lyrics loaded.';
+      if (isPlaying) startLyricsSync();
+    } else {
+      renderUnsynced(data.text || 'No lyrics text available.');
+    }
+  } catch (e) {
+    console.warn(e);
+    if (lyricsBox) lyricsBox.textContent = 'Failed to fetch lyrics.';
+  }
+});
+
 // =================== PLAYER MODE: list & load via SAS ===================
 if (window.KARAOKE_MODE === 'player') {
   (function(){
@@ -496,10 +604,13 @@ if (window.KARAOKE_MODE === 'player') {
         bandUrl   = sel.band   || '';
         showTrackTitle(sel.title || 'Unknown Track');
 
-        // Reset playback state because sources changed
-        isLoaded = false;
+        // Reset playback + lyrics because sources changed
+        isLoaded  = false;
         isPlaying = false;
         pauseAll();
+        stopLyricsSync();
+        if (lyricsBox) lyricsBox.textContent = '—';
+        _lrcLines = null;
 
         if (vocalsUrlIn) vocalsUrlIn.value = vocalsUrl;
         if (bandUrlIn)   bandUrlIn.value   = bandUrl;
