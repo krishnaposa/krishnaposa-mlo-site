@@ -67,6 +67,11 @@ python -m pip install -U yt-dlp
 python -m pip install -U spleeter
 pip install demucs==4.0.1 yt-dlp==2024.8.6 azure-storage-blob==12.20.0 azure-storage-queue==12.6.0 
 
+# Activate your venv first
+pip uninstall -y numpy
+pip install "numpy<2.0"
+pip install spleeter --upgrade --force-reinstall
+
 SEPARATOR=spleeter (default) or SEPARATOR=demucs
 	•	FFMPEG_DIR=C:\pers\ffmpeg\bin
 	•	OUTPUT_BASE=C:\pers\karaoke-out
