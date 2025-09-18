@@ -129,6 +129,7 @@
                       <th style="width:34px">#</th>
                       <th>Address</th>
                       <th style="width:160px">Selected Rent</th>
+                      <th style="width:180px">Price</th> <!-- NEW -->
                       <th style="width:110px">Action</th>
                     </tr>
                   </thead>
@@ -145,6 +146,10 @@
                     <div class="muted" data-meta></div>
                   </td>
                   <td data-rent-readonly>$0</td>
+                  <td>
+                    <input data-price-input type="number" min="0" step="1000" placeholder="Enter price"
+                           style="width:160px; max-width:100%">
+                  </td>
                   <td><button class="btn" type="button" data-remove>Remove</button></td>
                 </tr>
               </template>
