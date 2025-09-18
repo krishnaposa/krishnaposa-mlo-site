@@ -4,13 +4,15 @@
   const form        = document.getElementById('portfolio-form');
   const err         = document.getElementById('err');
   const submitBtn   = document.getElementById('submitBtn');
+
   const addrSearch  = document.getElementById('addrSearch');
   const addrResults = document.getElementById('addrResults');
   const addrRent    = document.getElementById('addrRent');
+  const addrPrice   = document.getElementById('addrPrice');
   const addBtn      = document.getElementById('addAddressBtn');
   const clearBtn    = document.getElementById('clearSearch');
-  const pickedCount = document.getElementById('pickedCount');
 
+  const pickedCount = document.getElementById('pickedCount');
   const pickedTableBody = document.querySelector('#pickedTable tbody');
   const pickedRowTpl    = document.getElementById('pickedRowTpl');
 
@@ -23,25 +25,23 @@
   function showErr(m){ err.textContent = m; err.style.display = 'block'; }
   function hideErr(){ err.style.display = 'none'; }
 
-  // ---------- Google Places (new-first, fallback-old) ----------
-  let sessionToken, AutocompleteSuggestion = null, oldAutocompleteService = null, oldPlacesService = null;
-
+  // ---------- Google Places (fallback-safe) ----------
+  let sessionToken, AutocompleteService = null, PlacesService = null;
   function initPlaces(){
     if (!('google' in window) || !google.maps || !google.maps.places) return;
-    AutocompleteSuggestion   = google.maps.places.AutocompleteSuggestion || null;
-    oldAutocompleteService   = new google.maps.places.AutocompleteService();
-    oldPlacesService         = new google.maps.places.PlacesService(document.createElement('div'));
+    AutocompleteService = new google.maps.places.AutocompleteService();
+    PlacesService       = new google.maps.places.PlacesService(document.createElement('div'));
     newSessionToken();
   }
   function newSessionToken(){ sessionToken = new google.maps.places.AutocompleteSessionToken(); }
 
-  function renderSuggestions(items){
+  function renderSuggestions(preds){
     addrResults.innerHTML='';
-    if(!items || !items.length){ addrResults.style.display='none'; addrSearch.setAttribute('aria-expanded','false'); return; }
-    items.forEach(pred=>{
+    if(!preds || !preds.length){ addrResults.style.display='none'; addrSearch.setAttribute('aria-expanded','false'); return; }
+    preds.forEach(pred=>{
       const li=document.createElement('li');
       li.role='option'; li.tabIndex=0; li.style.cursor='pointer'; li.style.padding='8px';
-      li.textContent = pred.formattedSuggestion || pred.description || pred.text || '';
+      li.textContent = pred.description || '';
       li.addEventListener('click',()=> selectPrediction(pred));
       li.addEventListener('keydown',(e)=>{ if(e.key==='Enter') selectPrediction(pred); });
       addrResults.appendChild(li);
@@ -50,122 +50,100 @@
     addrSearch.setAttribute('aria-expanded','true');
   }
 
-  async function selectPrediction(pred){
-    try {
-      if (pred && typeof pred.fetchFields === 'function') {
-        const { placePrediction } = await pred.fetchFields({
-          fields: ['formatted_address','address_components','geometry','name']
-        });
-        return addPlaceFromNew(placePrediction);
+  function selectPrediction(pred){
+    if (!PlacesService) return; // graceful no-autocomplete path
+    PlacesService.getDetails({
+      placeId: pred.place_id,
+      sessionToken,
+      fields: ['formatted_address','address_components','name']
+    }, (place, status)=>{
+      if (status !== google.maps.places.PlacesServiceStatus.OK || !place) {
+        showErr('Could not validate the address.'); return;
       }
-      oldPlacesService.getDetails({
-        placeId: pred.place_id,
-        sessionToken,
-        fields: ['formatted_address','address_components','geometry','name']
-      }, (place, status)=>{
-        if (status !== google.maps.places.PlacesServiceStatus.OK || !place) {
-          showErr('Could not validate the address.'); return;
-        }
-        addPlaceFromOld(place);
-      });
-    } catch (e) {
-      console.error(e);
-      showErr('Error fetching place details.');
-    }
+      const comp=(t)=> (place.address_components||[]).find(c=>c.types.includes(t));
+      const street=[comp('street_number')?.long_name||'', comp('route')?.long_name||''].filter(Boolean).join(' ').trim();
+      const city  = comp('locality')?.long_name || comp('sublocality_level_1')?.long_name || '';
+      const state = comp('administrative_area_level_1')?.short_name || '';
+      const zip   = comp('postal_code')?.long_name || '';
+      addPicked({
+        label: place.formatted_address || [street || place.name || '', city, state, zip].filter(Boolean).join(', '),
+        address: street || place.name || '',
+        city, state, zip
+      }, num(addrRent.value), num(addrPrice.value));
+      afterPickReset();
+    });
   }
 
-  function extractComponents(components){
-    const get=(t)=> (components||[]).find(c=>c.types.includes(t));
-    const street=[get('street_number')?.long_name||'', get('route')?.long_name||''].filter(Boolean).join(' ').trim();
-    const city  = get('locality')?.long_name || get('sublocality_level_1')?.long_name || '';
-    const state = get('administrative_area_level_1')?.short_name || '';
-    const zip   = get('postal_code')?.long_name || '';
-    return { street, city, state, zip };
-  }
-  function addPlaceFromNew(place){
-    if (!place){ showErr('Could not validate the address.'); return; }
-    const { street, city, state, zip } = extractComponents(place.address_components);
-    addPicked({
-      label: place.formatted_address || [street || place.name || '', city, state, zip].filter(Boolean).join(', '),
-      address: street || place.name || '', city, state, zip
-    }, num(addrRent.value));
-    afterPickReset();
-  }
-  function addPlaceFromOld(place){
-    const { street, city, state, zip } = extractComponents(place.address_components);
-    addPicked({
-      label: place.formatted_address || [street || place.name || '', city, state, zip].filter(Boolean).join(', '),
-      address: street || place.name || '', city, state, zip
-    }, num(addrRent.value));
-    afterPickReset();
-  }
+  addrSearch.addEventListener('input', ()=>{
+    hideErr();
+    const q=(addrSearch.value||'').trim();
+    if(!q || !AutocompleteService){ addrResults.style.display='none'; addrSearch.setAttribute('aria-expanded','false'); return; }
+    AutocompleteService.getPlacePredictions({
+      input:q, sessionToken, types:['address'], componentRestrictions:{ country:['us'] }
+    }, (preds, status)=>{
+      if (status !== google.maps.places.PlacesServiceStatus.OK){ addrResults.style.display='none'; addrSearch.setAttribute('aria-expanded','false'); return; }
+      renderSuggestions(preds);
+    });
+  });
+
   function afterPickReset(){
-    addrSearch.value=''; addrRent.value='';
+    addrSearch.value=''; addrRent.value=''; addrPrice.value='';
     addrResults.innerHTML=''; addrResults.style.display='none';
     addrSearch.setAttribute('aria-expanded','false');
     newSessionToken();
   }
 
-  // ---------- Manual entry if autocomplete not used ----------
+  // Manual add if autocomplete not used
   addrSearch.addEventListener('keydown', (e)=>{
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addManualCurrent();
-    }
+    if (e.key === 'Enter') { e.preventDefault(); addManualCurrent(); }
   });
   addBtn.addEventListener('click', addManualCurrent);
 
   function addManualCurrent(){
     const label = (addrSearch.value||'').trim();
     if (!label){ showErr('Enter an address to add.'); return; }
+    // lightweight parse for state/zip
     const parts = label.split(/[\s,]+/);
     const zip   = parts.find(p=>/^\d{5}$/.test(p)) || '';
-    const state = (parts.find(p=>/^[A-Z]{2}$/i.test(p)) || '').toUpperCase();
-    let city = '';
-    if (state) {
-      const idx = parts.findIndex(p => p.toUpperCase() === state);
-      if (idx > 0) city = parts[idx-1];
-    } else if (zip) {
-      const idx = parts.findIndex(p => /^\d{5}$/.test(p));
-      if (idx > 0) city = parts[idx-1];
-    }
-    addPicked({ label, address: label, city, state, zip }, num(addrRent.value));
+    const state = parts.find(p=>/^[A-Z]{2}$/i.test(p)) || '';
+    addPicked(
+      { label, address: label, city:'', state, zip },
+      num(addrRent.value),
+      num(addrPrice.value)
+    );
     afterPickReset();
   }
 
-  clearBtn.addEventListener('click', ()=>{
-    addrSearch.value=''; addrRent.value='';
-    addrResults.innerHTML=''; addrResults.style.display='none';
-    addrSearch.setAttribute('aria-expanded','false');
-  });
+  clearBtn.addEventListener('click', afterPickReset);
 
   // ---------- Picked list (table) ----------
   function pickedItems(){
     return Array.from(pickedTableBody.querySelectorAll('tr[data-item]')).map((row)=>({
-      label: row.querySelector('[data-label]')?.textContent || '',
+      label:   row.querySelector('[data-label]')?.textContent || '',
       address: row.dataset.address || '',
-      city: row.dataset.city || '',
-      state: row.dataset.state || '',
-      zip: row.dataset.zip || '',
-      rent: Number(row.dataset.rent || 0),
-      price: Number(row.querySelector('[data-price-input]')?.value || 0)
+      city:    row.dataset.city || '',
+      state:   row.dataset.state || '',
+      zip:     row.dataset.zip || '',
+      rent:    Number(row.dataset.rent || 0),
+      price:   Number(row.dataset.price || 0)
     }));
   }
 
-  function addPicked(addr, rent){
+  function addPicked(addr, rent, price){
     const count = pickedTableBody.querySelectorAll('tr[data-item]').length;
     if (count >= 10){ showErr('You can add up to 10 properties.'); return; }
 
     const node = pickedRowTpl.content.firstElementChild.cloneNode(true);
     node.querySelector('[data-label]').textContent = addr.label;
-    node.querySelector('[data-meta]').textContent  = [addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
-    node.querySelector('[data-rent-readonly]').textContent = dollars(rent || 0);
+    node.querySelector('[data-rent-readonly]').textContent  = dollars(rent || 0);
+    node.querySelector('[data-price-readonly]').textContent = dollars(price || 0);
 
     node.dataset.address = addr.address || '';
     node.dataset.city    = addr.city    || '';
     node.dataset.state   = addr.state   || '';
     node.dataset.zip     = addr.zip     || '';
     node.dataset.rent    = String(rent || 0);
+    node.dataset.price   = String(price || 0);
 
     node.querySelector('[data-remove]').addEventListener('click', ()=>{
       node.remove(); updatePickedCountAndIndex();
@@ -177,10 +155,7 @@
 
   function updatePickedCountAndIndex(){
     const rows = Array.from(pickedTableBody.querySelectorAll('tr[data-item]'));
-    rows.forEach((row, idx)=> {
-      const idxCell = row.querySelector('[data-idx]');
-      if (idxCell) idxCell.textContent = String(idx+1);
-    });
+    rows.forEach((row, idx)=> { const idxCell = row.querySelector('[data-idx]'); if (idxCell) idxCell.textContent = String(idx+1); });
     pickedCount.textContent = `${rows.length} of 10 selected`;
   }
 
@@ -192,20 +167,19 @@
   }
 
   async function analyzeOne(shared, picked){
-    if (!picked.price || picked.price <= 0) {
-      throw new Error(`Enter a valid Price for:\n${picked.label}`);
-    }
+    const price = Number(picked.price || 0);
+    if (!price) throw new Error(`Purchase Price required for:\n${picked.label}`);
 
     const prefetch = await postJSON(`${FN_BASE}/api/rent-prefetch`, {
       inputs: {
         address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
-        propertyType: '', units: 1, purchasePrice: picked.price, ownerOccupied: false
+        propertyType: '', units: 1, purchasePrice: price, ownerOccupied: false
       }
     });
 
     const inputs = {
       address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
-      propertyType: '', units: 1, purchasePrice: picked.price,
+      propertyType: '', units: 1, purchasePrice: price,
       downPct: shared.downPct, rate: shared.rate, termYears: shared.termYears,
       closingCosts: shared.closingCosts, pointsPct: shared.pointsPct,
       rent: Number(picked.rent || prefetch?.ai?.rent?.est || 0),
@@ -220,7 +194,6 @@
   function renderTable(results, order, aiMeta){
     portTbl.innerHTML = '';
     const list = order ? order.map(i=> results[i]) : results;
-
     list.forEach((r, i)=>{
       const addr = r.address || [r.inputs?.address, r.inputs?.city, r.inputs?.state, r.inputs?.zip].filter(Boolean).join(', ');
       const tr = document.createElement('tr');
@@ -235,7 +208,6 @@
         <td>${Number(r.metrics?.dscr||0).toFixed(2)}</td>`;
       portTbl.appendChild(tr);
     });
-
     portNote.textContent = aiMeta?.ok
       ? (aiMeta.summary ? `Ranked by AI · ${aiMeta.summary}` : 'Ranked by AI (investment attractiveness).')
       : 'AI ranking unavailable — sorted by Cash-on-Cash then Monthly Cash Flow.';
@@ -247,7 +219,7 @@
     e.preventDefault(); hideErr(); portRes.style.display='none'; portTbl.innerHTML='';
 
     try{
-      if (!document.getElementById('consent').checked) throw new Error('Please accept the educational-only consent.');
+      if (!document.getElementById('consent').checked) throw new Error('Please accept the educational-only consent to proceed.');
       const shared = {
         downPct: num(document.getElementById('downPct').value),
         rate: num(document.getElementById('rate').value),
@@ -262,22 +234,22 @@
       if (!items.length) throw new Error('Please add at least one address.');
       if (items.length > 10) throw new Error('Up to 10 properties supported.');
 
-      // Validate prices up-front
-      const bad = items.find(it => !it.price || it.price <= 0);
-      if (bad) throw new Error(`Enter a valid Price for:\n${bad.label}`);
-
       submitBtn.disabled = true; submitBtn.textContent = 'Analyzing…';
 
       const results = [];
       for (const p of items){
-        results.push(await analyzeOne(shared, p));
+        const out = await analyzeOne(shared, p);
+        results.push(out);
       }
 
+      // Rank (server: { items, aiMode })
+      let rankResp;
       try{
-        const rankResp = await postJSON(`${FN_BASE}/api/portfolio-rank`, { items: results, aiMode: 'auto' });
+        rankResp = await postJSON(`${FN_BASE}/api/portfolio-rank`, { items: results, aiMode: 'auto' });
         const order = Array.isArray(rankResp.order) ? rankResp.order : null;
         renderTable(results, order, { ok: !!rankResp.ok, summary: rankResp.summary });
       } catch {
+        // client fallback sort
         const idx = results.map((_, i)=> i);
         idx.sort((i, j)=>{
           const a = results[i].metrics||{}, b = results[j].metrics||{};
@@ -299,5 +271,6 @@
     }
   });
 
+  // Expose Places init for Google callback
   window.initPortfolioPlaces = initPlaces;
 })();
