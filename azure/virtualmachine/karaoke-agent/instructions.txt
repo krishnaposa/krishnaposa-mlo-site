@@ -77,3 +77,14 @@ SEPARATOR=spleeter (default) or SEPARATOR=demucs
 	•	FFMPEG_DIR=C:\pers\ffmpeg\bin
 	•	OUTPUT_BASE=C:\pers\karaoke-out
 	•	MAX_ATTEMPTS=5, BASE_DELAY_SEC=5, MAX_DELAY_SEC=900
+
+pip install --upgrade pip setuptools wheel
+
+# Lock numpy to a spleeter-friendly version
+pip install "numpy==1.23.5"
+
+# Reinstall pandas against that numpy
+pip install --force-reinstall --no-cache-dir "pandas==1.5.3"
+
+# Make sure numba & scipy are also ABI compatible
+pip install "scipy==1.10.1" "numba==0.56.4"
