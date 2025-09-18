@@ -41,3 +41,8 @@ az storage message get --queue-name karaoke-jobs-poison --connection-string "$ST
 
 # Then re-send it to the main queue
 az storage message put --queue-name karaoke-jobs --connection-string "$STORAGE_CONN" --content '{"job_id":"...","src":{...}}'
+
+# Activate your venv first
+pip uninstall -y numpy
+pip install "numpy<2.0"
+pip install spleeter --upgrade --force-reinstall
