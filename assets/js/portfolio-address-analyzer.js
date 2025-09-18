@@ -17,21 +17,32 @@
   const portNote    = document.getElementById('portfolioNote');
   const portTbl     = document.querySelector('#portfolioTable tbody');
 
+  // widen the “optional monthly rent” box a bit
+  if (addrRent) addrRent.style.width = '160px';
+
+  // widen the Address column in the results table
+  (function injectWideAddressCSS() {
+    const style = document.createElement('style');
+    style.textContent = `
+      #portfolioTable { table-layout: auto; }
+      #portfolioTable td:nth-child(2), #portfolioTable th:nth-child(2) {
+        max-width: 520px; white-space: normal; word-break: break-word;
+      }
+    `;
+    document.head.appendChild(style);
+  })();
+
   // ---- Utils ----
   const dollars = (n) => Number(n || 0).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
   const num = (v) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
   function showErr(m) { err.textContent = m; err.style.display = 'block'; }
   function hideErr() { err.style.display = 'none'; }
 
-  // ---- Google Places (new-first, fallback to classic) ----
-  let sessionToken,
-      AutocompleteSuggestion = null,   // new API
-      oldAutocompleteService = null,   // classic API
-      oldPlacesService = null;         // classic API
+  // ---- Google Places (new-first, fallback to classic). If none, manual add still works. ----
+  let sessionToken, AutocompleteSuggestion = null, oldAutocompleteService = null, oldPlacesService = null;
 
   function initPlaces() {
     if (!('google' in window) || !google.maps || !google.maps.places) return;
-
     AutocompleteSuggestion = google.maps.places.AutocompleteSuggestion || null;
     if (!AutocompleteSuggestion) {
       oldAutocompleteService = new google.maps.places.AutocompleteService();
@@ -68,15 +79,12 @@
 
   async function selectPrediction(pred) {
     try {
-      // NEW API: prediction exposes fetchFields()
       if (pred && typeof pred.fetchFields === 'function') {
         const { placePrediction } = await pred.fetchFields({
           fields: ['formatted_address', 'address_components', 'geometry', 'name']
         });
         return addPlaceFromNew(placePrediction);
       }
-
-      // CLASSIC API
       if (oldPlacesService) {
         oldPlacesService.getDetails({
           placeId: pred.place_id,
@@ -89,14 +97,13 @@
           addPlaceFromOld(place);
         });
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
       showErr('Error fetching place details.');
     }
   }
 
   function extractComponents(components) {
-    const get = (t) => (components || []).find((c) => c.types.includes(t));
+    const get = (t) => (components || []).find(c => c.types.includes(t));
     const street = [get('street_number')?.long_name || '', get('route')?.long_name || ''].filter(Boolean).join(' ').trim();
     const city   = get('locality')?.long_name || get('sublocality_level_1')?.long_name || '';
     const state  = get('administrative_area_level_1')?.short_name || '';
@@ -120,48 +127,18 @@
     }, num(addrRent.value));
     afterPickReset();
   }
-
-  // ---- Freeform (works when autocomplete is down) ----
-  function parseFreeformAddress(raw) {
-    const out = { address: raw, city: '', state: '', zip: '' };
-    try {
-      const parts = raw.split(',').map(s => s.trim());
-      if (parts.length >= 1) out.address = parts[0];
-      if (parts.length >= 2) out.city = parts[1];
-      if (parts.length >= 3) {
-        const m = parts[2].match(/([A-Za-z]{2})\s+(\d{5})(?:-\d{4})?/) || parts[2].match(/([A-Za-z]{2})/);
-        if (m) { out.state = (m[1] || '').toUpperCase(); if (m[2]) out.zip = m[2]; }
-      }
-    } catch {}
-    return out;
-  }
-  function addFreeform() {
-    const raw = (addrSearch.value || '').trim();
-    if (!raw) return;
-    const parsed = parseFreeformAddress(raw);
-    addPicked({
-      label: raw,
-      address: parsed.address,
-      city: parsed.city,
-      state: parsed.state,
-      zip: parsed.zip
-    }, Number(addrRent.value || 0));
-    afterPickReset();
-  }
   function afterPickReset() {
     addrSearch.value = ''; addrRent.value = '';
     addrResults.innerHTML = ''; addrResults.style.display = 'none';
     newSessionToken();
   }
 
-  // ---- Input events (autocomplete + freeform) ----
+  // Type-ahead: try new API, then classic
   addrSearch.addEventListener('input', async () => {
     hideErr();
     const q = (addrSearch.value || '').trim();
     if (!q) { addrResults.style.display = 'none'; addrSearch.setAttribute('aria-expanded', 'false'); return; }
-
     try {
-      // NEW API first
       if (AutocompleteSuggestion) {
         const sugg = new AutocompleteSuggestion({ sessionToken });
         if (typeof sugg.getSuggestions === 'function') {
@@ -177,7 +154,6 @@
           return renderSuggestions(suggestions);
         }
       }
-      // CLASSIC fallback
       if (oldAutocompleteService) {
         oldAutocompleteService.getPlacePredictions({
           input: q, sessionToken, types: ['address'], componentRestrictions: { country: ['us'] }
@@ -188,40 +164,35 @@
           renderSuggestions(preds);
         });
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
       addrResults.style.display = 'none';
       addrSearch.setAttribute('aria-expanded', 'false');
     }
   });
 
-  // ENTER key to add: if suggestions visible use first; else freeform
+  // Manual add when autocomplete is unavailable or user presses Enter on a full address
   addrSearch.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    const first = addrResults.querySelector('li');
-    if (first) { first.click(); return; }
-    addFreeform();
-  });
-  addrRent.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); addFreeform(); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const raw = (addrSearch.value || '').trim();
+      if (!raw) return;
+      // naive parse: "... , City, ST 12345"
+      const m = raw.match(/^(.*?),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})?$/i);
+      let address = raw, city = '', state = '', zip = '';
+      if (m) {
+        address = m[1].trim(); city = (m[2] || '').trim(); state = (m[3] || '').trim().toUpperCase(); zip = (m[4] || '').trim();
+      }
+      addPicked({ label: raw, address, city, state, zip }, num(addrRent.value));
+      afterPickReset();
+    }
   });
 
-  // Buttons: Clear (existing) + Add (programmatic)
   clearBtn.addEventListener('click', () => {
     addrSearch.value = ''; addrRent.value = '';
     addrResults.innerHTML = ''; addrResults.style.display = 'none';
-    addrSearch.setAttribute('aria-expanded', 'false');
   });
-  const addBtn = document.createElement('button');
-  addBtn.type = 'button';
-  addBtn.className = 'btn';
-  addBtn.textContent = 'Add';
-  addBtn.style.marginRight = '8px';
-  clearBtn.parentElement.insertBefore(addBtn, clearBtn);
-  addBtn.addEventListener('click', addFreeform);
 
-  // ---- Picked items list ----
+  // ---- Picked list (READ-ONLY rent) ----
   function pickedItems() {
     return Array.from(pickedList.querySelectorAll('[data-item]')).map(el => ({
       label: el.querySelector('[data-label]')?.textContent || '',
@@ -229,40 +200,71 @@
       city: el.dataset.city,
       state: el.dataset.state,
       zip: el.dataset.zip,
-      rent: Number(el.querySelector('[data-rent]')?.value || 0)
+      rent: Number(el.dataset.rent || 0) // read from dataset, not an input
     }));
   }
+
   function addPicked(addr, rent) {
     const count = pickedList.querySelectorAll('[data-item]').length;
     if (count >= 10) { showErr('You can add up to 10 properties.'); return; }
 
     const node = pickedTpl.content.firstElementChild.cloneNode(true);
     node.querySelector('[data-label]').textContent = addr.label;
-    node.querySelector('[data-meta]').textContent = [addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
-    node.querySelector('[data-rent]').value = rent || 0;
+    node.querySelector('[data-meta]').textContent  = [addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
 
+    // Remove editable rent input (if present in template) and replace with read-only text
+    const rentInput = node.querySelector('[data-rent]');
+    const controls  = rentInput ? rentInput.parentElement : null;
+    const display   = document.createElement('span');
+    display.setAttribute('data-rent-display', ''); // marker
+    display.style.fontWeight = '600';
+    display.textContent = dollars(rent || 0);
+
+    if (controls) {
+      // Replace label + input with a simple label + value
+      controls.innerHTML = '';
+      const label = document.createElement('span');
+      label.style.fontSize = '.85rem';
+      label.style.marginRight = '6px';
+      label.textContent = 'Rent';
+      const sep = document.createTextNode(': ');
+      controls.appendChild(label);
+      controls.appendChild(sep);
+      controls.appendChild(display);
+
+      // add Remove button back
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'btn';
+      removeBtn.type = 'button';
+      removeBtn.textContent = 'Remove';
+      removeBtn.style.marginLeft = '12px';
+      removeBtn.addEventListener('click', () => { node.remove(); updatePickedCount(); });
+      controls.appendChild(removeBtn);
+    }
+
+    // Persist fields
     node.dataset.address = addr.address || '';
-    node.dataset.city = addr.city || '';
-    node.dataset.state = addr.state || '';
-    node.dataset.zip = addr.zip || '';
+    node.dataset.city    = addr.city || '';
+    node.dataset.state   = addr.state || '';
+    node.dataset.zip     = addr.zip || '';
+    node.dataset.rent    = String(rent || 0);
 
-    node.querySelector('[data-remove]').addEventListener('click', () => { node.remove(); updatePickedCount(); });
     pickedList.appendChild(node);
     updatePickedCount();
   }
+
   function updatePickedCount() {
     const c = pickedList.querySelectorAll('[data-item]').length;
     pickedCount.textContent = `${c} of 10 selected`;
   }
 
-  // ---- Networking helpers ----
+  // ---- Server calls ----
   async function postJSON(url, body) {
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) { const t = await res.text().catch(() => ''); throw new Error(t || `Request failed: ${res.status}`); }
     return res.json();
   }
 
-  // ---- Analyze one property (server-side prefetch + analyze) ----
   async function analyzeOne(shared, picked) {
     const price = Number(prompt(`Enter Purchase Price for:\n${picked.label}`, '0') || '0');
     if (!price) throw new Error('Purchase Price required.');
@@ -274,24 +276,25 @@
       }
     });
 
+    // IMPORTANT: pass only the user-selected rent (read-only), never AI rent
     const inputs = {
       address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
       propertyType: '', units: 1, purchasePrice: price,
       downPct: shared.downPct, rate: shared.rate, termYears: shared.termYears,
       closingCosts: shared.closingCosts, pointsPct: shared.pointsPct,
-      rent: Number(picked.rent || prefetch?.ai?.rent?.est || 0),
+      rent: Number(picked.rent || 0),       // <- user’s selected rent only
       otherIncome: 0, vacancyPct: shared.vacancyPct
     };
+
     const analyzed = await postJSON(`${FN_BASE}/api/rent-analyze`, { inputs, prefetch });
     analyzed.prefetch = prefetch;
     return analyzed;
   }
 
-  // ---- Render table ----
+  // ---- Render ----
   function renderTable(results, order, aiMeta) {
     portTbl.innerHTML = '';
     const list = order ? order.map(i => results[i]) : results;
-
     list.forEach((r, i) => {
       const addr = r.address || [r.inputs?.address, r.inputs?.city, r.inputs?.state, r.inputs?.zip].filter(Boolean).join(', ');
       const tr = document.createElement('tr');
@@ -299,27 +302,25 @@
         <td>${i + 1}</td>
         <td>${addr}</td>
         <td>${dollars(r.metrics?.price)}</td>
-        <td>${dollars(r.inputs?.rent || r.prefetch?.ai?.rent?.est || 0)}</td>
+        <td>${dollars(r.inputs?.rent || 0)}</td>
         <td>${dollars(r.metrics?.cashFlowMonthly)}</td>
         <td>${Number(r.metrics?.capRate || 0).toFixed(2)}%</td>
         <td>${Number(r.metrics?.cashOnCash || 0).toFixed(1)}%</td>
         <td>${Number(r.metrics?.dscr || 0).toFixed(2)}</td>`;
       portTbl.appendChild(tr);
     });
-
     portNote.textContent = aiMeta?.ok
       ? (aiMeta.summary ? `Ranked by AI · ${aiMeta.summary}` : 'Ranked by AI (investment attractiveness).')
       : 'AI ranking unavailable — sorted by Cash-on-Cash then Monthly Cash Flow.';
     portRes.style.display = 'block';
   }
 
-  // ---- Submit flow ----
+  // ---- Submit ----
   form.addEventListener('submit', async (e) => {
     e.preventDefault(); hideErr(); portRes.style.display = 'none'; portTbl.innerHTML = '';
 
     try {
       if (!document.getElementById('consent').checked) throw new Error('Please accept the educational-only consent to proceed.');
-
       const shared = {
         downPct: num(document.getElementById('downPct').value),
         rate: num(document.getElementById('rate').value),
@@ -331,22 +332,25 @@
       if (!shared.downPct || !shared.rate || !shared.termYears) throw new Error('Down %, Rate, and Term are required.');
 
       const items = pickedItems();
-      if (!items.length) throw new Error('Please add at least one validated address.');
+      if (!items.length) throw new Error('Please add at least one address.');
       if (items.length > 10) throw new Error('Up to 10 properties supported.');
 
       submitBtn.disabled = true; submitBtn.textContent = 'Analyzing…';
 
       const results = [];
-      for (const p of items) results.push(await analyzeOne(shared, p));
+      for (const p of items) {
+        const out = await analyzeOne(shared, p);
+        results.push(out);
+      }
 
-      // Rank on server
+      // Rank (server: { items, aiMode })
       let rankResp;
       try {
         rankResp = await postJSON(`${FN_BASE}/api/portfolio-rank`, { items: results, aiMode: 'auto' });
         const order = Array.isArray(rankResp.order) ? rankResp.order : null;
         renderTable(results, order, { ok: !!rankResp.ok, summary: rankResp.summary });
       } catch {
-        // client fallback
+        // Client fallback sort
         const idx = results.map((_, i) => i);
         idx.sort((i, j) => {
           const a = results[i].metrics || {}, b = results[j].metrics || {};
@@ -368,9 +372,6 @@
     }
   });
 
-  // Expose for Google Maps callback if you append &callback=initPortfolioPlaces
+  // Expose init for Google callback
   window.initPortfolioPlaces = initPlaces;
-
-  // Also try to init on load (safe if callback is not used)
-  window.addEventListener('load', () => { try { initPlaces(); } catch {} });
 })();
