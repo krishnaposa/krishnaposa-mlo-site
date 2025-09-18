@@ -80,11 +80,4 @@ SEPARATOR=spleeter (default) or SEPARATOR=demucs
 
 pip install --upgrade pip setuptools wheel
 
-# Lock numpy to a spleeter-friendly version
-pip install "numpy==1.23.5"
-
-# Reinstall pandas against that numpy
-pip install --force-reinstall --no-cache-dir "pandas==1.5.3"
-
-# Make sure numba & scipy are also ABI compatible
-pip install "scipy==1.10.1" "numba==0.56.4"
+pip install -r requirements.txt
