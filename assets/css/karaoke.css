@@ -151,6 +151,7 @@ p.help::selection {
   background: transparent;
 }
 
-.help {
-  border: auto
+.card p.help * {
+  outline: none !important;
+  box-shadow: non !important;
 }
