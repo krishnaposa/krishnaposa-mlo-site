@@ -37,7 +37,8 @@
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/cobrand.css?v=1">
   <!-- Reuse rental analyzer CSS for cards/grids/tables -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/rental-analyzer.css?v=1">
-<link rel="stylesheet" href="https://www.krishposa.com/assets/css/portfolio-address-analyzer.css?v=1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/portfolio-address-analyzer.css?v=1">
+
   <!-- Global JS -->
   <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
   <script defer src="https://www.krishposa.com/assets/js/cobrand.js?v=1"></script>
@@ -103,29 +104,30 @@
 
             <!-- Address entry & validation -->
             <h3>Addresses</h3>
-            <p class="helper">Type an address below and pick a validated match. Repeat to add up to 10. Rent is optional (AI will estimate).</p>
+            <p class="helper">Type an address below and pick a validated match — or press Enter to add it manually. Repeat to add up to 10. Rent is optional.</p>
 
             <div class="tool-card" style="padding:12px">
               <div class="addr-row">
-    <div class="field addr-cell">
-      <label for="addrSearch">Enter address</label>
-      <input id="addrSearch" placeholder="Start typing: 3739 Jamestown Ct, Atlanta…" autocomplete="off"
-             aria-autocomplete="list" aria-expanded="false" aria-owns="addrResults">
-      <ul id="addrResults" class="tool-card" role="listbox" style="display:none"></ul>
-    </div>
+                <div class="field addr-cell">
+                  <label for="addrSearch">Enter address</label>
+                  <input id="addrSearch" placeholder="Start typing: 3739 Jamestown Ct, Atlanta…"
+                         autocomplete="off" aria-autocomplete="list" aria-expanded="false" aria-owns="addrResults">
+                  <ul id="addrResults" class="tool-card" role="listbox" style="display:none"></ul>
+                </div>
 
-    <div class="field">
-      <label for="addrRent">Optional monthly rent</label>
-      <input id="addrRent" type="number" min="0" step="25" placeholder="0">
-    </div>
+                <div class="field">
+                  <label for="addrRent">Optional monthly rent</label>
+                  <input id="addrRent" type="number" min="0" step="25" placeholder="0">
+                </div>
 
-    <div class="field" style="align-self:end">
-      <button class="btn" id="clearSearch" type="button">Clear</button>
-    </div>
-  </div>
+                <div class="field" style="align-self:end">
+                  <button class="btn" id="clearSearch" type="button">Clear</button>
+                </div>
+              </div>
 
               <div id="pickedList" class="grid-4" style="margin-top:10px"></div>
 
+              <!-- Read-only rent in picked item template -->
               <template id="pickedTpl">
                 <div class="tool-card" data-item style="padding:10px">
                   <div style="display:flex; justify-content:space-between; gap:10px; align-items:center">
@@ -134,8 +136,8 @@
                       <div class="muted" data-meta></div>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center">
-                      <label style="font-size:.85rem">Rent (optional)</label>
-                      <input data-rent type="number" min="0" step="25" placeholder="0" style="width:110px">
+                      <span style="font-size:.85rem">Rent:</span>
+                      <span data-rent-display style="font-weight:600">$0</span>
                       <button class="btn" type="button" data-remove>Remove</button>
                     </div>
                   </div>
@@ -192,9 +194,7 @@
   <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
   <!-- Google Places (Autocomplete) -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAi0XSSjP_14ikqikccKGJFSaxuwGzgpOc&libraries=places&v=weekly&loading=async&callback=initPortfolioPlaces">
-    async 
-    defer></script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAi0XSSjP_14ikqikccKGJFSaxuwGzgpOc&libraries=places&v=weekly&loading=async&callback=initPortfolioPlaces"></script>
 
   <!-- Page script -->
   <script defer src="https://www.krishposa.com/assets/js/portfolio-address-analyzer.js?v=1"></script>
