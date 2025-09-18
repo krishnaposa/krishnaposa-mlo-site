@@ -61,23 +61,23 @@ winget install Gyan.FFmpeg
 python -m venv %USERPROFILE%\karaoke-venv
 %USERPROFILE%\karaoke-venv\Scripts\activate
 
-# Upgrade pip + install worker deps
-python -m pip install -U pip wheel
-python -m pip install -U yt-dlp
-python -m pip install -U spleeter
-pip install demucs==4.0.1 yt-dlp==2024.8.6 azure-storage-blob==12.20.0 azure-storage-queue==12.6.0 
 
-# Activate your venv first
-pip uninstall -y numpy
-pip install "numpy<2.0"
-pip install spleeter --upgrade --force-reinstall
-pip install "tensorflow<2.12" --force-reinstall --upgrade
+# start fresh
+rm -rf karaoke-venv
+python -m venv karaoke-venv
+.\karaoke-venv\Scripts\activate   # PowerShell: .\karaoke-venv\Scripts\Activate
+
+# make sure pip toolchain is modern
+python -m pip install --upgrade pip setuptools wheel
+
+# IMPORTANT: remove any stray TF packages first (if you tried others)
+pip uninstall -y tensorflow tensorflow-intel tensorflow-cpu tensorflow-gpu h5py protobuf || rem ignore errors
+
+# install cleanly
+pip install -r requirements.txt
 
 SEPARATOR=spleeter (default) or SEPARATOR=demucs
 	•	FFMPEG_DIR=C:\pers\ffmpeg\bin
 	•	OUTPUT_BASE=C:\pers\karaoke-out
 	•	MAX_ATTEMPTS=5, BASE_DELAY_SEC=5, MAX_DELAY_SEC=900
 
-python -m pip install --upgrade pip setuptools wheel
-
-pip install -r requirements.txt
