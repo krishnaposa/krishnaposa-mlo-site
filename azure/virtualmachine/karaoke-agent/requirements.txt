@@ -1,26 +1,31 @@
-# Core audio separation
+# ---- Audio separation (Spleeter) ----
 spleeter==2.4.0
-tensorflow==2.10.0
-librosa==0.9.2
 
-# Numpy / pandas / scipy combo that works with spleeter
+# TensorFlow stack compatible with Spleeter 2.4.0
+tensorflow==2.9.3
+# TF 2.9.x requires h5py < 3.7
+h5py==3.6.0
+# TF 2.9.x wants protobuf <= 3.20.*
+protobuf==3.20.3
+
+# Numpy/Pandas/Scipy set that works with TF 2.9 + Spleeter
 numpy==1.23.5
 pandas==1.5.3
 scipy==1.10.1
 numba==0.56.4
+
+# Audio helpers
+librosa==0.9.2
+soundfile==0.12.1
 
 # Azure SDKs
 azure-storage-blob==12.20.0
 azure-storage-queue==12.6.0
 azure-functions==1.18.0
 
-# Web + utilities
-yt-dlp==2023.11.16
+# I/O and utils
+yt-dlp==2024.08.06
 requests==2.32.3
 tqdm==4.66.4
-
-# Other dependencies spleeter/tensorflow need
-protobuf==3.20.3
-h5py==3.8.0
 click==8.1.7
 typer==0.7.0
