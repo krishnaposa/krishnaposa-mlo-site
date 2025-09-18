@@ -126,3 +126,57 @@ button.btn:focus {
 .tool-card + .tool-card {
   margin-top: 12px;
 }
+
+/* Address row: address + optional rent + Clear button */
+.addr-row {
+  display: grid;
+  grid-template-columns: 1fr 140px auto; /* address | rent | Clear */
+  gap: 10px;
+  align-items: end;
+}
+
+/* Address text box wrapper must be relative so the dropdown anchors to it */
+.addr-cell {
+  position: relative;
+}
+
+/* Autocomplete dropdown should match the address field width only */
+#addrResults {
+  position: absolute;
+  left: 0;
+  right: 0;           /* so it hugs the address field, not the rent box */
+  top: calc(100% + 4px);
+  z-index: 20;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 14px rgba(0,0,0,.06);
+  max-height: 260px;
+  overflow: auto;
+}
+
+#addrResults li {
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+#addrResults li:hover, #addrResults li:focus {
+  background: #f3f4f6;
+  outline: none;
+}
+
+/* Compact rent box */
+#addrRent {
+  width: 100%;
+  max-width: 140px;
+}
+
+/* Mobile: stack address & rent */
+@media (max-width: 640px) {
+  .addr-row {
+    grid-template-columns: 1fr; /* stack */
+  }
+}
