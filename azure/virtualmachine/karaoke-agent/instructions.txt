@@ -78,6 +78,6 @@ SEPARATOR=spleeter (default) or SEPARATOR=demucs
 	•	OUTPUT_BASE=C:\pers\karaoke-out
 	•	MAX_ATTEMPTS=5, BASE_DELAY_SEC=5, MAX_DELAY_SEC=900
 
-pip install --upgrade pip setuptools wheel
+python -m pip install --upgrade pip setuptools wheel
 
 pip install -r requirements.txt
