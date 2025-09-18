@@ -32,3 +32,12 @@ az storage cors add \
   --exposed-headers '*' \
   --max-age 3600 \
   --account-name krishposastkaraoke
+
+# List poison queue messages
+az storage message peek --queue-name karaoke-jobs-poison --connection-string "$STORAGE_CONN"
+
+# Get and move one back
+az storage message get --queue-name karaoke-jobs-poison --connection-string "$STORAGE_CONN" --num-messages 1
+
+# Then re-send it to the main queue
+az storage message put --queue-name karaoke-jobs --connection-string "$STORAGE_CONN" --content '{"job_id":"...","src":{...}}'
