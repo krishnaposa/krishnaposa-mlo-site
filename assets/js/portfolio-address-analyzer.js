@@ -20,53 +20,148 @@
   function showErr(m){ err.textContent=m; err.style.display='block'; }
   function hideErr(){ err.style.display='none'; }
 
-  // Google Places
-  let placesService, sessionToken, autocompleteService;
+  // ---------- Google Places (new-first, fallback-old) ----------
+  let sessionToken, // shared session token
+      // new API handles (if present)
+      AutocompleteSuggestion = null,
+      // old API services (fallback)
+      oldAutocompleteService = null,
+      oldPlacesService = null;
+
   function initPlaces(){
     if (!('google' in window) || !google.maps || !google.maps.places) return;
-    placesService = new google.maps.places.PlacesService(document.createElement('div'));
-    autocompleteService = new google.maps.places.AutocompleteService();
+
+    // New API (preferred where available)
+    AutocompleteSuggestion = google.maps.places.AutocompleteSuggestion || null;
+
+    if (!AutocompleteSuggestion) {
+      // Fallback to classic services
+      oldAutocompleteService = new google.maps.places.AutocompleteService();
+      oldPlacesService = new google.maps.places.PlacesService(document.createElement('div'));
+    }
     newSessionToken();
   }
   function newSessionToken(){ sessionToken = new google.maps.places.AutocompleteSessionToken(); }
-  function renderSuggestions(preds){
-    addrResults.innerHTML=''; if(!preds?.length){ addrResults.style.display='none'; return; }
-    preds.forEach(pred=>{
-      const li=document.createElement('li'); li.role='option'; li.tabIndex=0; li.style.cursor='pointer'; li.style.padding='8px';
-      li.textContent=pred.description;
-      li.addEventListener('click',()=>selectPrediction(pred));
+
+  function renderSuggestions(items){
+    addrResults.innerHTML='';
+    if(!items || !items.length){ addrResults.style.display='none'; return; }
+    items.forEach(pred=>{
+      const li=document.createElement('li');
+      li.role='option'; li.tabIndex=0; li.style.cursor='pointer'; li.style.padding='8px';
+      li.textContent = pred.formattedSuggestion || pred.description || pred.text || '';
+      li.addEventListener('click',()=> selectPrediction(pred));
       li.addEventListener('keydown',(e)=>{ if(e.key==='Enter') selectPrediction(pred); });
       addrResults.appendChild(li);
     });
     addrResults.style.display='block';
   }
-  function selectPrediction(pred){
-    placesService.getDetails({ placeId: pred.place_id, sessionToken,
-      fields:['formatted_address','address_components','geometry','name'] },
-      (place, status)=>{
-        if(status!==google.maps.places.PlacesServiceStatus.OK || !place){ showErr('Could not validate the address.'); return; }
-        const comp=(t)=> (place.address_components||[]).find(c=>c.types.includes(t));
-        const street= [comp('street_number')?.long_name||'', comp('route')?.long_name||''].filter(Boolean).join(' ').trim() || place.name || '';
-        const city  = comp('locality')?.long_name || comp('sublocality_level_1')?.long_name || '';
-        const state = comp('administrative_area_level_1')?.short_name || '';
-        const zip   = comp('postal_code')?.long_name || '';
-        addPicked({
-          label: place.formatted_address || [street, city, state, zip].filter(Boolean).join(', '),
-          address: street, city, state, zip
-        }, num(addrRent.value));
-        addrSearch.value=''; addrRent.value=''; addrResults.innerHTML=''; addrResults.style.display='none'; newSessionToken();
+
+  async function selectPrediction(pred){
+    try {
+      // NEW API path (prediction object exposes fetchFields())
+      if (pred && typeof pred.fetchFields === 'function') {
+        const { placePrediction } = await pred.fetchFields({
+          fields: ['formatted_address','address_components','geometry','name']
+        });
+        return addPlaceFromNew(placePrediction);
+      }
+
+      // OLD API path
+      oldPlacesService.getDetails({
+        placeId: pred.place_id,
+        sessionToken,
+        fields: ['formatted_address','address_components','geometry','name']
+      }, (place, status)=>{
+        if (status !== google.maps.places.PlacesServiceStatus.OK || !place) {
+          showErr('Could not validate the address.'); return;
+        }
+        addPlaceFromOld(place);
       });
+    } catch (e) {
+      console.error(e);
+      showErr('Error fetching place details.');
+    }
   }
-  addrSearch.addEventListener('input', ()=>{
+
+  function extractComponents(components){
+    const get=(t)=> (components||[]).find(c=>c.types.includes(t));
+    const street=[get('street_number')?.long_name||'', get('route')?.long_name||''].filter(Boolean).join(' ').trim();
+    const city  = get('locality')?.long_name || get('sublocality_level_1')?.long_name || '';
+    const state = get('administrative_area_level_1')?.short_name || '';
+    const zip   = get('postal_code')?.long_name || '';
+    return { street, city, state, zip };
+  }
+  function addPlaceFromNew(place){
+    if (!place){ showErr('Could not validate the address.'); return; }
+    const { street, city, state, zip } = extractComponents(place.address_components);
+    addPicked({
+      label: place.formatted_address || [street || place.name || '', city, state, zip].filter(Boolean).join(', '),
+      address: street || place.name || '', city, state, zip
+    }, num(addrRent.value));
+    afterPickReset();
+  }
+  function addPlaceFromOld(place){
+    const { street, city, state, zip } = extractComponents(place.address_components);
+    addPicked({
+      label: place.formatted_address || [street || place.name || '', city, state, zip].filter(Boolean).join(', '),
+      address: street || place.name || '', city, state, zip
+    }, num(addrRent.value));
+    afterPickReset();
+  }
+  function afterPickReset(){
+    addrSearch.value=''; addrRent.value='';
+    addrResults.innerHTML=''; addrResults.style.display='none';
+    newSessionToken();
+  }
+
+  addrSearch.addEventListener('input', async ()=>{
     hideErr();
-    const q = (addrSearch.value||'').trim();
+    const q=(addrSearch.value||'').trim();
     if(!q){ addrResults.style.display='none'; return; }
-    if(!autocompleteService || !sessionToken) return;
-    autocompleteService.getPlacePredictions({ input:q, sessionToken, types:['address'], componentRestrictions:{country:['us']} },
-      (preds, status)=>{ if(status!==google.maps.places.PlacesServiceStatus.OK){ addrResults.style.display='none'; return; } renderSuggestions(preds); });
+
+    try{
+      // Try NEW API first
+      if (AutocompleteSuggestion) {
+        const sugg = new AutocompleteSuggestion({ // minimal config; token passed in options
+          sessionToken
+        });
+        // Not all runtimes agree on the method name; try the common ones:
+        if (typeof sugg.getSuggestions === 'function') {
+          const { suggestions } = await sugg.getSuggestions({
+            input: q, sessionToken, types:['address'], componentRestrictions:{ country:['us'] }
+          });
+          return renderSuggestions(suggestions);
+        }
+        if (typeof sugg.fetchSuggestions === 'function') {
+          const { suggestions } = await sugg.fetchSuggestions({
+            input: q, sessionToken, types:['address'], componentRestrictions:{ country:['us'] }
+          });
+          return renderSuggestions(suggestions);
+        }
+        // If the new object exists but methods don’t, drop to old API
+      }
+
+      // OLD API fallback
+      if (oldAutocompleteService) {
+        oldAutocompleteService.getPlacePredictions({
+          input:q, sessionToken, types:['address'], componentRestrictions:{ country:['us'] }
+        }, (preds, status)=>{
+          if (status !== google.maps.places.PlacesServiceStatus.OK) {
+            addrResults.style.display='none'; return;
+          }
+          renderSuggestions(preds);
+        });
+      }
+    } catch (e){
+      console.error(e);
+      addrResults.style.display='none';
+    }
   });
+
   clearBtn.addEventListener('click', ()=>{
-    addrSearch.value=''; addrRent.value=''; addrResults.innerHTML=''; addrResults.style.display='none';
+    addrSearch.value=''; addrRent.value='';
+    addrResults.innerHTML=''; addrResults.style.display='none';
   });
 
   function pickedItems(){
@@ -179,7 +274,7 @@
         const order = Array.isArray(rankResp.order) ? rankResp.order : null;
         renderTable(results, order, { ok: !!rankResp.ok, summary: rankResp.summary });
       } catch {
-        // client fallback
+        // client fallback sort
         const idx = results.map((_, i)=> i);
         idx.sort((i, j)=>{
           const a = results[i].metrics||{}, b = results[j].metrics||{};
