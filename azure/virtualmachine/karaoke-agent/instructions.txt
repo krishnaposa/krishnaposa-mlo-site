@@ -81,3 +81,5 @@ SEPARATOR=spleeter (default) or SEPARATOR=demucs
 	•	OUTPUT_BASE=C:\pers\karaoke-out
 	•	MAX_ATTEMPTS=5, BASE_DELAY_SEC=5, MAX_DELAY_SEC=900
 
+pip install -U yt-dlp
+yt-dlp --cookies-from-browser chrome -f "bestaudio[ext=m4a]/bestaudio/best" -x --audio-format mp3 https://www.youtube.com/watch?v=MJyKN-8UncM
