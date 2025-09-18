@@ -1,54 +1,83 @@
 /* portfolio-address-analyzer.css
-   Page-specific styles for the "type & pick" portfolio analyzer
-   Reuses rental-analyzer.css for general layout, cards, grids, and tables.
+   Page-specific styles for the "Type & Pick" Portfolio Rental Analyzer.
+   This file assumes your global styles + rental-analyzer.css are already loaded.
 */
 
-/* --- Address autocomplete dropdown --- */
+/* -----------------------------
+   Address Autocomplete Dropdown
+   ----------------------------- */
+/* The parent of #addrResults in your HTML has inline `position:relative`,
+   so we can absolutely-position the list under the input. */
 #addrResults {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 20;
+
+  display: none;               /* toggled by JS */
   margin: 0;
   padding: 4px;
   list-style: none;
+
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   background: #fff;
   box-shadow: 0 10px 14px rgba(0,0,0,.06);
+
+  max-height: 280px;
+  overflow: auto;
 }
 
 #addrResults li {
   padding: 8px 10px;
   border-radius: 8px;
+  cursor: pointer;
+  line-height: 1.25;
 }
+
 #addrResults li:hover,
 #addrResults li:focus {
   background: #f3f4f6;
   outline: none;
 }
 
-/* Keep the dropdown aligned under the search input on small screens */
+/* Optional: JS can add this when arrow-key navigating the list */
+#addrResults li.is-active {
+  background: #eef2ff;
+}
+
+/* Keep the dropdown readable on narrow screens */
 @media (max-width: 640px) {
   #addrResults {
     max-height: 260px;
-    overflow: auto;
   }
 }
 
-/* --- Picked address “chips” (cardlets) --- */
+/* -----------------------------
+   Picked Address “Chips”/Cards
+   ----------------------------- */
 #pickedList [data-item] {
   transition: box-shadow .15s ease, transform .08s ease;
 }
+
 #pickedList [data-item]:hover {
   box-shadow: 0 2px 10px rgba(0,0,0,.06);
   transform: translateY(-1px);
 }
+
+/* Title + meta text inside each picked card */
 #pickedList [data-item] [data-label] {
   font-weight: 700;
 }
+
 #pickedList [data-item] [data-meta] {
   color: #64748b;
   font-size: .9rem;
 }
 
-/* Rent input in picked card */
+/* Rent input inside the picked card */
 #pickedList [data-item] [data-rent] {
   width: 110px;
   padding: 8px 10px;
@@ -57,23 +86,29 @@
   background: #fff;
 }
 
-/* --- Result table tweaks --- */
-#portfolioTable th,
-#portfolioTable td {
-  white-space: nowrap;
-}
-#portfolioTable td:nth-child(2) {
-  white-space: normal; /* allow address to wrap */
-  max-width: 360px;
-}
-
-/* --- Buttons — ensure consistent sizing inside small cardlets --- */
+/* Buttons in compact cards stay neat */
 #pickedList [data-item] .btn {
   padding: 8px 10px;
   line-height: 1.1;
 }
 
-/* --- Accessibility / focus outlines --- */
+/* -----------------------------
+   Result Table Tweaks
+   ----------------------------- */
+#portfolioTable th,
+#portfolioTable td {
+  white-space: nowrap;
+}
+
+#portfolioTable td:nth-child(2) {
+  /* Allow address column to wrap (so table doesn't overflow) */
+  white-space: normal;
+  max-width: 360px;
+}
+
+/* -----------------------------
+   Utilities / Accessibility
+   ----------------------------- */
 #addrSearch:focus,
 #pickedList [data-item] [data-rent]:focus,
 #addrResults li:focus,
@@ -82,12 +117,12 @@ button.btn:focus {
   outline-offset: 2px;
 }
 
-/* --- Light hint text --- */
+/* Soft helper text color (matches your theme) */
 .helper {
   color: #475569;
 }
 
-/* Optional: soft divider */
+/* Optional: visual breathing room when stacking cards */
 .tool-card + .tool-card {
   margin-top: 12px;
 }
