@@ -84,3 +84,6 @@ SEPARATOR=spleeter (default) or SEPARATOR=demucs
 pip install -U yt-dlp
 yt-dlp --cookies-from-browser chrome --cookies "c\pers\cookies\youtube_cookies.txt" -f "bestaudio[ext=m4a]/bestaudio/best" -x --audio-format mp3 https://www.youtube.com/watch?v=MJyKN-8UncM
 yt-dlp --cookies "C:\pers\cookies\youtube_cookies.txt" -f "bestaudio[ext=m4a]/bestaudio/best" -x --audio-format mp3 https://www.youtube.com/watch?v=MJyKN-8UncM
+
+curl -v "https://<yourfunc>.azurewebsites.net/api/lyrics?title=Shayad&artist=Arijit%20Singh&duration=250" \
+  -H "Accept: application/json"
