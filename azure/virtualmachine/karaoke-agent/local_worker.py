@@ -27,6 +27,14 @@ MAX_DELAY_SEC     = int(os.environ.get("MAX_DELAY_SEC", "900"))  # cap
 # ffmpeg path (Windows)
 FFMPEG_DIR        = os.environ.get("FFMPEG_DIR", r"C:\pers\ffmpeg\bin")
 
+# ---- YouTube download options (recommended) ----
+# Provide either YT_COOKIES=path\to\cookies.txt (Netscape) OR YT_BROWSER=chrome|edge|firefox:default
+YT_COOKIES  = os.environ.get("YT_COOKIES", "")           # e.g. C:\pers\cookies\youtube.txt
+YT_BROWSER  = os.environ.get("YT_BROWSER", "")           # e.g. "chrome" or "edge" or "firefox:default"
+YT_PROXY    = os.environ.get("YT_PROXY", "")             # optional proxy, e.g. http://127.0.0.1:8888
+YT_CLIENTS  = os.environ.get("YT_CLIENTS", "tv,web,ios,android").split(",")
+YT_RETRIES  = int(os.environ.get("YT_RETRIES", "2"))
+
 # -------------------- CLIENTS --------------------
 BLOB   = BlobServiceClient.from_connection_string(STORAGE_CONN)
 QCLI   = QueueClient.from_connection_string(STORAGE_CONN, QUEUE_NAME)
@@ -72,18 +80,53 @@ def download_input(src: dict, dest_dir: str) -> str:
                 .readall()
             )
         return fn
-    else:
-        # YouTube: download best audio to mp3 using yt-dlp module (so venv python finds it)
-        outtmpl = os.path.join(dest_dir, "input.%(ext)s")
-        cmd = [sys.executable, "-m", "yt_dlp",
-               "-f", "bestaudio/best", "-x", "--audio-format", "mp3",
-               "-o", outtmpl, src["url"]]
-        subprocess.run(cmd, check=True)
-        for cand in ("input.mp3","input.m4a","input.webm","input.opus","input.wav"):
-            p = os.path.join(dest_dir, cand)
-            if os.path.exists(p): 
-                return p
-        raise RuntimeError("yt-dlp produced no audio file")
+
+    # ---- YouTube branch (yt-dlp with cookies / browser profile & client fallbacks) ----
+    url = src["url"]
+    outtmpl = os.path.join(dest_dir, "input.%(ext)s")
+
+    base = [
+        sys.executable, "-m", "yt_dlp",
+        "-f", "bestaudio/best",
+        "-x", "--audio-format", "mp3",
+        "-o", outtmpl,
+        "--no-playlist",
+        "--force-ipv4",
+        "--no-warnings",
+        "--retries", "3",
+        "--fragment-retries", "3",
+        "--concurrent-fragments", "4",
+        "--restrict-filenames",
+        "--add-metadata",
+    ]
+    if YT_PROXY:
+        base += ["--proxy", YT_PROXY]
+
+    # Prefer cookies.txt if provided, else use a local browser's cookie store
+    if YT_COOKIES:
+        base += ["--cookies", YT_COOKIES]
+    elif YT_BROWSER:
+        base += ["--cookies-from-browser", YT_BROWSER]
+
+    last_err = None
+    for client in [c.strip() for c in YT_CLIENTS if c.strip()]:
+        cmd = base + ["--extractor-args", f"youtube:player_client={client}", url]
+        for attempt in range(1, YT_RETRIES + 1):
+            try:
+                subprocess.run(cmd, check=True)
+                for cand in ("input.mp3", "input.m4a", "input.webm", "input.opus", "input.wav"):
+                    p = os.path.join(dest_dir, cand)
+                    if os.path.exists(p):
+                        return p
+            except subprocess.CalledProcessError as e:
+                last_err = e
+
+    raise RuntimeError(
+        "yt-dlp could not fetch audio from YouTube. "
+        "If you see 'Sign in to confirm you’re not a bot', set YT_COOKIES to a cookies.txt file "
+        "or set YT_BROWSER to a local browser (e.g., 'chrome' or 'edge'). "
+        f"Last error: {last_err}"
+    )
 
 # -------------------- SEPARATORS --------------------
 def run_spleeter(inp: str) -> str:
@@ -107,9 +150,8 @@ def find_outputs_spleeter(base_out_dir: str, basename: str) -> Tuple[str, str]:
     voc = p / "vocals.wav"
     acc = p / "accompaniment.wav"
     if voc.exists() and acc.exists():
-        # Return accompaniment as "band"
-        return str(voc), str(acc)
-    # fallback scan (just in case)
+        return str(voc), str(acc)  # acc -> band
+    # fallback scan
     for root, _dirs, files in os.walk(base_out_dir):
         if "vocals.wav" in files and "accompaniment.wav" in files:
             return os.path.join(root, "vocals.wav"), os.path.join(root, "accompaniment.wav")
