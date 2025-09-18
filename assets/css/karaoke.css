@@ -135,3 +135,18 @@ input:focus,select:focus{
 @media (prefers-reduced-motion: reduce){
   .btn,.progress .bar{transition:none}
 }
+/* Remove any focus/tap/selection highlight around the hint line */
+p.help,
+p.help:focus,
+p.help:focus-within,
+[aria-live].help {
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Optional: also avoid a selection fill on that line */
+p.help::selection {
+  background: transparent;
+}
