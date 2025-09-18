@@ -1,0 +1,124 @@
+/* rental-analyzer.css */
+/* Shared card, grid, and table styles */
+
+/* Tool card container */
+.tool-card {
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Grid layouts */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .grid-2, .grid-3, .grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Field blocks */
+.field label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 4px;
+}
+.field input, 
+.field select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+.field input:focus, 
+.field select:focus {
+  outline: none;
+  border-color: #0b5fff;
+  box-shadow: 0 0 0 1px #0b5fff33;
+}
+
+/* Buttons */
+.btn {
+  background: #0b5fff;
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.btn:hover {
+  background: #094ecc;
+}
+.btn-blue {
+  background: #0b5fff;
+}
+
+/* Error box */
+.error-box {
+  color: #b00020;
+  margin-top: 10px;
+  font-size: 0.9rem;
+  display: none;
+}
+
+/* Results tables */
+.table-wrap {
+  overflow-x: auto;
+}
+.table-wrap table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9rem;
+}
+.table-wrap th,
+.table-wrap td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+.table-wrap th {
+  background: #f7f7f7;
+  font-weight: 600;
+}
+
+/* Mini metrics cards */
+.mini-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.mini-metrics .card {
+  flex: 1;
+  min-width: 120px;
+  background: #f9fbff;
+  border: 1px solid #dfe6f9;
+  border-radius: 6px;
+  padding: 10px;
+  text-align: center;
+}
+.mini-metrics .badge {
+  font-size: 0.8rem;
+  color: #555;
+  font-weight: 600;
+}
