@@ -71,6 +71,7 @@ pip install demucs==4.0.1 yt-dlp==2024.8.6 azure-storage-blob==12.20.0 azure-sto
 pip uninstall -y numpy
 pip install "numpy<2.0"
 pip install spleeter --upgrade --force-reinstall
+pip install "tensorflow<2.12" --force-reinstall --upgrade
 
 SEPARATOR=spleeter (default) or SEPARATOR=demucs
 	•	FFMPEG_DIR=C:\pers\ffmpeg\bin
