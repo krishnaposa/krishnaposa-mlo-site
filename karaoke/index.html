@@ -17,11 +17,11 @@
   <!-- page-specific styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
 
-  <!-- expose endpoints to JS (edit these values to your app/keys) -->
+  <!-- Expose endpoints to JS (override defaults if you like) -->
+  <!-- Example:
   <meta name="karaoke-submit" content="https://<yourfunc>.azurewebsites.net/api/submit?code=<FUNCTION_KEY>">
   <meta name="karaoke-status" content="https://<yourfunc>.azurewebsites.net/api/status/{job_id}?code=<FUNCTION_KEY>">
-  <!-- if your output container is public or you serve SAS links, optionally set base to build hrefs -->
-  <meta name="karaoke-output-base" content="">
+  -->
 </head>
 <body>
 <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
@@ -34,16 +34,11 @@
   <!-- Upload + polling -->
   <section class="card">
     <h1>Karaoke Split</h1>
-    <p class="help">Upload a song OR paste a YouTube link. We’ll process asynchronously—keep this page open; it will auto-refresh status.</p>
+    <p class="help">Upload a song (mp3/wav/m4a/flac/aac). We’ll process asynchronously—keep this page open; it will auto-refresh the status.</p>
 
     <div class="field">
-      <label for="file">Upload (mp3/wav/m4a/flac/aac)</label>
-      <input id="file" name="file" type="file" accept=".mp3,.wav,.flac,.m4a,.aac">
-    </div>
-
-    <div class="field">
-      <label for="yt">…or YouTube link</label>
-      <input id="yt" name="youtube_url" type="url" placeholder="https://www.youtube.com/watch?v=...">
+      <label for="file">Upload file</label>
+      <input id="file" name="file" type="file" accept=".mp3,.wav,.flac,.m4a,.aac" />
     </div>
 
     <div class="row">
@@ -88,7 +83,7 @@
 
     <div class="row">
       <label for="offset">Vocals advance/Delay (ms):</label>
-      <input id="offset" type="number" value="0" step="10">
+      <input id="offset" type="number" value="0" step="10" />
       <span class="help">Adjust if Bluetooth lags (positive delays vocals; negative delays band).</span>
     </div>
 
