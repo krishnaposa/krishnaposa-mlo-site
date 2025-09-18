@@ -30,7 +30,12 @@ body{
 
 /* Headings & text */
 h1,h2{color:var(--ink);line-height:1.2;margin:0 0 .5rem}
-p.help{color:var(--muted);margin:.25rem 0 .75rem;width:auto;border: none}
+p.help{
+  color:var(--muted);
+  margin:.25rem 0 .75rem;
+  width:auto;
+  border:none;          /* ensure no outline/bubble around hints */
+}
 
 /* Form fields */
 .field{display:flex;flex-direction:column;gap:.45rem;margin:.5rem 0}
@@ -48,6 +53,7 @@ select{
   padding:.65rem .8rem;
   color:#0b1220;
   transition:box-shadow .15s ease,border-color .15s ease, background .15s ease;
+  box-sizing:border-box;
 }
 input::placeholder{color:#94a3b8}
 input:focus,select:focus{
@@ -106,7 +112,7 @@ input:focus,select:focus{
   align-items:center;
   gap:.5rem;
   padding:.5rem .75rem;
-  border:1px dashed var(--border);
+  border:1px solid var(--border);   /* subtle (not dashed) */
   border-radius:10px;
   background:#f8fafc;
 }
@@ -115,39 +121,41 @@ input:focus,select:focus{
 /* ===== Player: device status line ===== */
 #deviceMsg{min-height:1.25rem}
 
-/* ===== Player: lyrics box ===== */
+/* ===== Player: lyrics box (container-width by default) ===== */
 #lyricsBox{
-  background:#f8fafc;
+  display:block;
+  width:100%;               /* fills the card/container width */
+  background:#fff;
   border:1px solid var(--border);
   border-radius:10px;
-  padding:.75rem .9rem;
+  padding:16px;
   white-space:pre-wrap;
-  max-height:260px;
+  min-height:350px;         /* roomy by default */
+  max-height:600px;         /* scroll if huge */
   overflow:auto;
-  line-height:1.4;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  line-height:1.6;
+  font-size:1.1rem;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
 }
 #lyricsBox::selection{background:rgba(11,95,255,.18)}
-/* optional: emphasize the current line when prefixed with "> " (from JS) */
+/* highlight current line when JS prefixes with "> " */
 #lyricsBox{tab-size:2}
+
+/* ===== Optional: full-bleed lyrics (edge-to-edge across page) =====
+   Add class 'full-page' to the lyrics box element if you want this behavior:
+   <pre id="lyricsBox" class="full-page"></pre>
+*/
+#lyricsBox.full-page{
+  width:100vw;
+  max-width:100vw;
+  margin-left:calc(50% - 50vw);   /* break out of centered container */
+  margin-right:calc(50% - 50vw);
+  border-radius:0;                /* square edges to match page */
+  border-left:none;
+  border-right:none;
+}
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce){
   .btn,.progress .bar{transition:none}
-}
-
-/* Karaoke lyrics box */
-.lyrics-box {
-  display: block;
-  width: 100%;
-  min-height: 250px;   /* was small, now tall */
-  max-height: 500px;   /* keep it manageable */
-  overflow-y: auto;    /* scroll if too long */
-  padding: 12px;
-  font-size: 1rem;     /* readable */
-  line-height: 1.5;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: #fafafa;
-  white-space: pre-wrap; /* wrap long lines */
 }
