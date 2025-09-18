@@ -189,7 +189,7 @@
       rent: Number(picked.rent || prefetch?.ai?.rent?.est || 0),
       otherIncome:0, vacancyPct:shared.vacancyPct
     };
-    const analyzed = await postJSON(`${FN_BASE}/api/rent-analyze`, { inputs, prefetch });
+    const analyzed = await postJSON(`${FN_BASE}/api/rent-analyzer`, { inputs, prefetch });
     analyzed.prefetch = prefetch;
     return analyzed;
   }
