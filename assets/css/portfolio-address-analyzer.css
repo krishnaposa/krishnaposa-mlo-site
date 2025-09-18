@@ -180,3 +180,13 @@ button.btn:focus {
     grid-template-columns: 1fr; /* stack */
   }
 }
+
+/* Wider picked cards grid */
+#pickedList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  #pickedList { grid-template-columns: 1fr; }
+}
