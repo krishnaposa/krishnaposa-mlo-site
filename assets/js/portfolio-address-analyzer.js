@@ -296,5 +296,5 @@
     }
   });
 
-  window.addEventListener('load', ()=> initPlaces());
+  window.initPortfolioPlaces = initPlaces;
 })();
