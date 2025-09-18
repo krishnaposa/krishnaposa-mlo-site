@@ -90,7 +90,7 @@ input:focus,select:focus{
 .progress .bar{height:100%;width:0;background:var(--blue);transition:width .25s linear}
 
 /* Status + alerts */
-.help{color:var(--muted);width:auto}
+.help{color:var(--muted);width:auto;border:none}
 .error{color:#b91c1c;font-weight:600}
 .success{color:#065f46}
 
