@@ -1,124 +1,170 @@
-/* rental-analyzer.css */
-/* Shared card, grid, and table styles */
+/* portfolio-address-analyzer.css
+   Page-specific styles for the "Type & Pick" Portfolio Rental Analyzer.
+   Assumes your global styles + rental-analyzer.css are already loaded.
+*/
 
-/* Tool card container */
-.tool-card {
+/* ---------------------------------
+   Address Row (address | rent | buttons)
+   --------------------------------- */
+.addr-row {
+  display: grid;
+  grid-template-columns: 1fr 160px auto auto; /* Address | Rent | Add | Clear */
+  gap: 10px;
+  align-items: end;
+}
+@media (max-width: 640px) {
+  .addr-row { grid-template-columns: 1fr; } /* stack on mobile */
+}
+
+/* Address cell needs to be relative to anchor the dropdown */
+.addr-cell { position: relative; }
+
+/* Compact rent box */
+#addrRent {
+  width: 100%;
+  max-width: 160px;
+}
+
+/* ---------------------------------
+   Autocomplete Dropdown (anchored to address field)
+   --------------------------------- */
+#addrResults {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+
+  display: none;         /* toggled by JS */
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
   background: #fff;
-  border-radius: 6px;
-  border: 1px solid #e0e0e0;
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
+  box-shadow: 0 10px 14px rgba(0,0,0,.06);
 
-/* Grid layouts */
-.grid-2 {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  max-height: 280px;
+  overflow: auto;
 }
-.grid-3 {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-.grid-4 {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-
-@media (max-width: 768px) {
-  .grid-2, .grid-3, .grid-4 {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Field blocks */
-.field label {
-  font-size: 0.85rem;
-  font-weight: 600;
-  display: block;
-  margin-bottom: 4px;
-}
-.field input, 
-.field select {
-  width: 100%;
+#addrResults li {
   padding: 8px 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 0.95rem;
-}
-.field input:focus, 
-.field select:focus {
-  outline: none;
-  border-color: #0b5fff;
-  box-shadow: 0 0 0 1px #0b5fff33;
-}
-
-/* Buttons */
-.btn {
-  background: #0b5fff;
-  color: #fff;
-  border: none;
-  padding: 8px 14px;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
-  font-weight: 600;
-  font-size: 0.95rem;
+  line-height: 1.25;
 }
-.btn:hover {
-  background: #094ecc;
+#addrResults li:hover,
+#addrResults li:focus {
+  background: #f3f4f6;
+  outline: none;
 }
-.btn-blue {
-  background: #0b5fff;
-}
-
-/* Error box */
-.error-box {
-  color: #b00020;
-  margin-top: 10px;
-  font-size: 0.9rem;
-  display: none;
+#addrResults li.is-active { background: #eef2ff; }
+@media (max-width: 640px) {
+  #addrResults { max-height: 260px; }
 }
 
-/* Results tables */
-.table-wrap {
-  overflow-x: auto;
-}
-.table-wrap table {
-  border-collapse: collapse;
+/* ---------------------------------
+   Picked Entries TABLE (read-only rent)
+   --------------------------------- */
+#pickedList { width: 100%; }
+
+/* Make the inner picked table breathe */
+#pickedTable {
   width: 100%;
-  font-size: 0.9rem;
-}
-.table-wrap th,
-.table-wrap td {
-  border: 1px solid #ddd;
-  padding: 8px;
-  text-align: left;
-}
-.table-wrap th {
-  background: #f7f7f7;
-  font-weight: 600;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 6px 12px rgba(0,0,0,.04);
 }
 
-/* Mini metrics cards */
-.mini-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+/* Table header */
+#pickedTable thead th {
+  text-align: left;
+  font-weight: 700;
+  background: #f8fafc;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
 }
-.mini-metrics .card {
-  flex: 1;
-  min-width: 120px;
-  background: #f9fbff;
-  border: 1px solid #dfe6f9;
-  border-radius: 6px;
-  padding: 10px;
-  text-align: center;
+
+/* Table cells */
+#pickedTable tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
 }
-.mini-metrics .badge {
-  font-size: 0.8rem;
-  color: #555;
-  font-weight: 600;
+
+/* Index column */
+#pickedTable thead th:first-child,
+#pickedTable tbody td:first-child {
+  width: 34px;
+  white-space: nowrap;
 }
+
+/* Address column: allow wrapping, make it wide */
+#pickedTable thead th:nth-child(2),
+#pickedTable tbody td:nth-child(2) {
+  white-space: normal;
+  max-width: 640px;  /* wide enough to avoid truncation */
+}
+
+/* Rent column (read-only) */
+#pickedTable thead th:nth-child(3),
+#pickedTable tbody td:nth-child(3) {
+  width: 160px;
+  white-space: nowrap;
+}
+
+/* Action column */
+#pickedTable thead th:nth-child(4),
+#pickedTable tbody td:nth-child(4) {
+  width: 110px;
+  white-space: nowrap;
+}
+
+/* Remove button sizing inside table */
+#pickedTable .btn {
+  padding: 8px 10px;
+  line-height: 1.1;
+}
+
+/* Row hover */
+#pickedTable tbody tr:hover {
+  background: #fafafa;
+}
+
+/* Title + meta text inside address cell */
+#pickedTable [data-label] {
+  font-weight: 700;
+}
+#pickedTable [data-meta] {
+  color: #64748b;
+  font-size: .9rem;
+  margin-top: 2px;
+}
+
+/* ---------------------------------
+   Ranked Results Table Tweaks
+   --------------------------------- */
+#portfolioTable { min-width: 860px; }
+#portfolioTable th, #portfolioTable td { white-space: nowrap; }
+
+/* Let the results address column wrap and be roomy */
+#portfolioTable td:nth-child(2) {
+  white-space: normal;
+  max-width: 520px;
+}
+
+/* ---------------------------------
+   Utilities / Accessibility
+   --------------------------------- */
+#addrSearch:focus,
+#addrResults li:focus,
+button.btn:focus {
+  outline: 2px solid #0b5fff;
+  outline-offset: 2px;
+}
+
+.helper { color: #475569; }
+.tool-card + .tool-card { margin-top: 12px; }
