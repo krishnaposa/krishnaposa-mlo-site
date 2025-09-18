@@ -1,12 +1,17 @@
 {
+  "scriptFile": "init.py",
   "bindings": [
     {
       "authLevel": "anonymous",
       "type": "httpTrigger",
       "direction": "in",
-      "methods": ["get"],
       "name": "req",
-      "route": "lyrics"
+      "methods": [ "get", "options" ]
+    },
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "$return"
     }
   ]
 }
