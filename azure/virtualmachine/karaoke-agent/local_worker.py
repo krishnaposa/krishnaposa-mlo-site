@@ -29,8 +29,8 @@ FFMPEG_DIR        = os.environ.get("FFMPEG_DIR", r"C:\pers\ffmpeg\bin")
 
 # ---- YouTube download options (recommended) ----
 # Provide either YT_COOKIES=path\to\cookies.txt (Netscape) OR YT_BROWSER=chrome|edge|firefox:default
-YT_COOKIES  = os.environ.get("YT_COOKIES", "")           # e.g. C:\pers\cookies\youtube.txt
-YT_BROWSER  = os.environ.get("YT_BROWSER", "")           # e.g. "chrome" or "edge" or "firefox:default"
+YT_COOKIES  = os.environ.get("YT_COOKIES", "c:\pers\cookies\youtube_cookies.txt")           # e.g. C:\pers\cookies\youtube.txt
+YT_BROWSER  = os.environ.get("YT_BROWSER", "chrome")           # e.g. "chrome" or "edge" or "firefox:default"
 YT_PROXY    = os.environ.get("YT_PROXY", "")             # optional proxy, e.g. http://127.0.0.1:8888
 YT_CLIENTS  = os.environ.get("YT_CLIENTS", "tv,web,ios,android").split(",")
 YT_RETRIES  = int(os.environ.get("YT_RETRIES", "2"))
