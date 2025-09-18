@@ -150,3 +150,7 @@ p.help:focus-within,
 p.help::selection {
   background: transparent;
 }
+
+.help {
+  border: auto
+}
