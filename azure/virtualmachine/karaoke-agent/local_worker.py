@@ -87,7 +87,7 @@ def download_input(src: dict, dest_dir: str) -> str:
 
     base = [
         sys.executable, "-m", "yt_dlp",
-        "-f", "bestaudio/best",
+        "-f", "bestaudio[ext=m4a]/bestaudio/best",
         "-x", "--audio-format", "mp3",
         "-o", outtmpl,
         "--no-playlist",
