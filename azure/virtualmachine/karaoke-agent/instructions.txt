@@ -82,4 +82,5 @@ SEPARATOR=spleeter (default) or SEPARATOR=demucs
 	•	MAX_ATTEMPTS=5, BASE_DELAY_SEC=5, MAX_DELAY_SEC=900
 
 pip install -U yt-dlp
-yt-dlp --cookies-from-browser chrome -f "bestaudio[ext=m4a]/bestaudio/best" -x --audio-format mp3 https://www.youtube.com/watch?v=MJyKN-8UncM
+yt-dlp --cookies-from-browser chrome --cookies "c\pers\cookies\youtube_cookies.txt" -f "bestaudio[ext=m4a]/bestaudio/best" -x --audio-format mp3 https://www.youtube.com/watch?v=MJyKN-8UncM
+yt-dlp --cookies "C:\pers\cookies\youtube_cookies.txt" -f "bestaudio[ext=m4a]/bestaudio/best" -x --audio-format mp3 https://www.youtube.com/watch?v=MJyKN-8UncM
