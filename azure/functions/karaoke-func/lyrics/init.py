@@ -34,10 +34,13 @@ def _int_or_none(v):
         return None
 
 def _ok(resp: dict, status: int = 200) -> func.HttpResponse:
+    # ensure_ascii=False => send real UTF-8 characters, not \uXXXX escapes
+    body = json.dumps(resp, ensure_ascii=False)
     return func.HttpResponse(
-        json.dumps(resp),
+        body,
         status_code=status,
-        mimetype="application/json",
+        # be explicit about UTF-8 so every client renders it correctly
+        mimetype="application/json; charset=utf-8",
         headers=_cors(),
     )
 
@@ -86,7 +89,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             r.raise_for_status()
             data = r.json()
             return _ok(_to_payload(data, title, artist))
-        except requests.HTTPError as e:
+        except requests.HTTPError:
             # If /get fails (400/404), fall back to /search to be forgiving
             pass
 
