@@ -10,14 +10,13 @@
 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Karaoke Player – Route Vocals & Band</title>
+  <title>Karaoke Player – Route Vocals, Band & Lyrics</title>
 
   <!-- site styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
 
-  <!-- Your list endpoint that returns SAS URLs:
-       { items: [{ job_id, title?, updated?, vocals_url, band_url }, ... ] } -->
+  <!-- API endpoints -->
   <meta name="karaoke-list" content="https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/list?code=">
 </head>
 <body>
@@ -28,7 +27,7 @@
 
 <main class="container">
 
-  <!-- Pick a completed song -->
+  <!-- Song picker -->
   <section class="card">
     <h1>Karaoke Player</h1>
     <p class="help">Choose a processed song from storage. We’ll auto-load secure (SAS) links for vocals & band.</p>
@@ -103,11 +102,22 @@
     <audio id="vocalsEl" crossorigin="anonymous" preload="auto"></audio>
     <audio id="bandEl" crossorigin="anonymous" preload="auto"></audio>
 
-    <!-- Hidden inputs kept for karaoke.js (player mode) compatibility -->
+    <!-- Hidden inputs for karaoke.js -->
     <input id="vocalsUrl" type="hidden">
     <input id="bandUrl"   type="hidden">
     <button id="loadBtn" type="button" style="display:none"></button>
     <span id="loadStatus" class="help" aria-live="polite"></span>
+  </section>
+
+  <!-- Lyrics -->
+  <section class="card">
+    <h2>Lyrics</h2>
+    <div class="row">
+      <button id="loadLyrics" class="btn btn-outline" type="button">Load lyrics</button>
+      <label style="margin-left:.5rem">Artist:</label>
+      <input id="lyrArtist" type="text" placeholder="optional" style="width:200px">
+    </div>
+    <pre id="lyricsBox" class="help" style="white-space:pre-wrap; max-height:260px; overflow:auto; margin-top:.5rem">—</pre>
   </section>
 
 </main>
@@ -115,85 +125,8 @@
 <div id="footer"></div>
 <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
-<!-- Tell karaoke.js we’re in player mode BEFORE loading it -->
+<!-- Tell karaoke.js we’re in player mode -->
 <script>window.KARAOKE_MODE = "player";</script>
 <script src="https://www.krishposa.com/assets/js/karaoke.js"></script>
-
-<!-- List → use SAS URLs → load + update title -->
-<script>
-(function(){
-  const LIST_URL = document.querySelector('meta[name="karaoke-list"]')?.content || '';
-
-  const pick = document.getElementById('songPick');
-  const useBtn = document.getElementById('useSelection');
-  const refreshBtn = document.getElementById('refreshList');
-  const status = document.getElementById('listStatus');
-  const trackTitle = document.getElementById('trackTitle');
-
-  const vocalsUrlIn = document.getElementById('vocalsUrl'); // hidden
-  const bandUrlIn   = document.getElementById('bandUrl');   // hidden
-  const loadBtn     = document.getElementById('loadBtn');   // hidden
-  const loadStatus  = document.getElementById('loadStatus');
-
-  function setListStatus(t){ status.textContent = t || ''; }
-  function setTrackTitle(t){ trackTitle.textContent = t || '—'; }
-
-  async function loadList(){
-    try {
-      if (!LIST_URL) throw new Error('Missing karaoke-list URL meta.');
-      setListStatus('Loading songs…');
-
-      const res = await fetch(LIST_URL, { mode: 'cors' });
-      if (!res.ok) throw new Error(`List failed (${res.status})`);
-      const data = await res.json();
-
-      const items = (data && data.items) || [];
-      pick.innerHTML = '';
-      if (!items.length) {
-        pick.innerHTML = '<option value="">No completed songs yet</option>';
-        setTrackTitle('—');
-        setListStatus('');
-        return;
-      }
-
-      // newest first if API includes timestamps
-      items.sort((a,b) => (b.updated||'').localeCompare(a.updated||''));
-
-      for (const it of items) {
-        // include title in JSON so we can show "Now Playing"
-        const opt = document.createElement('option');
-        opt.value = JSON.stringify({ vocals: it.vocals_url, band: it.band_url, title: it.title || it.job_id });
-        opt.textContent = it.title || it.job_id;
-        pick.appendChild(opt);
-      }
-      setListStatus(`Loaded ${items.length} song(s).`);
-    } catch (e) {
-      console.warn(e);
-      setTrackTitle('—');
-      setListStatus('Could not load list. ' + (e.message || e));
-    }
-  }
-
-  useBtn.addEventListener('click', () => {
-    const val = pick.value;
-    if (!val) return;
-
-    try {
-      const sel = JSON.parse(val);
-      // Feed SAS URLs into hidden inputs for karaoke.js (player mode)
-      vocalsUrlIn.value = sel.vocals || '';
-      bandUrlIn.value   = sel.band   || '';
-      loadBtn.click(); // karaoke.js will pick these up
-      setTrackTitle(sel.title || 'Unknown Track');
-      loadStatus.textContent = 'Tracks loaded.';
-    } catch (e) {
-      console.warn('Invalid selection', e);
-    }
-  });
-
-  refreshBtn.addEventListener('click', loadList);
-  loadList();
-})();
-</script>
 </body>
 </html>
