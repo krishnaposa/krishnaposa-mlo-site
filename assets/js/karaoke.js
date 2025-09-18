@@ -9,9 +9,7 @@ const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewe
 const FUNCTION_CODE = ''; // optional: '...'; leave '' if authLevel="anonymous"
 const OUTPUT_BASE = '';
 // ^ For private containers, leave ''. We'll use SAS URLs from /api/list or /status.
-//   If you make the container public, set to: 'https://<account>.blob.core.windows.net/karaoke-output'
 
-// Build endpoints
 const submitUrl = `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
 const statusUrl = (jobId) =>
   `${API_BASE}/api/status/${encodeURIComponent(jobId)}${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
@@ -20,7 +18,6 @@ const lyricsApiUrl = `${API_BASE}/api/lyrics${FUNCTION_CODE ? `?code=${FUNCTION_
 // =================== ELEMENTS (upload page) ===================
 const els = {
   file: document.getElementById('file'),
-  yt: document.getElementById('yt'),
   go: document.getElementById('go'),
   clear: document.getElementById('clear'),
   status: document.getElementById('status'),
@@ -42,11 +39,11 @@ function showError(msg) { if (els.alert) { els.alert.textContent = msg; els.aler
 function hideError() { if (els.alert) { els.alert.classList.add('hide'); els.alert.textContent = ''; } }
 function resetUI() {
   setStatus(''); hideError();
-  if (els.done) els.done.classList.add('hide');
+  els.done?.classList.add('hide');
   if (els.links) els.links.innerHTML = '';
   if (els.prog) els.prog.hidden = true;
   if (els.bar) els.bar.style.width = '0%';
-  if (els.playerCard) els.playerCard.classList.add('hide');
+  els.playerCard?.classList.add('hide');
   vocalsUrl = bandUrl = '';
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
@@ -57,13 +54,10 @@ function asUrl(valueOrKey) {
 }
 
 // =================== CLEAR ===================
-if (els.clear) {
-  els.clear.addEventListener('click', () => {
-    if (els.file) els.file.value = '';
-    if (els.yt) els.yt.value = '';
-    resetUI();
-  });
-}
+els.clear?.addEventListener('click', () => {
+  if (els.file) els.file.value = '';
+  resetUI();
+});
 
 // =================== POLLING (upload page) ===================
 async function doPoll(jobId) {
@@ -101,7 +95,7 @@ async function doPoll(jobId) {
       setTimeout(() => { if (els.prog) els.prog.hidden = true; if (els.bar) els.bar.style.width = '0%'; }, 800);
       setStatus('Done!');
 
-      if (els.done) els.done.classList.remove('hide');
+      els.done?.classList.remove('hide');
       if (els.links) els.links.innerHTML = '';
       for (const [name, val] of Object.entries(s.outputs || {})) {
         const href = asUrl(val);
@@ -118,6 +112,11 @@ async function doPoll(jobId) {
       bandUrl   = asUrl((s.outputs || {})['no_vocals.wav'] || '');
       if (els.playerCard && vocalsUrl && bandUrl && vocalsUrl !== '#' && bandUrl !== '#') {
         els.playerCard.classList.remove('hide');
+        // Show a friendly title if we can guess one
+        const base = (s.original_name || '').split('/').pop() || '—';
+        const title = base.replace(/\.(wav|mp3|m4a|flac|aac)$/i,'');
+        const tEl = document.getElementById('trackTitle');
+        if (tEl) tEl.textContent = title || '—';
       }
       return;
     }
@@ -135,37 +134,34 @@ function startPolling(jobId) {
 }
 
 // =================== SUBMIT (upload page) ===================
-if (els.go) {
-  els.go.addEventListener('click', async () => {
-    try {
-      hideError(); if (els.done) els.done.classList.add('hide'); if (els.links) els.links.innerHTML = '';
-      setStatus('Submitting…'); if (els.prog) els.prog.hidden = false; if (els.bar) els.bar.style.width = '10%';
+els.go?.addEventListener('click', async () => {
+  try {
+    hideError(); els.done?.classList.add('hide'); if (els.links) els.links.innerHTML = '';
+    setStatus('Submitting…'); els.prog && (els.prog.hidden = false); els.bar && (els.bar.style.width = '10%');
 
-      const fd = new FormData();
-      if (els.file?.files[0]) fd.append('file', els.file.files[0]);
-      if (els.yt?.value)      fd.append('youtube_url', els.yt.value.trim());
-      if (!fd.has('file') && !fd.has('youtube_url')) throw new Error('Select a file or paste a YouTube link.');
+    const fd = new FormData();
+    if (els.file?.files[0]) fd.append('file', els.file.files[0]);
+    if (!fd.has('file')) throw new Error('Please choose a file to upload.');
 
-      const res = await fetch(submitUrl, { method: 'POST', body: fd, mode: 'cors' });
-      let data = null;
-      try { data = await res.json(); } catch {}
-      if (!res.ok) {
-        const msg = (data && (data.error || data.message)) || (await res.text());
-        throw new Error(msg || `Submit failed (${res.status})`);
-      }
-      const jobId = data && data.job_id;
-      if (!jobId) throw new Error('No job id returned.');
-
-      (window.dataLayer = window.dataLayer || []).push({ event: 'karaoke_submit' });
-      setStatus('Queued. Processing…');
-      startPolling(jobId);
-
-    } catch (e) {
-      showError(e.message || String(e));
-      setStatus(''); if (els.prog) els.prog.hidden = true; if (els.bar) els.bar.style.width = '0%';
+    const res = await fetch(submitUrl, { method: 'POST', body: fd, mode: 'cors' });
+    let data = null;
+    try { data = await res.json(); } catch {}
+    if (!res.ok) {
+      const msg = (data && (data.error || data.message)) || (await res.text());
+      throw new Error(msg || `Submit failed (${res.status})`);
     }
-  });
-}
+    const jobId = data && data.job_id;
+    if (!jobId) throw new Error('No job id returned.');
+
+    (window.dataLayer = window.dataLayer || []).push({ event: 'karaoke_submit' });
+    setStatus('Queued. Processing…');
+    startPolling(jobId);
+
+  } catch (e) {
+    showError(e.message || String(e));
+    setStatus(''); if (els.prog) els.prog.hidden = true; if (els.bar) els.bar.style.width = '0%';
+  }
+});
 
 // =================== DUAL-OUTPUT ROUTING + BEEP TEST + PROPER CONTROLS ===================
 const vocalsEl  = document.getElementById('vocalsEl');
@@ -175,9 +171,9 @@ const bandOut   = document.getElementById('bandOut');
 const initBtn   = document.getElementById('initAudio');
 const playBtn   = document.getElementById('play');
 const pauseBtn  = document.getElementById('pause');
-const restartBtn= document.getElementById('restart'); // optional (player page)
+const restartBtn= document.getElementById('restart');
 const offsetIn  = document.getElementById('offset');
-const trackTitle= document.getElementById('trackTitle'); // optional display
+const trackTitle= document.getElementById('trackTitle');
 
 function showTrackTitle(t){ if (trackTitle) trackTitle.textContent = t || ''; }
 
@@ -185,20 +181,12 @@ const deviceMsg = document.getElementById('deviceMsg');
 function setDeviceMsg(t){ if (deviceMsg) deviceMsg.textContent = t || ''; }
 
 const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
-
-// Playback state flags
-let isLoaded  = false; // sources loaded & canplay fired at least once
+let isLoaded  = false;
 let isPlaying = false;
 
 async function ensurePermission() {
-  try {
-    await navigator.mediaDevices.getUserMedia({ audio: true });
-    return true;
-  } catch (e) {
-    console.warn('getUserMedia denied:', e);
-    setDeviceMsg('Please allow microphone access to list audio outputs.');
-    return false;
-  }
+  try { await navigator.mediaDevices.getUserMedia({ audio: true }); return true; }
+  catch { setDeviceMsg('Please allow microphone access to list audio outputs.'); return false; }
 }
 
 function fillSelect(sel, outs) {
@@ -227,70 +215,35 @@ function addDefaultFallback(sel) {
 async function listOutputs() {
   const devices = await navigator.mediaDevices.enumerateDevices();
   const outs = devices.filter(d => d.kind === 'audiooutput');
-
-  if (outs.length > 0) {
-    fillSelect(vocalsOut, outs);
-    fillSelect(bandOut,   outs);
-    setDeviceMsg(`Found ${outs.length} audio output device${outs.length>1?'s':''}.`);
-  } else {
-    addDefaultFallback(vocalsOut);
-    addDefaultFallback(bandOut);
-    setDeviceMsg('No discrete outputs reported. Using system default.');
-  }
+  if (outs.length) { fillSelect(vocalsOut, outs); fillSelect(bandOut, outs); setDeviceMsg(`Found ${outs.length} output device(s).`); }
+  else { addDefaultFallback(vocalsOut); addDefaultFallback(bandOut); setDeviceMsg('No discrete outputs reported. Using system default.'); }
   return outs.length;
 }
 
 initBtn?.addEventListener('click', async () => {
   setDeviceMsg('');
-  if (!supportSink) {
-    setDeviceMsg('Output selection not supported here. Use Chrome or Edge on desktop.');
-    return;
-  }
-  const ok = await ensurePermission();
-  if (!ok) return;
-
+  if (!supportSink) { setDeviceMsg('Output selection not supported here. Use Chrome/Edge desktop.'); return; }
+  if (!await ensurePermission()) return;
   const count = await listOutputs();
   initBtn.textContent = count ? 'Device list ready' : 'Device list (default only)';
-
-  try {
-    navigator.mediaDevices.addEventListener('devicechange', async () => {
-      await listOutputs();
-    });
-  } catch (_) {}
+  try { navigator.mediaDevices.addEventListener('devicechange', listOutputs); } catch {}
 });
 
 async function applySinks() {
   if (!supportSink) return;
-  try { await vocalsEl?.setSinkId(vocalsOut?.value || 'default'); } catch(e){ console.warn('setSinkId vocals', e); }
-  try { await bandEl?.setSinkId(bandOut?.value   || 'default'); }   catch(e){ console.warn('setSinkId band', e); }
+  try { await vocalsEl?.setSinkId(vocalsOut?.value || 'default'); } catch(e){}
+  try { await bandEl?.setSinkId(bandOut?.value   || 'default'); } catch(e){}
 }
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
-
-function clearSyncTimer() {
-  if (window._syncTimer) { clearInterval(window._syncTimer); window._syncTimer = null; }
-}
-
-function pauseAll() {
-  clearSyncTimer();
-  try { vocalsEl?.pause(); } catch {}
-  try { bandEl?.pause(); } catch {}
-  if (vocalsEl) vocalsEl.playbackRate = 1;
-  if (bandEl)   bandEl.playbackRate   = 1;
-  isPlaying = false;
-  onPlaybackPaused(); // stop lyrics sync too
-}
+function clearSyncTimer(){ if (window._syncTimer){ clearInterval(window._syncTimer); window._syncTimer=null; } }
+function pauseAll(){ clearSyncTimer(); try{vocalsEl?.pause()}catch{}; try{bandEl?.pause()}catch{}; if(vocalsEl) vocalsEl.playbackRate=1; if(bandEl) bandEl.playbackRate=1; isPlaying=false; onPlaybackPaused(); }
 
 async function preloadIfNeeded() {
   if (isLoaded) return;
-  if (!vocalsUrl || !bandUrl || vocalsUrl === '#' || bandUrl === '#') {
-    throw new Error('No tracks loaded yet.');
-  }
-  vocalsEl.src = vocalsUrl;
-  bandEl.src   = bandUrl;
-  await applySinks();
-  // Preload using .load() and wait for canplay on both
-  vocalsEl.load(); bandEl.load();
+  if (!vocalsUrl || !bandUrl || vocalsUrl === '#' || bandUrl === '#') throw new Error('No tracks loaded yet.');
+  vocalsEl.src = vocalsUrl; bandEl.src = bandUrl;
+  await applySinks(); vocalsEl.load(); bandEl.load();
   await Promise.all([
     new Promise(r => vocalsEl.addEventListener('canplay', r, {once:true})),
     new Promise(r => bandEl.addEventListener('canplay', r, {once:true})),
@@ -298,253 +251,101 @@ async function preloadIfNeeded() {
   isLoaded = true;
 }
 
-// Start from current positions (resume) without resetting times
-async function resumePlay() {
-  await Promise.all([
-    vocalsEl.play().catch(()=>{}),
-    bandEl.play().catch(()=>{}),
-  ]);
-  isPlaying = true;
-  startDriftCorrection(currentOffsetMs());
-  onPlaybackStarted(); // start lyrics sync if available
+async function resumePlay(){ await Promise.all([vocalsEl.play().catch(()=>{}), bandEl.play().catch(()=>{})]); isPlaying=true; startDriftCorrection(currentOffsetMs()); onPlaybackStarted(); }
+
+async function startFromZeroWithOffset(offsetMs){
+  vocalsEl.currentTime=0; bandEl.currentTime=0;
+  if (offsetMs >= 0){ await bandEl.play(); await sleep(offsetMs); await vocalsEl.play(); }
+  else { await vocalsEl.play(); await sleep(-offsetMs); await bandEl.play(); }
+  isPlaying=true; startDriftCorrection(offsetMs); onPlaybackStarted();
 }
 
-// Start from 0 with offset sequencing
-async function startFromZeroWithOffset(offsetMs) {
-  vocalsEl.currentTime = 0;
-  bandEl.currentTime   = 0;
+function currentOffsetMs(){ return parseInt(offsetIn?.value || '0', 10) || 0; }
 
-  if (offsetMs >= 0) {
-    await bandEl.play();
-    await sleep(offsetMs);
-    await vocalsEl.play();
-  } else {
-    await vocalsEl.play();
-    await sleep(-offsetMs);
-    await bandEl.play();
-  }
-  isPlaying = true;
-  startDriftCorrection(offsetMs);
-  onPlaybackStarted(); // start lyrics sync if available
-}
-
-// Determine current intended offset (read input)
-function currentOffsetMs() {
-  return parseInt(offsetIn?.value || '0', 10) || 0;
-}
-
-function startDriftCorrection(offsetMs) {
+function startDriftCorrection(offsetMs){
   clearSyncTimer();
   window._syncTimer = setInterval(() => {
     if (!isPlaying) return;
     const driftMs = (vocalsEl.currentTime - bandEl.currentTime) * 1000 - offsetMs;
     if (Math.abs(driftMs) > 60) {
-      if (driftMs > 0) {
-        const r = vocalsEl.playbackRate; vocalsEl.playbackRate = Math.max(0.9, r - 0.05);
-        setTimeout(() => { vocalsEl.playbackRate = r; }, 300);
-      } else {
-        const r = bandEl.playbackRate; bandEl.playbackRate = Math.max(0.9, r - 0.05);
-        setTimeout(() => { bandEl.playbackRate = r; }, 300);
-      }
+      if (driftMs > 0) { const r=vocalsEl.playbackRate; vocalsEl.playbackRate=Math.max(0.9,r-0.05); setTimeout(()=>{vocalsEl.playbackRate=r},300); }
+      else { const r=bandEl.playbackRate; bandEl.playbackRate=Math.max(0.9,r-0.05); setTimeout(()=>{bandEl.playbackRate=r},300); }
     }
   }, 2000);
 }
 
-// PLAY: resume if paused; otherwise load if needed then start from 0 with offset
 playBtn?.addEventListener('click', async () => {
   try {
     if (!vocalsEl || !bandEl) return;
-    if (isPlaying) return;          // already playing → no-op
+    if (isPlaying) return;
     await preloadIfNeeded();
-    if (vocalsEl.paused && bandEl.paused && (vocalsEl.currentTime > 0 || bandEl.currentTime > 0)) {
-      // Resume from where paused
-      await resumePlay();
-    } else {
-      // Fresh start from beginning with offset
-      await startFromZeroWithOffset(currentOffsetMs());
-    }
-  } catch (e) {
-    console.warn('play failed', e);
-    alert(e.message || 'Could not start playback.');
-  }
+    if (vocalsEl.paused && bandEl.paused && (vocalsEl.currentTime>0 || bandEl.currentTime>0)) await resumePlay();
+    else await startFromZeroWithOffset(currentOffsetMs());
+  } catch (e) { console.warn('play failed', e); alert(e.message || 'Could not start playback.'); }
 });
+pauseBtn?.addEventListener('click', pauseAll);
+restartBtn?.addEventListener('click', async () => { try { await preloadIfNeeded(); pauseAll(); await startFromZeroWithOffset(currentOffsetMs()); } catch (e) { console.warn('restart failed', e); alert(e.message || 'Could not restart playback.'); } });
 
-// PAUSE: pause both, keep positions
-pauseBtn?.addEventListener('click', () => {
-  pauseAll();
-});
-
-// RESTART: jump to 0 and start again with offset
-restartBtn?.addEventListener('click', async () => {
-  try {
-    if (!vocalsEl || !bandEl) return;
-    await preloadIfNeeded();
-    pauseAll();
-    await startFromZeroWithOffset(currentOffsetMs());
-  } catch (e) {
-    console.warn('restart failed', e);
-    alert(e.message || 'Could not restart playback.');
-  }
-});
-
-// ======= Beep test to selected output (vocals/band) =======
+// ======= Beep tests =======
 const _beepElVocals = document.createElement('audio');
 const _beepElBand   = document.createElement('audio');
 _beepElVocals.setAttribute('playsinline',''); _beepElVocals.style.display='none';
 _beepElBand.setAttribute('playsinline','');   _beepElBand.style.display='none';
-document.body.appendChild(_beepElVocals);
-document.body.appendChild(_beepElBand);
-
-async function playBeep(which, sinkId, freq=880, ms=600) {
+document.body.appendChild(_beepElVocals); document.body.appendChild(_beepElBand);
+async function playBeep(which, sinkId, freq=880, ms=600){
   const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
-  if (!supportSink) { alert('Output selection not supported in this browser.'); return; }
-  const outEl = which === 'band' ? _beepElBand : _beepElVocals;
-
-  const ac = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = ac.createOscillator();
-  const gain = ac.createGain();
-  gain.gain.setValueAtTime(0.0001, ac.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.3, ac.currentTime + 0.02);
-
-  osc.frequency.value = freq;
-  osc.type = 'sine';
-  const dest = ac.createMediaStreamDestination();
-  osc.connect(gain);
-  gain.connect(dest);
-
-  try { await outEl.setSinkId(sinkId || 'default'); } catch (e) { console.warn('setSinkId failed', e); }
-  outEl.srcObject = dest.stream;
-
-  try {
-    osc.start();
-    await outEl.play();
-    const endT = ac.currentTime + ms / 1000;
-    gain.gain.exponentialRampToValueAtTime(0.0001, endT - 0.05);
-    osc.stop(endT);
-    setTimeout(() => { outEl.pause(); outEl.srcObject = null; ac.close().catch(()=>{}); }, ms + 120);
-  } catch (e) {
-    console.warn('beep play failed', e);
-    ac.close().catch(()=>{});
-  }
+  if (!supportSink){ alert('Output selection not supported in this browser.'); return; }
+  const outEl = which==='band'?_beepElBand:_beepElVocals;
+  const ac = new (window.AudioContext||window.webkitAudioContext)(); const osc=ac.createOscillator(); const gain=ac.createGain();
+  gain.gain.setValueAtTime(0.0001, ac.currentTime); gain.gain.exponentialRampToValueAtTime(0.3, ac.currentTime+0.02);
+  osc.frequency.value=freq; osc.type='sine'; const dest=ac.createMediaStreamDestination(); osc.connect(gain); gain.connect(dest);
+  try{ await outEl.setSinkId(sinkId||'default'); }catch{}
+  outEl.srcObject=dest.stream;
+  try{ osc.start(); await outEl.play(); const endT=ac.currentTime+ms/1000; gain.gain.exponentialRampToValueAtTime(0.0001,endT-0.05); osc.stop(endT); setTimeout(()=>{outEl.pause(); outEl.srcObject=null; ac.close().catch(()=>{});}, ms+120); }catch{ ac.close().catch(()=>{}); }
 }
+document.getElementById('testVocals')?.addEventListener('click', ()=>playBeep('vocals', vocalsOut?.value, 880, 500));
+document.getElementById('testBand')?.addEventListener('click',   ()=>playBeep('band',   bandOut?.value,   660, 500));
 
-const testVocalsBtn = document.getElementById('testVocals');
-const testBandBtn   = document.getElementById('testBand');
-
-testVocalsBtn?.addEventListener('click', async () => {
-  if (!vocalsOut) return;
-  await playBeep('vocals', vocalsOut.value, 880, 500); // A5
-});
-
-testBandBtn?.addEventListener('click', async () => {
-  if (!bandOut) return;
-  await playBeep('band', bandOut.value, 660, 500); // E5
-});
-
-// =================== LYRICS (Synced LRC if available) ===================
+// =================== LYRICS (synced LRC if available) ===================
 const lyricsBtn  = document.getElementById('loadLyrics');
 const lyricsBox  = document.getElementById('lyricsBox');
 const lyrArtist  = document.getElementById('lyrArtist');
+let _lrcLines = null, _lyricsTimer = null;
 
-let _lrcLines = null;     // [{t: seconds, text}]
-let _lyricsTimer = null;  // interval id
-
-function parseLRC(lrcText) {
-  const lines = [];
-  const re = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\](.*)/g;
-  let m;
-  while ((m = re.exec(lrcText)) !== null) {
-    const min = parseInt(m[1], 10);
-    const sec = parseInt(m[2], 10);
-    const ms  = m[3] ? parseInt(m[3].padEnd(3,'0'),10) : 0;
-    const t = min*60 + sec + ms/1000;
-    const text = (m[4] || '').trim();
-    lines.push({ t, text });
-  }
-  lines.sort((a,b)=>a.t-b.t);
-  return lines;
+function parseLRC(lrcText){
+  const lines=[]; const re=/\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\](.*)/g; let m;
+  while((m=re.exec(lrcText))!==null){ const min=+m[1], sec=+m[2], ms=m[3]?+m[3].padEnd(3,'0'):0; const t=min*60+sec+ms/1000; lines.push({t, text:(m[4]||'').trim()}); }
+  lines.sort((a,b)=>a.t-b.t); return lines;
 }
-
-function renderUnsynced(text) {
-  if (lyricsBox) lyricsBox.textContent = text || 'No lyrics found.';
+function renderUnsynced(text){ if(lyricsBox) lyricsBox.textContent = text || 'No lyrics found.'; }
+function stopLyricsSync(){ if(_lyricsTimer){ clearInterval(_lyricsTimer); _lyricsTimer=null; } }
+function startLyricsSync(){
+  if(!_lrcLines||!lyricsBox) return; stopLyricsSync();
+  _lyricsTimer=setInterval(()=>{ const ct=bandEl?.currentTime||vocalsEl?.currentTime||0; let i=_lrcLines.findIndex(l=>l.t>ct); if(i===-1)i=_lrcLines.length; const idx=Math.max(0,i-1); const prev=Math.max(0,idx-3); const next=Math.min(_lrcLines.length, idx+4);
+    const chunk=_lrcLines.slice(prev,next).map(l=>l===_lrcLines[idx]?`> ${l.text}`:`  ${l.text}`).join('\n'); lyricsBox.textContent=chunk||'—'; },250);
 }
-
-function stopLyricsSync() {
-  if (_lyricsTimer) { clearInterval(_lyricsTimer); _lyricsTimer = null; }
-}
-
-function startLyricsSync() {
-  if (!_lrcLines || !lyricsBox) return;
-  stopLyricsSync();
-  _lyricsTimer = setInterval(() => {
-    if (!bandEl || !vocalsEl) return;
-    // Sync based on band time (fallback to vocals)
-    const ct = bandEl.currentTime || vocalsEl.currentTime || 0;
-
-    let i = _lrcLines.findIndex(l => l.t > ct);
-    if (i === -1) i = _lrcLines.length;
-    const idx = Math.max(0, i - 1);
-    const prev = Math.max(0, idx - 3);
-    const next = Math.min(_lrcLines.length, idx + 4);
-    const chunk = _lrcLines.slice(prev, next)
-      .map((l) => (l === _lrcLines[idx] ? `> ${l.text}` : `  ${l.text}`))
-      .join('\n');
-    lyricsBox.textContent = chunk || '—';
-  }, 250);
-}
-
 function onPlaybackStarted(){ startLyricsSync(); }
 function onPlaybackPaused(){ stopLyricsSync(); }
 
-// Load lyrics when user clicks button
 lyricsBtn?.addEventListener('click', async () => {
-  try {
-    if (!vocalsUrl && !bandUrl) {
-      if (lyricsBox) lyricsBox.textContent = 'Load a song first.';
-      return;
-    }
-
-    // Title: prefer the visible Now Playing title; fallback to filename
-    const titleText = (trackTitle?.textContent || '').trim();
-    let title = (titleText && titleText !== '—' && titleText !== 'Unknown Track') ? titleText : '';
-    if (!title) {
-      const guess = (vocalsUrl || bandUrl || '').split('?')[0].split('/').pop();
-      title = guess ? guess.replace(/\.(wav|mp3|m4a|flac|aac)$/i,'') : '';
-    }
-    if (!title) { lyricsBox.textContent = 'Unable to determine track title.'; return; }
-
-    const artist = lyrArtist?.value?.trim() || '';
-    const duration = Math.round(bandEl?.duration || vocalsEl?.duration || 0);
-
-    const url = new URL(lyricsApiUrl);
-    url.searchParams.set('title', title);
-    if (artist)   url.searchParams.set('artist', artist);
-    if (duration) url.searchParams.set('duration', String(duration));
-
-    if (lyricsBox) lyricsBox.textContent = 'Fetching lyrics…';
-    const r = await fetch(url.toString(), { mode: 'cors' });
-    const data = await r.json();
-
-    stopLyricsSync(); _lrcLines = null;
-
-    if (!data || data.found === false) {
-      renderUnsynced('No lyrics found.');
-      return;
-    }
-    if (data.synced && data.lrc) {
-      _lrcLines = parseLRC(data.lrc);
-      lyricsBox.textContent = 'Synced lyrics loaded.';
-      if (isPlaying) startLyricsSync();
-    } else {
-      renderUnsynced(data.text || 'No lyrics text available.');
-    }
-  } catch (e) {
-    console.warn(e);
-    if (lyricsBox) lyricsBox.textContent = 'Failed to fetch lyrics.';
-  }
+  try{
+    if (!vocalsUrl && !bandUrl){ if(lyricsBox) lyricsBox.textContent='Load a song first.'; return; }
+    const titleText=(trackTitle?.textContent||'').trim();
+    let title=(titleText && titleText!=='—' && titleText!=='Unknown Track')?titleText:'';
+    if(!title){ const guess=(vocalsUrl||bandUrl||'').split('?')[0].split('/').pop(); title=guess?guess.replace(/\.(wav|mp3|m4a|flac|aac)$/i,''):''; }
+    if(!title){ lyricsBox.textContent='Unable to determine track title.'; return; }
+    const artist=lyrArtist?.value?.trim()||''; const duration=Math.round(bandEl?.duration||vocalsEl?.duration||0);
+    const url=new URL(lyricsApiUrl); url.searchParams.set('title',title); if(artist) url.searchParams.set('artist',artist); if(duration) url.searchParams.set('duration', String(duration));
+    if(lyricsBox) lyricsBox.textContent='Fetching lyrics…';
+    const r=await fetch(url.toString(), {mode:'cors'}); const data=await r.json();
+    stopLyricsSync(); _lrcLines=null;
+    if(!data || data.found===false){ renderUnsynced('No lyrics found.'); return; }
+    if(data.synced && data.lrc){ _lrcLines=parseLRC(data.lrc); lyricsBox.textContent='Synced lyrics loaded.'; if(isPlaying) startLyricsSync(); }
+    else { renderUnsynced(data.text || 'No lyrics text available.'); }
+  }catch{ if(lyricsBox) lyricsBox.textContent='Failed to fetch lyrics.'; }
 });
 
-// =================== PLAYER MODE: list & load via SAS ===================
+// =================== PLAYER MODE (unchanged; uses /api/list providing SAS) ===================
 if (window.KARAOKE_MODE === 'player') {
   (function(){
     const LIST_META = document.querySelector('meta[name="karaoke-list"]');
@@ -579,7 +380,6 @@ if (window.KARAOKE_MODE === 'player') {
           return;
         }
 
-        // newest first if timestamps present
         items.sort((a,b) => (b.updated||'').localeCompare(a.updated||''));
 
         for (const it of items) {
@@ -609,8 +409,7 @@ if (window.KARAOKE_MODE === 'player') {
         isPlaying = false;
         pauseAll();
         stopLyricsSync();
-        if (lyricsBox) lyricsBox.textContent = '—';
-        _lrcLines = null;
+        const lb = document.getElementById('lyricsBox'); if (lb) lb.textContent = '—';
 
         if (vocalsUrlIn) vocalsUrlIn.value = vocalsUrl;
         if (bandUrlIn)   bandUrlIn.value   = bandUrl;
