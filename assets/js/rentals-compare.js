@@ -52,14 +52,12 @@
 
   async function selectPrediction(pred){
     try {
-      // New API path
       if (pred && typeof pred.fetchFields === 'function') {
         const { placePrediction } = await pred.fetchFields({
           fields: ['formatted_address','address_components','geometry','name']
         });
         return addPlaceFromNew(placePrediction);
       }
-      // Old API
       oldPlacesService.getDetails({
         placeId: pred.place_id,
         sessionToken,
@@ -120,12 +118,9 @@
   function addManualCurrent(){
     const label = (addrSearch.value||'').trim();
     if (!label){ showErr('Enter an address to add.'); return; }
-
-    // Loosely parse state/zip for server
     const parts = label.split(/[\s,]+/);
     const zip   = parts.find(p=>/^\d{5}$/.test(p)) || '';
     const state = (parts.find(p=>/^[A-Z]{2}$/i.test(p)) || '').toUpperCase();
-    // City heuristic: token before state or before zip
     let city = '';
     if (state) {
       const idx = parts.findIndex(p => p.toUpperCase() === state);
@@ -134,7 +129,6 @@
       const idx = parts.findIndex(p => /^\d{5}$/.test(p));
       if (idx > 0) city = parts[idx-1];
     }
-
     addPicked({ label, address: label, city, state, zip }, num(addrRent.value));
     afterPickReset();
   }
@@ -153,7 +147,8 @@
       city: row.dataset.city || '',
       state: row.dataset.state || '',
       zip: row.dataset.zip || '',
-      rent: Number(row.dataset.rent || 0)
+      rent: Number(row.dataset.rent || 0),
+      price: Number(row.querySelector('[data-price-input]')?.value || 0)
     }));
   }
 
@@ -197,26 +192,26 @@
   }
 
   async function analyzeOne(shared, picked){
-    const price = Number(prompt(`Enter Purchase Price for:\n${picked.label}`, '0') || '0');
-    if (!price) throw new Error('Purchase Price required.');
+    if (!picked.price || picked.price <= 0) {
+      throw new Error(`Enter a valid Price for:\n${picked.label}`);
+    }
 
     const prefetch = await postJSON(`${FN_BASE}/api/rent-prefetch`, {
       inputs: {
         address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
-        propertyType: '', units: 1, purchasePrice: price, ownerOccupied: false
+        propertyType: '', units: 1, purchasePrice: picked.price, ownerOccupied: false
       }
     });
 
     const inputs = {
       address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
-      propertyType: '', units: 1, purchasePrice: price,
+      propertyType: '', units: 1, purchasePrice: picked.price,
       downPct: shared.downPct, rate: shared.rate, termYears: shared.termYears,
       closingCosts: shared.closingCosts, pointsPct: shared.pointsPct,
       rent: Number(picked.rent || prefetch?.ai?.rent?.est || 0),
       otherIncome: 0, vacancyPct: shared.vacancyPct
     };
 
-    // ✅ correct endpoint here:
     const analyzed = await postJSON(`${FN_BASE}/api/rent-analyzer`, { inputs, prefetch });
     analyzed.prefetch = prefetch;
     return analyzed;
@@ -267,6 +262,10 @@
       if (!items.length) throw new Error('Please add at least one address.');
       if (items.length > 10) throw new Error('Up to 10 properties supported.');
 
+      // Validate prices up-front
+      const bad = items.find(it => !it.price || it.price <= 0);
+      if (bad) throw new Error(`Enter a valid Price for:\n${bad.label}`);
+
       submitBtn.disabled = true; submitBtn.textContent = 'Analyzing…';
 
       const results = [];
@@ -274,13 +273,11 @@
         results.push(await analyzeOne(shared, p));
       }
 
-      // Rank (server: { items, aiMode })
       try{
         const rankResp = await postJSON(`${FN_BASE}/api/portfolio-rank`, { items: results, aiMode: 'auto' });
         const order = Array.isArray(rankResp.order) ? rankResp.order : null;
         renderTable(results, order, { ok: !!rankResp.ok, summary: rankResp.summary });
       } catch {
-        // client fallback sort
         const idx = results.map((_, i)=> i);
         idx.sort((i, j)=>{
           const a = results[i].metrics||{}, b = results[j].metrics||{};
@@ -302,6 +299,5 @@
     }
   });
 
-  // Expose Places init for Google callback
   window.initPortfolioPlaces = initPlaces;
 })();
