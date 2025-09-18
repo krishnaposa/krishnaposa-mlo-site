@@ -136,3 +136,18 @@ input:focus,select:focus{
   .btn,.progress .bar{transition:none}
 }
 
+/* Karaoke lyrics box */
+.lyrics-box {
+  display: block;
+  width: 100%;
+  min-height: 250px;   /* was small, now tall */
+  max-height: 500px;   /* keep it manageable */
+  overflow-y: auto;    /* scroll if too long */
+  padding: 12px;
+  font-size: 1rem;     /* readable */
+  line-height: 1.5;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fafafa;
+  white-space: pre-wrap; /* wrap long lines */
+}
