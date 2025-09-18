@@ -52,14 +52,12 @@
 
   async function selectPrediction(pred){
     try {
-      // NEW API path
       if (pred && typeof pred.fetchFields === 'function') {
         const { placePrediction } = await pred.fetchFields({
           fields: ['formatted_address','address_components','geometry','name']
         });
         return addPlaceFromNew(placePrediction);
       }
-      // OLD API
       oldPlacesService.getDetails({
         placeId: pred.place_id,
         sessionToken,
@@ -108,78 +106,34 @@
     newSessionToken();
   }
 
-  // Typeahead
-  addrSearch.addEventListener('input', async ()=>{
-    hideErr();
-    const q=(addrSearch.value||'').trim();
-    if(!q){ addrResults.style.display='none'; addrSearch.setAttribute('aria-expanded','false'); return; }
-
-    try{
-      // Try NEW API first
-      if (AutocompleteSuggestion && typeof AutocompleteSuggestion === 'function') {
-        try {
-          const sugg = new AutocompleteSuggestion({ sessionToken });
-          if (typeof sugg.getSuggestions === 'function') {
-            const { suggestions } = await sugg.getSuggestions({
-              input: q, sessionToken, types:['address'], componentRestrictions:{ country:['us'] }
-            });
-            return renderSuggestions(suggestions);
-          }
-          if (typeof sugg.fetchSuggestions === 'function') {
-            const { suggestions } = await sugg.fetchSuggestions({
-              input: q, sessionToken, types:['address'], componentRestrictions:{ country:['us'] }
-            });
-            return renderSuggestions(suggestions);
-          }
-        } catch (_) { /* fall through to old API */ }
-      }
-
-      // OLD API fallback
-      if (oldAutocompleteService) {
-        oldAutocompleteService.getPlacePredictions({
-          input:q, sessionToken, types:['address'], componentRestrictions:{ country:['us'] }
-        }, (preds, status)=>{
-          if (status !== google.maps.places.PlacesServiceStatus.OK) {
-            addrResults.style.display='none'; addrSearch.setAttribute('aria-expanded','false'); return;
-          }
-          renderSuggestions(preds);
-        });
-      }
-    } catch (e){
-      console.error(e);
-      addrResults.style.display='none'; addrSearch.setAttribute('aria-expanded','false');
-    }
-  });
-
-  // Enter to add when autocomplete not used
+  // Manual entry if autocomplete not used
   addrSearch.addEventListener('keydown', (e)=>{
     if (e.key === 'Enter') {
       e.preventDefault();
       addManualCurrent();
     }
   });
-
-  // Add button (manual)
   addBtn.addEventListener('click', addManualCurrent);
 
   function addManualCurrent(){
     const label = (addrSearch.value||'').trim();
     if (!label){ showErr('Enter an address to add.'); return; }
-    addPicked({
-      label,
-      address: label, city: '', state: '', zip: ''
-    }, num(addrRent.value));
+    // Basic parse for state/zip
+    const parts = label.split(/[\s,]+/);
+    const zip   = parts.find(p=>/^\d{5}$/.test(p)) || '';
+    const state = parts.find(p=>/^[A-Z]{2}$/i.test(p)) || '';
+    const city  = parts.length>2 ? parts[parts.length-3] : '';
+    addPicked({ label, address: label, city, state, zip }, num(addrRent.value));
     afterPickReset();
   }
 
-  // Clear
   clearBtn.addEventListener('click', ()=>{
     addrSearch.value=''; addrRent.value='';
     addrResults.innerHTML=''; addrResults.style.display='none';
     addrSearch.setAttribute('aria-expanded','false');
   });
 
-  // ---------- Picked list (table) ----------
+  // Picked list handling
   function pickedItems(){
     return Array.from(pickedTableBody.querySelectorAll('tr[data-item]')).map((row)=>({
       label: row.querySelector('[data-label]')?.textContent || '',
@@ -194,22 +148,16 @@
   function addPicked(addr, rent){
     const count = pickedTableBody.querySelectorAll('tr[data-item]').length;
     if (count >= 10){ showErr('You can add up to 10 properties.'); return; }
-
     const node = pickedRowTpl.content.firstElementChild.cloneNode(true);
     node.querySelector('[data-label]').textContent = addr.label;
     node.querySelector('[data-meta]').textContent  = [addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
     node.querySelector('[data-rent-readonly]').textContent = dollars(rent || 0);
-
     node.dataset.address = addr.address || '';
     node.dataset.city    = addr.city    || '';
     node.dataset.state   = addr.state   || '';
     node.dataset.zip     = addr.zip     || '';
     node.dataset.rent    = String(rent || 0);
-
-    node.querySelector('[data-remove]').addEventListener('click', ()=>{
-      node.remove(); updatePickedCountAndIndex();
-    });
-
+    node.querySelector('[data-remove]').addEventListener('click', ()=>{ node.remove(); updatePickedCountAndIndex(); });
     pickedTableBody.appendChild(node);
     updatePickedCountAndIndex();
   }
@@ -220,7 +168,7 @@
     pickedCount.textContent = `${rows.length} of 10 selected`;
   }
 
-  // ---------- Server calls ----------
+  // Fetch helpers
   async function postJSON(url, body){
     const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     if (!res.ok){ const t = await res.text().catch(()=> ''); throw new Error(t || `Request failed: ${res.status}`); }
@@ -230,21 +178,16 @@
   async function analyzeOne(shared, picked){
     const price = Number(prompt(`Enter Purchase Price for:\n${picked.label}`, '0') || '0');
     if (!price) throw new Error('Purchase Price required.');
-
     const prefetch = await postJSON(`${FN_BASE}/api/rent-prefetch`, {
-      inputs: {
-        address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
-        propertyType: '', units: 1, purchasePrice: price, ownerOccupied: false
-      }
+      inputs: { ...picked, propertyType:'', units:1, purchasePrice:price, ownerOccupied:false }
     });
-
     const inputs = {
-      address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
-      propertyType: '', units: 1, purchasePrice: price,
-      downPct: shared.downPct, rate: shared.rate, termYears: shared.termYears,
-      closingCosts: shared.closingCosts, pointsPct: shared.pointsPct,
+      ...picked,
+      propertyType:'', units:1, purchasePrice:price,
+      downPct:shared.downPct, rate:shared.rate, termYears:shared.termYears,
+      closingCosts:shared.closingCosts, pointsPct:shared.pointsPct,
       rent: Number(picked.rent || prefetch?.ai?.rent?.est || 0),
-      otherIncome: 0, vacancyPct: shared.vacancyPct
+      otherIncome:0, vacancyPct:shared.vacancyPct
     };
     const analyzed = await postJSON(`${FN_BASE}/api/rent-analyze`, { inputs, prefetch });
     analyzed.prefetch = prefetch;
@@ -274,63 +217,41 @@
     portRes.style.display = 'block';
   }
 
-  // ---------- Submit ----------
+  // Submit handler
   form.addEventListener('submit', async (e)=>{
     e.preventDefault(); hideErr(); portRes.style.display='none'; portTbl.innerHTML='';
-
     try{
-      if (!document.getElementById('consent').checked) throw new Error('Please accept the educational-only consent to proceed.');
+      if (!document.getElementById('consent').checked) throw new Error('Please accept the educational-only consent.');
       const shared = {
-        downPct: num(document.getElementById('downPct').value),
-        rate: num(document.getElementById('rate').value),
-        termYears: num(document.getElementById('termYears').value),
-        closingCosts: num(document.getElementById('closingCosts').value),
-        pointsPct: num(document.getElementById('pointsPct').value),
-        vacancyPct: num(document.getElementById('vacancyPct').value || 5)
+        downPct:num(document.getElementById('downPct').value),
+        rate:num(document.getElementById('rate').value),
+        termYears:num(document.getElementById('termYears').value),
+        closingCosts:num(document.getElementById('closingCosts').value),
+        pointsPct:num(document.getElementById('pointsPct').value),
+        vacancyPct:num(document.getElementById('vacancyPct').value || 5)
       };
       if (!shared.downPct || !shared.rate || !shared.termYears) throw new Error('Down %, Rate, and Term are required.');
-
       const items = pickedItems();
       if (!items.length) throw new Error('Please add at least one address.');
       if (items.length > 10) throw new Error('Up to 10 properties supported.');
-
       submitBtn.disabled = true; submitBtn.textContent = 'Analyzing…';
-
       const results = [];
-      for (const p of items){
-        const out = await analyzeOne(shared, p);
-        results.push(out);
-      }
-
-      // Rank (server: { items, aiMode })
+      for (const p of items){ results.push(await analyzeOne(shared, p)); }
       let rankResp;
       try{
         rankResp = await postJSON(`${FN_BASE}/api/portfolio-rank`, { items: results, aiMode: 'auto' });
-        const order = Array.isArray(rankResp.order) ? rankResp.order : null;
-        renderTable(results, order, { ok: !!rankResp.ok, summary: rankResp.summary });
+        renderTable(results, rankResp.order, { ok:!!rankResp.ok, summary:rankResp.summary });
       } catch {
-        // client fallback sort
-        const idx = results.map((_, i)=> i);
-        idx.sort((i, j)=>{
-          const a = results[i].metrics||{}, b = results[j].metrics||{};
-          const c1 = Number(a.cashOnCash||0), c2 = Number(b.cashOnCash||0);
-          if (c2 !== c1) return c2 - c1;
-          const f1 = Number(a.cashFlowMonthly||0), f2 = Number(b.cashFlowMonthly||0);
-          return f2 - f1;
+        const idx = results.map((_,i)=>i).sort((a,b)=>{
+          const A=results[a].metrics||{}, B=results[b].metrics||{};
+          return (B.cashOnCash||0)-(A.cashOnCash||0) || (B.cashFlowMonthly||0)-(A.cashFlowMonthly||0);
         });
-        renderTable(results, idx, { ok:false, summary:'' });
+        renderTable(results, idx, { ok:false });
       }
-
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({ event:'portfolio_analyzer_submit', count: items.length });
-
-    } catch (ex){
-      showErr(ex.message || 'Something went wrong.');
-    } finally {
-      submitBtn.disabled = false; submitBtn.textContent = 'Analyze & Rank';
-    }
+      window.dataLayer=window.dataLayer||[]; window.dataLayer.push({ event:'portfolio_analyzer_submit', count:items.length });
+    } catch(ex){ showErr(ex.message||'Something went wrong.'); }
+    finally{ submitBtn.disabled=false; submitBtn.textContent='Analyze & Rank'; }
   });
 
-  // Expose Places init for Google callback
   window.initPortfolioPlaces = initPlaces;
 })();
