@@ -97,12 +97,13 @@
               </div>
             </div>
 
-            <!-- Address entry & validation -->
+            <!-- Address entry -->
             <h3>Addresses</h3>
             <p class="helper">Type an address below and pick a validated match, or click Add to use exactly what you typed. Repeat to add up to 10. Rent is optional (AI will estimate if left blank).</p>
 
             <div class="tool-card" style="padding:12px">
               <div class="addr-row">
+                <!-- Address -->
                 <div class="field addr-cell">
                   <label for="addrSearch">Enter address</label>
                   <input id="addrSearch" placeholder="Start typing: 3739 Jamestown Ct, Atlanta…" autocomplete="off"
@@ -110,11 +111,19 @@
                   <ul id="addrResults" class="tool-card" role="listbox" style="display:none"></ul>
                 </div>
 
+                <!-- Optional Rent -->
                 <div class="field">
                   <label for="addrRent">Optional monthly rent</label>
                   <input id="addrRent" type="number" min="0" step="25" placeholder="0">
                 </div>
 
+                <!-- NEW: Purchase Price (in the entry row, not in each picked row) -->
+                <div class="field">
+                  <label for="addrPrice">Purchase price</label>
+                  <input id="addrPrice" type="number" min="0" step="1000" placeholder="0">
+                </div>
+
+                <!-- Actions -->
                 <div class="field" style="align-self:end; display:flex; gap:8px">
                   <button class="btn" id="addAddressBtn" type="button">Add</button>
                   <button class="btn" id="clearSearch" type="button">Clear</button>
@@ -129,7 +138,7 @@
                       <th style="width:34px">#</th>
                       <th>Address</th>
                       <th style="width:160px">Selected Rent</th>
-                      <th style="width:180px">Price</th> <!-- NEW -->
+                      <th style="width:160px">Price</th>
                       <th style="width:110px">Action</th>
                     </tr>
                   </thead>
@@ -146,10 +155,8 @@
                     <div class="muted" data-meta></div>
                   </td>
                   <td data-rent-readonly>$0</td>
-                  <td>
-                    <input data-price-input type="number" min="0" step="1000" placeholder="Enter price"
-                           style="width:160px; max-width:100%">
-                  </td>
+                  <!-- Read-only price cell (value set by JS from the entry row price) -->
+                  <td data-price-readonly>$0</td>
                   <td><button class="btn" type="button" data-remove>Remove</button></td>
                 </tr>
               </template>
