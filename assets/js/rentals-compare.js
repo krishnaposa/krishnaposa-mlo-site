@@ -33,7 +33,7 @@
   let sessionToken, oldAutocompleteService = null, oldPlacesService = null;
   
     function initPlaces() {
-      const input = document.getElementById('addrSesrch');
+      const input = document.getElementById('addrSearch');
       const autocomplete = new google.maps.places.Autocomplete(input, {
         types: ['geocode'], // Restrict to address predictions
         componentRestrictions: { 'country': ['US'] } // Optional: restrict to a specific country
