@@ -1,6 +1,19 @@
 (function(){
   const FN_BASE = 'https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net';
 
+  // ---- KP Debug logger (uses kp-debug.js if present; falls back to console) ----
+  const KPDBG = (window.KP && window.KP.debug)
+    ? window.KP.debug.ns('Compare')
+    : {
+        info:  (...a) => console.log('[Compare]', ...a),
+        warn:  (...a) => console.warn('[Compare]', ...a),
+        error: (...a) => console.error('[Compare]', ...a),
+        table: (o) => console.table(o),
+        group: (label, fn) => { console.groupCollapsed('[Compare] ' + label); try { fn && fn(); } finally { console.groupEnd(); } },
+        time: (l) => console.time('[Compare] ' + l),
+        timeEnd: (l) => console.timeEnd('[Compare] ' + l),
+      };
+
   // DOM
   const form        = document.getElementById('portfolio-form');
   const err         = document.getElementById('err');
@@ -26,7 +39,7 @@
   const dollars = (n)=> Number(n||0).toLocaleString(undefined,{style:'currency',currency:'USD'});
   const pct     = (n, d=2)=> `${Number(n||0).toFixed(d)}%`;
   const num     = (v)=> { const x = Number(v); return Number.isFinite(x) ? x : 0; };
-  function showErr(m){ err.textContent = m; err.style.display = 'block'; }
+  function showErr(m){ err.textContent = m; err.style.display = 'block'; KPDBG.warn('UI error shown:', m); }
   function hideErr(){ err.style.display = 'none'; }
 
   // ---------------- Places (NEW only, optional) / Manual mode by default ----------------
@@ -59,7 +72,10 @@
       if (NewAutocompleteSuggestion && window.google?.maps?.places?.AutocompleteSessionToken) {
         sessionToken = new google.maps.places.AutocompleteSessionToken();
       }
-    } catch { /* stay in manual mode */ }
+      KPDBG.info('Places initialized (manual mode default). token?', !!sessionToken);
+    } catch (e) {
+      KPDBG.warn('Places init skipped (manual mode).', e);
+    }
   }
   window.initPortfolioPlaces = initPlaces; // safe even if script tag calls it
 
@@ -109,11 +125,14 @@
     const label = (addrSearch.value||'').trim();
     const price = num(addrPrice.value);
     const rent  = num(addrRent.value);
+    KPDBG.info('Add manual address clicked/enter', { label, price, rent });
     if (!label){ showErr('Enter an address to add.'); return; }
     if (!price){ showErr('Enter a purchase price for this address.'); return; }
 
-    const { city, state, zip } = parseCityStateZip(label);
-    addPicked({ label, address: label, city, state, zip }, rent, price);
+    const parsed = parseCityStateZip(label);
+    KPDBG.info('Parsed city/state/zip', parsed);
+
+    addPicked({ label, address: label, ...parsed }, rent, price);
     afterPickReset();
   }
 
@@ -121,12 +140,13 @@
     addrSearch.value=''; addrRent.value=''; addrPrice.value='';
     addrResults.innerHTML=''; addrResults.style.display='none';
     addrSearch.setAttribute('aria-expanded','false');
+    KPDBG.info('Cleared add controls');
   }
   clearBtn.addEventListener('click', afterPickReset);
 
   // ---------------- Picked list table ----------------
   function pickedItems(){
-    return Array.from(pickedTableBody.querySelectorAll('tr[data-item]')).map((row)=>({
+    const items = Array.from(pickedTableBody.querySelectorAll('tr[data-item]')).map((row)=>({
       label: row.querySelector('[data-label]')?.textContent || '',
       address: row.dataset.address || '',
       city: row.dataset.city || '',
@@ -135,11 +155,17 @@
       rent: Number(row.dataset.rent || 0),
       price: Number(row.dataset.price || 0)
     }));
+    return items;
   }
 
   function addPicked(addr, rent, price){
     const count = pickedTableBody.querySelectorAll('tr[data-item]').length;
     if (count >= 10){ showErr('You can add up to 10 properties.'); return; }
+
+    KPDBG.group(`Add picked row: ${addr.label}`, ()=>{
+      KPDBG.info('addr', addr);
+      KPDBG.info('rent', rent, 'price', price);
+    });
 
     const node = pickedRowTpl.content.firstElementChild.cloneNode(true);
     node.querySelector('[data-label]').textContent = addr.label;
@@ -154,6 +180,7 @@
     node.dataset.price   = String(price || 0);
 
     node.querySelector('[data-remove]').addEventListener('click', ()=>{
+      KPDBG.info('Remove picked row', { label: addr.label });
       node.remove(); updatePickedCountAndIndex();
     });
 
@@ -165,27 +192,43 @@
     const rows = Array.from(pickedTableBody.querySelectorAll('tr[data-item]'));
     rows.forEach((row, idx)=> { const idxCell = row.querySelector('[data-idx]'); if (idxCell) idxCell.textContent = String(idx+1); });
     pickedCount.textContent = `${rows.length} of 10 selected`;
+    KPDBG.info('Picked list count/index updated', { count: rows.length });
   }
 
   // ---------------- Server calls ----------------
   async function postJSON(url, body){
-    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    if (!res.ok){ const t = await res.text().catch(()=> ''); throw new Error(t || `Request failed: ${res.status}`); }
-    return res.json();
+    KPDBG.group(`POST ${url}`, ()=> KPDBG.table(body));
+    KPDBG.time(`fetch:${url}`);
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+      .catch(err => { KPDBG.error('fetch failed', err); throw err; });
+    KPDBG.timeEnd(`fetch:${url}`);
+
+    if (!res.ok){
+      const t = await res.text().catch(()=> '');
+      KPDBG.error('non-OK response', res.status, t);
+      throw new Error(t || `Request failed: ${res.status}`);
+    }
+    const json = await res.json().catch(err => { KPDBG.error('json parse failed', err); throw err; });
+    KPDBG.info('response ok');
+    return json;
   }
 
   async function maybePrefetch(picked, price){
-    // rent-prefetch benefits from state or zip
     const hasLocation = !!(picked.state || picked.zip);
-    if (!hasLocation) return null;
+    if (!hasLocation) { KPDBG.warn('Prefetch skipped — missing state/zip', picked); return null; }
     try{
-      return await postJSON(`${FN_BASE}/api/rent-prefetch`, {
+      const payload = {
         inputs: {
           address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
           propertyType: '', units: 1, purchasePrice: price, ownerOccupied: false
         }
-      });
-    } catch {
+      };
+      KPDBG.info('Prefetch start', { address: picked.address });
+      const out = await postJSON(`${FN_BASE}/api/rent-prefetch`, payload);
+      KPDBG.info('Prefetch ok', { hasAppreciation: !!out?.ai?.appreciation, hasRent: !!out?.ai?.rent?.est });
+      return out;
+    } catch (e){
+      KPDBG.warn('Prefetch failed', e);
       return null;
     }
   }
@@ -193,6 +236,8 @@
   async function analyzeOne(shared, picked){
     const price = Number(picked.price || 0);
     if (!price) throw new Error(`Missing price for: ${picked.label}`);
+
+    KPDBG.group(`Analyze: ${picked.label}`, ()=> KPDBG.info('shared', shared, 'picked', picked));
 
     const prefetch = await maybePrefetch(picked, price);
 
@@ -205,7 +250,10 @@
       otherIncome: 0, vacancyPct: shared.vacancyPct
     };
 
+    KPDBG.time(`analyze:${picked.label}`);
     const analyzed = await postJSON(`${FN_BASE}/api/rent-analyzer`, { inputs, prefetch });
+    KPDBG.timeEnd(`analyze:${picked.label}`);
+    KPDBG.info('Analyze ok', { metrics: analyzed?.metrics, prefetch: !!prefetch });
     analyzed.prefetch = prefetch || null;
     return analyzed;
   }
@@ -228,19 +276,35 @@
       if (typeof appr.pct_5y === 'number')  return Number(appr.pct_5y) * 100;
       if (typeof appr.total_return_5y === 'number') return Number(appr.total_return_5y) * 100;
     }
-    return null; // treat as "Not Received"
+    // not received
+    return null;
   }
 
   function renderTable(results, order, aiMeta){
+    KPDBG.group('Render table', ()=>{
+      KPDBG.info('aiMeta', aiMeta);
+      KPDBG.info('order', order);
+      KPDBG.table(results.map(r => ({
+        address: formatAddr(r.inputs),
+        price: r.metrics?.price,
+        rent: r.inputs?.rent ?? r.prefetch?.ai?.rent?.est ?? 0,
+        coc: r.metrics?.cashOnCash,
+        dscr: r.metrics?.dscr
+      })));
+    });
+
     lastResults = results.slice();
     lastOrder   = Array.isArray(order) ? order.slice() : null;
 
     portTbl.innerHTML = '';
     const list = lastOrder ? lastOrder.map(i=> lastResults[i]) : lastResults;
 
+    let notReceivedCount = 0;
+
     list.forEach((r, i)=>{
       const addr  = formatAddr(r.inputs);
       const fiveY = derive5yTotalReturn(r); // %
+      if (fiveY == null) notReceivedCount++;
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${i+1}</td>
@@ -255,6 +319,10 @@
       portTbl.appendChild(tr);
     });
 
+    if (notReceivedCount) {
+      KPDBG.warn(`5y appreciation Not Received for ${notReceivedCount} row(s).`);
+    }
+
     portNote.textContent = aiMeta?.ok
       ? (aiMeta.summary ? `Ranked by AI · ${aiMeta.summary}` : 'Ranked by AI (investment attractiveness).')
       : 'AI ranking unavailable — sorted by Cash-on-Cash then Monthly Cash Flow.';
@@ -266,6 +334,7 @@
 
   function applySort(key){
     if (!lastResults.length) return;
+    KPDBG.info('Apply sort', { key, dir: sortState.dir });
 
     // Build array of {idx, item}
     const arr = (lastOrder ? lastOrder : lastResults.map((_,i)=> i)).map(idx => ({ idx, item: lastResults[idx] }));
@@ -273,10 +342,9 @@
     const getField = (obj) => {
       switch (key) {
         case 'rank': return arr.indexOf(obj);
-        case 'address':
-          return formatAddr(obj.item.inputs).toLowerCase();
-        case 'price': return Number(obj.item.metrics?.price || 0);
-        case 'rent':  return Number(obj.item.inputs?.rent || obj.item.prefetch?.ai?.rent?.est || 0);
+        case 'address':           return formatAddr(obj.item.inputs).toLowerCase();
+        case 'price':             return Number(obj.item.metrics?.price || 0);
+        case 'rent':              return Number(obj.item.inputs?.rent || obj.item.prefetch?.ai?.rent?.est || 0);
         case 'cash_flow_monthly': return Number(obj.item.metrics?.cashFlowMonthly || 0);
         case 'cap_rate':          return Number(obj.item.metrics?.capRate || 0);
         case 'cash_on_cash':      return Number(obj.item.metrics?.cashOnCash || 0);
@@ -301,6 +369,7 @@
     });
 
     const newOrder = arr.map(x => x.idx);
+    KPDBG.info('Sorted order indices', newOrder);
     renderTable(lastResults, newOrder, { ok: !!lastOrder });
   }
 
@@ -310,6 +379,7 @@
       th.style.cursor = 'pointer';
       th.addEventListener('click', ()=>{
         const key = th.getAttribute('data-sort');
+        KPDBG.info('Header click', { key });
         if (sortState.key === key) {
           sortState.dir = (sortState.dir === 'asc' ? 'desc' : 'asc');
         } else {
@@ -331,7 +401,6 @@
     e.preventDefault(); hideErr(); portRes.style.display='none'; portTbl.innerHTML='';
 
     try{
-      if (!document.getElementById('consent').checked) throw new Error('Please accept the educational-only consent.');
       const shared = {
         downPct:num(document.getElementById('downPct').value),
         rate:num(document.getElementById('rate').value),
@@ -340,6 +409,13 @@
         pointsPct:num(document.getElementById('pointsPct').value),
         vacancyPct:num(document.getElementById('vacancyPct').value || 5)
       };
+      KPDBG.group('Submit clicked', ()=> {
+        KPDBG.info('shared inputs', shared);
+        KPDBG.info('consent', document.getElementById('consent')?.checked);
+        KPDBG.info('picked items', pickedItems());
+      });
+
+      if (!document.getElementById('consent').checked) throw new Error('Please accept the educational-only consent.');
       if (!shared.downPct || !shared.rate || !shared.termYears) throw new Error('Down %, Rate, and Term are required.');
 
       const items = pickedItems();
@@ -350,15 +426,22 @@
       submitBtn.disabled = true; submitBtn.textContent = 'Analyzing…';
 
       const results = [];
+      KPDBG.time('analyze:all');
       for (const p of items){
-        results.push(await analyzeOne(shared, p));
+        const out = await analyzeOne(shared, p);
+        results.push(out);
       }
+      KPDBG.timeEnd('analyze:all');
 
       try{
+        KPDBG.time('rank:server');
         const rankResp = await postJSON(`${FN_BASE}/api/portfolio-rank`, { items: results, aiMode: 'auto' });
+        KPDBG.timeEnd('rank:server');
         const order = Array.isArray(rankResp.order) ? rankResp.order : null;
+        KPDBG.info('Server rank ok', { order, summary: rankResp.summary });
         renderTable(results, order, { ok: !!rankResp.ok, summary: rankResp.summary });
-      } catch {
+      } catch (rankErr) {
+        KPDBG.warn('Server rank failed, using client fallback', rankErr);
         const idx = results.map((_, i)=> i);
         idx.sort((i, j)=>{
           const a = results[i].metrics||{}, b = results[j].metrics||{};
@@ -379,6 +462,7 @@
       window.dataLayer.push({ event:'portfolio_analyzer_submit', count: items.length });
 
     } catch (ex){
+      KPDBG.error('Submit error', ex);
       showErr(ex.message || 'Something went wrong.');
     } finally {
       submitBtn.disabled = false; submitBtn.textContent = 'Analyze & Rank';
