@@ -91,36 +91,71 @@
   });
   addBtn.addEventListener('click', addManualCurrent);
 
+  // ---------- Robust parser (no comma required) ----------
+  // Heuristics:
+  // - ZIP: last 5-digit token (optionally allowing ZIP+4 trailing)
+  // - STATE: last 2-letter token (A–Z) near the end (e.g., “GA”)
+  // - CITY (if no comma structure): take the rightmost 1–3 alphabetic tokens BEFORE the state,
+  //   skipping common street words; stop when a token contains a digit.
+  const STREET_WORDS = new Set([
+    'st','street','rd','road','ave','avenue','dr','drive','ln','lane','ct','court','blvd','boulevard',
+    'way','hwy','highway','pkwy','parkway','pl','place','trl','trail','ter','terrace','sq','square',
+    'cir','circle','cv','cove','pass','pk','park'
+  ]);
+
   function parseCityStateZip(label){
-    // Try to find ZIP (last 5 digits) and STATE (2 letters just before ZIP or anywhere in tail)
-    const zipMatch = label.match(/(\d{5})(?:-\d{4})?\s*$/);
-    const zip = zipMatch ? zipMatch[1] : '';
+    const raw = String(label || '').trim();
+    if (!raw) return { city:'', state:'', zip:'' };
 
-    // Look for a 2-letter token before ZIP or near the end
+    const tokens = raw.split(/[,\s]+/).filter(Boolean); // no comma required
+    // ZIP
+    let zip = '';
+    for (let i = tokens.length - 1; i >= 0; i--){
+      const t = tokens[i];
+      const m = t.match(/^\d{5}(?:-\d{4})?$/);
+      if (m){ zip = m[0].slice(0,5); break; }
+    }
+    // STATE (two letters, prefer the one closest to the zip or end)
     let state = '';
-    if (zipMatch) {
-      const head = label.slice(0, zipMatch.index).trim();
-      const tailTokens = head.split(/[\s,]+/);
-      for (let i = tailTokens.length - 1; i >= 0; i--) {
-        if (/^[A-Za-z]{2}$/.test(tailTokens[i])) { state = tailTokens[i].toUpperCase(); break; }
+    let stateIdx = -1;
+    for (let i = tokens.length - 1; i >= 0; i--){
+      const t = tokens[i];
+      if (/^[A-Za-z]{2}$/.test(t)){ state = t.toUpperCase(); stateIdx = i; break; }
+    }
+
+    // CITY
+    let city = '';
+    if (stateIdx > 0){
+      // If there IS a comma, use “previous chunk” strategy first (very reliable)
+      if (raw.includes(',')){
+        const parts = raw.split(',').map(s=>s.trim()).filter(Boolean);
+        const statePartIdx = parts.findIndex(p => new RegExp(`\\b${state}\\b`, 'i').test(p));
+        if (statePartIdx > 0){
+          city = parts[statePartIdx - 1].trim();
+        }
       }
-    } else {
-      const tokens = label.split(/[\s,]+/);
-      for (let i = tokens.length - 1; i >= 0; i--) {
-        if (/^[A-Za-z]{2}$/.test(tokens[i])) { state = tokens[i].toUpperCase(); break; }
+      // If no comma or failed above, use token heuristic before STATE
+      if (!city){
+        const cityTokens = [];
+        for (let i = stateIdx - 1; i >= 0; i--){
+          const t = tokens[i];
+          if (/\d/.test(t)) break;                  // stop at any number (street number)
+          const low = t.toLowerCase();
+          if (STREET_WORDS.has(low)){               // stop when we cross back into street segment
+            if (cityTokens.length) break;
+            continue;
+          }
+          if (!/^[A-Za-z.\-]+$/.test(t)) break;     // keep alphabetic-ish only
+          cityTokens.unshift(t);                    // build from right to left
+          if (cityTokens.length >= 3) break;        // most cities are <=3 tokens
+        }
+        city = cityTokens.join(' ').trim();
       }
     }
 
-    // City is optional; best effort: previous comma chunk
-    let city = '';
-    if (state) {
-      const parts = label.split(',');
-      const stateIdx = parts.findIndex(p => new RegExp(`\\b${state}\\b`, 'i').test(p));
-      if (stateIdx > 0) city = parts[stateIdx - 1].trim();
-    }
+    KPDBG.info('parseCityStateZip()', { input: raw, tokens, city, state, zip });
     return { city, state, zip };
   }
-
   function addManualCurrent(){
     const label = (addrSearch.value||'').trim();
     const price = num(addrPrice.value);
