@@ -237,7 +237,7 @@ function formatAddr(i){
       if (typeof appr.pct_5y === 'number')  return Number(appr.pct_5y) * 100;
       if (typeof appr.total_return_5y === 'number') return Number(appr.total_return_5y) * 100;
     }
-    return 0;
+    return null;
   }
 
   function renderTable(results, order, aiMeta){
@@ -261,7 +261,7 @@ function formatAddr(i){
         <td>${Number(r.metrics?.capRate||0).toFixed(2)}%</td>
         <td>${Number(r.metrics?.cashOnCash||0).toFixed(1)}%</td>
         <td>${Number(r.metrics?.dscr||0).toFixed(2)}</td>
-        <td>${Number(fiveY||0).toFixed(1)}%</td>`;
+        <td>${fiveY != null ? Number(fiveY).toFixed(1) + '%' : 'Not Received'}</td>`;
       portTbl.appendChild(tr);
     });
 
