@@ -362,7 +362,7 @@
       let analyzed;
       try {
         KPDBG.time('analyze:server');
-        analyzed = await postJSON(`${FN_BASE}/api/rent-analyze`, { inputs, prefetch });
+        analyzed = await postJSON(`${FN_BASE}/api/rent-analyzer`, { inputs, prefetch });
         KPDBG.timeEnd('analyze:server');
       } catch (e) {
         KPDBG.warn('Server analyze failed; using localAnalyze()', e);

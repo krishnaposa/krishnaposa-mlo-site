@@ -163,7 +163,7 @@
       }});
 
       // 2) ANALYZE — user inputs (override) + the entire prefetch object
-      const out = await callJSON(`${API_BASE}/rent-analyze`, {
+      const out = await callJSON(`${API_BASE}/rent-analyzer`, {
         inputs,
         prefetch
       });
