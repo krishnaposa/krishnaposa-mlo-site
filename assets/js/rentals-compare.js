@@ -1,3 +1,4 @@
+oh<script>
 (function(){
   const FN_BASE = 'https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net';
 
@@ -33,6 +34,29 @@
   // We do NOT touch legacy classes, so there are no console warnings.
   let NewAutocompleteSuggestion = null;
   let sessionToken = null;
+
+function formatAddr(i){
+  const base = (i?.address || '').trim();
+  if (!base) {
+    return [i?.address, i?.city, i?.state, i?.zip].filter(Boolean).join(', ');
+  }
+  const lower = base.toLowerCase();
+
+  const parts = [base];
+  const maybeAdd = (s) => {
+    if (!s) return;
+    const str = String(s).trim();
+    if (!str) return;
+    // only add if it's not already included in the base address
+    if (!lower.includes(str.toLowerCase())) parts.push(str);
+  };
+
+  maybeAdd(i?.city);
+  maybeAdd(i?.state);
+  maybeAdd(i?.zip);
+
+  return parts.join(', ');
+}
 
   function initPlaces(){
     try {
@@ -224,7 +248,7 @@
     const list = lastOrder ? lastOrder.map(i=> lastResults[i]) : lastResults;
 
     list.forEach((r, i)=>{
-      const addr = r.address || [r.inputs?.address, r.inputs?.city, r.inputs?.state, r.inputs?.zip].filter(Boolean).join(', ');
+      const addr = formatAddr(r.inputs);
       const tr = document.createElement('tr');
 
       const fiveY = derive5yTotalReturn(r); // %
@@ -361,3 +385,4 @@
     }
   });
 })();
+</script>
