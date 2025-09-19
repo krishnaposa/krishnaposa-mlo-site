@@ -33,7 +33,7 @@
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/cobrand.css?v=1">
   <!-- Reuse rental analyzer CSS + page CSS -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/rent-analyzer.css?v=1">
-  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/rentals-compare.css?v=1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/rentals-compare.css?v=2">
 
   <!-- Global JS -->
   <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
@@ -48,7 +48,7 @@
   <main>
     <section class="page-hero">
       <div class="container">
-        <h1>Rentals Comparision Tool <span class="label-ai">AI</span></h1>
+        <h1>Rentals Comparison Tool <span class="label-ai">AI</span></h1>
         <p class="small">Type addresses, pick validated matches, then analyze & rank up to 10 properties. Educational only.</p>
       </div>
     </section>
@@ -56,7 +56,7 @@
     <section class="content">
       <div class="container">
         <div class="tool-card" itemscope itemtype="https://schema.org/WebApplication">
-          <meta itemprop="name" content="Rentals Comparision Tool">
+          <meta itemprop="name" content="Rentals Comparison Tool">
           <meta itemprop="applicationCategory" content="FinanceApplication">
 
           <form id="portfolio-form" novalidate>
@@ -146,9 +146,7 @@
               <template id="pickedRowTpl">
                 <tr data-item>
                   <td data-idx></td>
-                  <td>
-                    <div data-label style="font-weight:600"></div>
-                  </td>
+                  <td><div data-label style="font-weight:600"></div></td>
                   <td data-rent-readonly>$0</td>
                   <td data-price-readonly>$0</td>
                   <td><button class="btn" type="button" data-remove>Remove</button></td>
@@ -167,28 +165,28 @@
           </form>
 
           <!-- Ranked results -->
-        <!-- Ranked results -->
-<div class="result-wrap tool-card" id="portfolioResult" style="display:none">
-  <h2>Ranked Results</h2>
-  <p class="muted" id="portfolioNote"></p>
-  <div class="table-wrap">
-    <table id="portfolioTable" aria-label="Portfolio ranking" style="min-width:860px">
-      <thead>
-        <tr>
-          <th data-sort="rank"># <span class="sort-arrow"></span></th>
-          <th data-sort="address">Address <span class="sort-arrow"></span></th>
-          <th data-sort="price">Price <span class="sort-arrow"></span></th>
-          <th data-sort="rent">Rent <span class="sort-arrow"></span></th>
-          <th data-sort="cash_flow_monthly">Cash Flow / mo <span class="sort-arrow"></span></th>
-          <th data-sort="cap_rate">Cap Rate <span class="sort-arrow"></span></th>
-          <th data-sort="cash_on_cash">CoC <span class="sort-arrow"></span></th>
-          <th data-sort="dscr">DSCR <span class="sort-arrow"></span></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-</div>
+          <div class="result-wrap tool-card" id="portfolioResult" style="display:none">
+            <h2>Ranked Results</h2>
+            <p class="muted" id="portfolioNote"></p>
+            <div class="table-wrap">
+              <table id="portfolioTable" aria-label="Portfolio ranking" style="min-width:980px">
+                <thead>
+                  <tr>
+                    <th data-sort="rank"># <span class="sort-arrow"></span></th>
+                    <th data-sort="address">Address <span class="sort-arrow"></span></th>
+                    <th data-sort="price">Price <span class="sort-arrow"></span></th>
+                    <th data-sort="rent">Rent <span class="sort-arrow"></span></th>
+                    <th data-sort="cash_flow_monthly">Cash Flow / mo <span class="sort-arrow"></span></th>
+                    <th data-sort="cap_rate">Cap Rate <span class="sort-arrow"></span></th>
+                    <th data-sort="cash_on_cash">CoC <span class="sort-arrow"></span></th>
+                    <th data-sort="dscr">DSCR <span class="sort-arrow"></span></th>
+                    <th data-sort="total_return_5y">5-Yr Total Return <span class="sort-arrow"></span></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
 
         </div>
       </div>
@@ -209,6 +207,6 @@
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAi0XSSjP_14ikqikccKGJFSaxuwGzgpOc&libraries=places&v=weekly&loading=async&callback=initPortfolioPlaces" async defer></script>
 
   <!-- Page script -->
-  <script defer src="https://www.krishposa.com/assets/js/rentals-compare.js?v=3"></script>
+  <script defer src="https://www.krishposa.com/assets/js/rentals-compare.js?v=4"></script>
 </body>
 </html>
