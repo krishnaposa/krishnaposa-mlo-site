@@ -1,5 +1,19 @@
 (function () {
   const FN_BASE = 'https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net';
+
+  // ---- KP Debug (safe fallbacks) ----
+  const KPDBG = (window.KP && window.KP.debug)
+    ? window.KP.debug.ns('Analyzer')
+    : {
+        info:  (...a) => console.log('[Analyzer]', ...a),
+        warn:  (...a) => console.warn('[Analyzer]', ...a),
+        error: (...a) => console.error('[Analyzer]', ...a),
+        table: (o) => console.table(o),
+        group: (label, fn) => { console.groupCollapsed('[Analyzer] ' + label); try { fn && fn(); } finally { console.groupEnd(); } },
+        time: (l) => console.time('[Analyzer] ' + l),
+        timeEnd: (l) => console.timeEnd('[Analyzer] ' + l),
+      };
+
   const form = document.getElementById('rental-form');
   const submitBtn = document.getElementById('submitBtn');
   const err = document.getElementById('err');
@@ -32,6 +46,7 @@
   function clearTables(){ monthlyTbody.innerHTML=''; annualTbody.innerHTML=''; sensTbody.innerHTML=''; }
 
   function validateInputs(d){
+    KPDBG.group('validateInputs()', ()=> KPDBG.table(d));
     if (!document.getElementById('consent').checked) throw new Error('Please accept the educational-only consent to proceed.');
     if (!toNum(d.purchasePrice)) throw new Error('Enter a valid Purchase Price.');
     if (!toNum(d.rate))          throw new Error('Enter a valid Interest Rate (%).');
@@ -48,7 +63,7 @@
     return v;
   }
   function irr(cashflows){
-    // bracket IRR between -99% and 500%
+    KPDBG.group('irr(cashflows)', ()=> KPDBG.table(cashflows));
     let lo = -0.99, hi = 5.0;
     let fLo = npv(lo, cashflows), fHi = npv(hi, cashflows);
     if (!isFinite(fLo) || !isFinite(fHi) || fLo * fHi > 0) return 0;
@@ -76,6 +91,11 @@
 
   // Allow injection of appreciation hints
   function localAnalyze(data, apprHints = {}){
+    KPDBG.group('localAnalyze(inputs, apprHints)', ()=>{
+      KPDBG.table(data);
+      KPDBG.info('apprHints:', apprHints);
+    });
+
     const price  = toNum(data.purchasePrice);
     const down   = price * (toNum(data.downPct)/100);
     const loan   = Math.max(0, price - down);
@@ -115,10 +135,6 @@
     const dscr = pi ? (noiMonthly/pi) : 0;
 
     // ---- 5-year projections (with appreciation) ----
-    // Appreciation hint can come as:
-    //   apprHints.appreciationAnnualPct
-    //   apprHints.appreciationPct
-    //   apprHints.aoai_appreciation (number or string)
     const apprPct = clamp(
       toNum(
         apprHints.appreciationAnnualPct ??
@@ -157,7 +173,7 @@
       return { rent:r2, cashFlowMonthly:cf2, dscr: (pi? noi2/pi : 0) };
     });
 
-    return {
+    const out = {
       address: [data.address, data.city, data.state, data.zip].filter(Boolean).join(', '),
       inputs: data,
       metrics: {
@@ -192,9 +208,17 @@
       explanation: 'Calculated locally from your inputs.',
       rentalRestrictions: { hasHoa: hoaMonthly>0, notes: data.rentalRules || 'Unknown' }
     };
+
+    KPDBG.group('localAnalyze() → metrics', ()=> KPDBG.table(out.metrics));
+    return out;
   }
 
   function render(out){
+    KPDBG.group('render(out)', ()=> {
+      KPDBG.info('address:', out.address);
+      KPDBG.table(out.metrics);
+    });
+
     const a = out.address || '';
     const i = out.inputs || {};
     summary.innerHTML =
@@ -208,11 +232,10 @@
     mmCoC  && (mmCoC.textContent  = pct(out.metrics.cashOnCash));
     mmDSCR && (mmDSCR.textContent = (out.metrics.dscr ?? 0).toFixed(2));
 
-    // NEW optional mini metrics (render only if the elements exist)
+    // NEW optional mini metrics
     if (mmTR)  mmTR.textContent  = pct(out.metrics.totalReturnPctProjected ?? 0, 1);
     if (mmIRR) mmIRR.textContent = pct(out.metrics.irr5y ?? 0, 2);
 
-    // Assumption line if present
     if (assumptionLine) {
       const ap = out.metrics.appreciationAnnualPct;
       const sc = out.metrics.sellingCostPct;
@@ -233,8 +256,6 @@
       const tr = document.createElement('tr'); tr.innerHTML = `<td>${k}</td><td>${v}</td>`; monthlyTbody.appendChild(tr);
     });
 
-    // Annual table stays compatible with your current HTML,
-    // but if you later add rows for 5y items, you can show them here as well.
     const annualRows = [
       ['NOI (annual)', dollars(m.noiAnnual)],
       ['Cap Rate', pct(m.capRate)],
@@ -246,8 +267,6 @@
       ['Closing Costs (est.)', dollars(m.closingCosts)],
       ['Total Cash to Close', dollars(m.totalCashToClose)]
     ];
-
-    // If your HTML expects 5y metrics too, append them safely:
     if ('principalPaid5' in m || 'valueAfter5' in m || 'netSaleProceeds' in m || 'totalReturnPctProjected' in m || 'irr5y' in m) {
       annualRows.push(
         ['Principal Paid (5 yr)', dollars(m.principalPaid5 ?? 0)],
@@ -258,7 +277,6 @@
         ['IRR (5 yr)', pct(m.irr5y ?? 0, 2)]
       );
     }
-
     annualRows.forEach(([k,v])=>{
       const tr = document.createElement('tr'); tr.innerHTML = `<td>${k}</td><td>${v}</td>`; annualTbody.appendChild(tr);
     });
@@ -273,9 +291,16 @@
   }
 
   async function postJSON(url, body){
+    KPDBG.group(`POST ${url}`, ()=> KPDBG.table(body));
     const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error(`Server error (${res.status})`);
-    return res.json();
+    if (!res.ok){
+      const t = await res.text().catch(()=> '');
+      KPDBG.error('HTTP error', res.status, t);
+      throw new Error(`Server error (${res.status})`);
+    }
+    const json = await res.json();
+    KPDBG.info('Response OK:', url, json);
+    return json;
   }
 
   form?.addEventListener('submit', async (e)=>{
@@ -283,11 +308,14 @@
     err.style.display='none'; result.style.display='none'; clearTables();
 
     const data = Object.fromEntries(new FormData(form).entries());
+    KPDBG.group('Form submit', ()=> KPDBG.table(data));
+
     try {
       validateInputs(data);
       submitBtn.disabled = true; submitBtn.textContent = 'Analyzing…';
 
       // 1) Prefetch (AI taxes+expenses+rent+appreciation)
+      KPDBG.time('prefetch');
       const prefetch = await postJSON(`${FN_BASE}/api/rent-prefetch`, {
         inputs: {
           address: data.address, city: data.city, state: data.state, zip: data.zip,
@@ -299,6 +327,7 @@
           ownerOccupied: false
         }
       });
+      KPDBG.timeEnd('prefetch');
 
       // 2) Analyze (must send {inputs, prefetch})
       const inputs = {
@@ -317,6 +346,7 @@
         utilitiesMonthly: Number(data.utilitiesMonthly || prefetch?.ai?.expenses?.utilities_monthly_est || 0),
         rentalRules: data.rentalRules || ''
       };
+      KPDBG.group('Analyze inputs', ()=> KPDBG.table(inputs));
 
       // extract appreciation hints from prefetch (supports both shapes)
       const apprHints = {
@@ -324,42 +354,52 @@
           prefetch?.ai?.appreciation?.annualPct ??
           prefetch?.ai?.appreciation?.pct ??
           undefined,
-        aoai_appreciation: prefetch?.ai?.aoai_appreciation, // if your backend puts it here
+        aoai_appreciation: prefetch?.ai?.aoai_appreciation,
         sellingCostPct: prefetch?.ai?.sellingCostPct
       };
+      KPDBG.info('apprHints from prefetch:', apprHints);
 
       let analyzed;
       try {
+        KPDBG.time('analyze:server');
         analyzed = await postJSON(`${FN_BASE}/api/rent-analyze`, { inputs, prefetch });
-      } catch {
+        KPDBG.timeEnd('analyze:server');
+      } catch (e) {
+        KPDBG.warn('Server analyze failed; using localAnalyze()', e);
         analyzed = localAnalyze(inputs, apprHints); // fallback
       }
 
-      // Make sure 5y metrics exist even if server doesn't return them
+      // Ensure 5y metrics even if server missed them
       if (!analyzed.metrics) analyzed.metrics = {};
       const local = localAnalyze(inputs, apprHints);
       const m = analyzed.metrics;
       const addIfMissing = (k, v) => { if (m[k] == null) m[k] = v; };
-      addIfMissing('appreciationAnnualPct', local.metrics.appreciationAnnualPct);
-      addIfMissing('sellingCostPct',        local.metrics.sellingCostPct);
-      addIfMissing('valueAfter5',           local.metrics.valueAfter5);
-      addIfMissing('principalPaid5',        local.metrics.principalPaid5);
-      addIfMissing('cashFlow5y',            local.metrics.cashFlow5y);
-      addIfMissing('netSaleProceeds',       local.metrics.netSaleProceeds);
-      addIfMissing('totalReturnPctProjected', local.metrics.totalReturnPctProjected);
-      addIfMissing('irr5y',                 local.metrics.irr5y);
-      // also ensure base fields present
       [
-        'price','downPayment','loanAmount','pointsCost','closingCosts','totalCashToClose',
-        'piMonthly','monthlyIncome','noiMonthly','noiAnnual','capRate','cashFlowMonthly',
-        'cashFlowAnnual','cashOnCash','dscr'
-      ].forEach(k=> addIfMissing(k, local.metrics[k]));
+        ['appreciationAnnualPct', local.metrics.appreciationAnnualPct],
+        ['sellingCostPct',        local.metrics.sellingCostPct],
+        ['valueAfter5',           local.metrics.valueAfter5],
+        ['principalPaid5',        local.metrics.principalPaid5],
+        ['cashFlow5y',            local.metrics.cashFlow5y],
+        ['netSaleProceeds',       local.metrics.netSaleProceeds],
+        ['totalReturnPctProjected', local.metrics.totalReturnPctProjected],
+        ['irr5y',                 local.metrics.irr5y],
+        // base fields too (if missing)
+        ['price', local.metrics.price], ['downPayment', local.metrics.downPayment],
+        ['loanAmount', local.metrics.loanAmount], ['pointsCost', local.metrics.pointsCost],
+        ['closingCosts', local.metrics.closingCosts], ['totalCashToClose', local.metrics.totalCashToClose],
+        ['piMonthly', local.metrics.piMonthly], ['monthlyIncome', local.metrics.monthlyIncome],
+        ['noiMonthly', local.metrics.noiMonthly], ['noiAnnual', local.metrics.noiAnnual],
+        ['capRate', local.metrics.capRate], ['cashFlowMonthly', local.metrics.cashFlowMonthly],
+        ['cashFlowAnnual', local.metrics.cashFlowAnnual], ['cashOnCash', local.metrics.cashOnCash],
+        ['dscr', local.metrics.dscr]
+      ].forEach(([k,v])=> addIfMissing(k, v));
 
-      // suit the outer object (address, inputs, sensitivity)
       if (!analyzed.address) analyzed.address = local.address;
       if (!analyzed.inputs) analyzed.inputs = inputs;
       if (!analyzed.sensitivity) analyzed.sensitivity = local.sensitivity;
       if (!analyzed.rentalRestrictions) analyzed.rentalRestrictions = local.rentalRestrictions;
+
+      KPDBG.group('Final analyzed object', ()=> KPDBG.table(analyzed.metrics));
 
       render(analyzed);
       window.dataLayer = window.dataLayer || [];
@@ -367,6 +407,7 @@
       result.scrollIntoView({ behavior:'smooth', block:'start' });
 
     } catch (ex) {
+      KPDBG.error('Submit failure:', ex);
       err.textContent = ex.message || 'Something went wrong. Please review your inputs.';
       err.style.display = 'block';
     } finally {
