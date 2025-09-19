@@ -13,7 +13,7 @@
   const addBtn      = document.getElementById('addAddressBtn');
   const clearBtn    = document.getElementById('clearSearch');
 
-  const pickedCount = document.getElementById('pickedCount');
+  const pickedCount     = document.getElementById('pickedCount');
   const pickedTableBody = document.querySelector('#pickedTable tbody');
   const pickedRowTpl    = document.getElementById('pickedRowTpl');
 
@@ -34,28 +34,24 @@
   let NewAutocompleteSuggestion = null;
   let sessionToken = null;
 
-function formatAddr(i){
-  const base = (i?.address || '').trim();
-  if (!base) {
-    return [i?.address, i?.city, i?.state, i?.zip].filter(Boolean).join(', ');
+  // Build a clean one-line address without duplicating city/state/zip if already present
+  function formatAddr(i){
+    const base = (i?.address || '').trim();
+    if (!base) return [i?.address, i?.city, i?.state, i?.zip].filter(Boolean).join(', ');
+
+    const lower = base.toLowerCase();
+    const parts = [base];
+    const maybeAdd = (s) => {
+      if (!s) return;
+      const str = String(s).trim();
+      if (!str) return;
+      if (!lower.includes(str.toLowerCase())) parts.push(str);
+    };
+    maybeAdd(i?.city);
+    maybeAdd(i?.state);
+    maybeAdd(i?.zip);
+    return parts.join(', ');
   }
-  const lower = base.toLowerCase();
-
-  const parts = [base];
-  const maybeAdd = (s) => {
-    if (!s) return;
-    const str = String(s).trim();
-    if (!str) return;
-    // only add if it's not already included in the base address
-    if (!lower.includes(str.toLowerCase())) parts.push(str);
-  };
-
-  maybeAdd(i?.city);
-  maybeAdd(i?.state);
-  maybeAdd(i?.zip);
-
-  return parts.join(', ');
-}
 
   function initPlaces(){
     try {
@@ -67,10 +63,8 @@ function formatAddr(i){
   }
   window.initPortfolioPlaces = initPlaces; // safe even if script tag calls it
 
-  // If you later want to wire suggestions with the NEW API, you can;
-  // for now we keep manual mode to stay 100% warning-free.
+  // Manual mode: keep suggestions hidden
   addrSearch.addEventListener('input', ()=>{
-    // hide dropdown in manual mode
     addrResults.style.display='none';
     addrSearch.setAttribute('aria-expanded','false');
   });
@@ -101,12 +95,10 @@ function formatAddr(i){
       }
     }
 
-    // City is optional for the API, but try to infer a best-effort city
+    // City is optional; best effort: previous comma chunk
     let city = '';
     if (state) {
-      // Grab token sequence right before state, up to a comma
       const parts = label.split(',');
-      // use the part that contains the state to find the previous comma chunk as city
       const stateIdx = parts.findIndex(p => new RegExp(`\\b${state}\\b`, 'i').test(p));
       if (stateIdx > 0) city = parts[stateIdx - 1].trim();
     }
@@ -183,7 +175,7 @@ function formatAddr(i){
   }
 
   async function maybePrefetch(picked, price){
-    // rent-prefetch requires at least state or zip — call only if we have one
+    // rent-prefetch benefits from state or zip
     const hasLocation = !!(picked.state || picked.zip);
     if (!hasLocation) return null;
     try{
@@ -236,7 +228,7 @@ function formatAddr(i){
       if (typeof appr.pct_5y === 'number')  return Number(appr.pct_5y) * 100;
       if (typeof appr.total_return_5y === 'number') return Number(appr.total_return_5y) * 100;
     }
-    return null;
+    return null; // treat as "Not Received"
   }
 
   function renderTable(results, order, aiMeta){
@@ -247,10 +239,9 @@ function formatAddr(i){
     const list = lastOrder ? lastOrder.map(i=> lastResults[i]) : lastResults;
 
     list.forEach((r, i)=>{
-      const addr = formatAddr(r.inputs);
-      const tr = document.createElement('tr');
-
+      const addr  = formatAddr(r.inputs);
       const fiveY = derive5yTotalReturn(r); // %
+      const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${i+1}</td>
         <td style="max-width:520px; white-space:normal">${addr}</td>
@@ -275,29 +266,37 @@ function formatAddr(i){
 
   function applySort(key){
     if (!lastResults.length) return;
+
+    // Build array of {idx, item}
     const arr = (lastOrder ? lastOrder : lastResults.map((_,i)=> i)).map(idx => ({ idx, item: lastResults[idx] }));
 
     const getField = (obj) => {
       switch (key) {
         case 'rank': return arr.indexOf(obj);
         case 'address':
-          return (obj.item.address || [obj.item.inputs?.address, obj.item.inputs?.city, obj.item.inputs?.state, obj.item.inputs?.zip].filter(Boolean).join(', ')).toLowerCase();
+          return formatAddr(obj.item.inputs).toLowerCase();
         case 'price': return Number(obj.item.metrics?.price || 0);
-        case 'rent': return Number(obj.item.inputs?.rent || obj.item.prefetch?.ai?.rent?.est || 0);
+        case 'rent':  return Number(obj.item.inputs?.rent || obj.item.prefetch?.ai?.rent?.est || 0);
         case 'cash_flow_monthly': return Number(obj.item.metrics?.cashFlowMonthly || 0);
-        case 'cap_rate': return Number(obj.item.metrics?.capRate || 0);
-        case 'cash_on_cash': return Number(obj.item.metrics?.cashOnCash || 0);
-        case 'dscr': return Number(obj.item.metrics?.dscr || 0);
-        case 'total_return_5y': return Number(derive5yTotalReturn(obj.item) || 0);
+        case 'cap_rate':          return Number(obj.item.metrics?.capRate || 0);
+        case 'cash_on_cash':      return Number(obj.item.metrics?.cashOnCash || 0);
+        case 'dscr':              return Number(obj.item.metrics?.dscr || 0);
+        case 'total_return_5y':   return derive5yTotalReturn(obj.item); // may be null
         default: return 0;
       }
     };
 
     arr.sort((a,b)=>{
-      const va = getField(a), vb = getField(b);
-      if (typeof va === 'string' || typeof vb === 'string') {
-        return sortState.dir === 'asc' ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+      const vaRaw = getField(a), vbRaw = getField(b);
+      // strings
+      if (typeof vaRaw === 'string' || typeof vbRaw === 'string') {
+        return sortState.dir === 'asc'
+          ? String(vaRaw).localeCompare(String(vbRaw))
+          : String(vbRaw).localeCompare(String(vaRaw));
       }
+      // numbers (nulls go to bottom regardless of direction)
+      const va = (vaRaw == null) ? (sortState.dir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY) : Number(vaRaw);
+      const vb = (vbRaw == null) ? (sortState.dir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY) : Number(vbRaw);
       return sortState.dir === 'asc' ? (va - vb) : (vb - va);
     });
 
@@ -318,8 +317,10 @@ function formatAddr(i){
           sortState.dir = 'asc';
         }
         applySort(sortState.key);
+        // set visual arrows
         portHead.querySelectorAll('.sort-arrow').forEach(el=> el.textContent = '');
-        th.querySelector('.sort-arrow').textContent = sortState.dir === 'asc' ? '▲' : '▼';
+        const arrow = th.querySelector('.sort-arrow');
+        if (arrow) arrow.textContent = sortState.dir === 'asc' ? '▲' : '▼';
       });
     });
   }
@@ -370,7 +371,7 @@ function formatAddr(i){
       }
 
       // default sort indicator to AI rank (#)
-      const thRank = portHead.querySelector('th[data-sort="rank"] .sort-arrow');
+      const thRank = portHead?.querySelector('th[data-sort="rank"] .sort-arrow');
       if (thRank) thRank.textContent = '▲';
       sortState = { key: 'rank', dir: 'asc' };
 
