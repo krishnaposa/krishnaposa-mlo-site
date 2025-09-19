@@ -31,14 +31,23 @@
 
   // ---------------- Google Places (fallback-friendly) ----------------
   let sessionToken, oldAutocompleteService = null, oldPlacesService = null;
-  function initPlaces(){
-    if (!('google' in window) || !google.maps || !google.maps.places) return;
-    oldAutocompleteService = new google.maps.places.AutocompleteService();
-    oldPlacesService       = new google.maps.places.PlacesService(document.createElement('div'));
-    newSessionToken();
-  }
-  function newSessionToken(){ sessionToken = new google.maps.places.AutocompleteSessionToken(); }
+  
+    function initPlaces() {
+      const input = document.getElementById('address-autocomplete');
+      const autocomplete = new google.maps.places.Autocomplete(input, {
+        types: ['geocode'], // Restrict to address predictions
+        componentRestrictions: { 'country': ['US'] } // Optional: restrict to a specific country
+      });
 
+      // Optional: Add a listener to handle when a place is selected
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace();
+        // Do something with the selected place, e.g., populate other form fields
+        console.log(place.formatted_address);
+      });
+    }
+
+  
   function renderSuggestions(items){
     addrResults.innerHTML='';
     if(!items || !items.length){ addrResults.style.display='none'; addrSearch.setAttribute('aria-expanded','false'); return; }
