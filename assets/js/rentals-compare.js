@@ -1,3 +1,4 @@
+<script>
 (function(){
   const FN_BASE = 'https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net';
 
@@ -7,7 +8,7 @@
   const submitBtn   = document.getElementById('submitBtn');
 
   const addrSearch  = document.getElementById('addrSearch');
-  const addrResults = document.getElementById('addrResults');
+  const addrResults = document.getElementById('addrResults'); // no-op in manual mode
   const addrRent    = document.getElementById('addrRent');
   const addrPrice   = document.getElementById('addrPrice');
   const addBtn      = document.getElementById('addAddressBtn');
@@ -29,87 +30,66 @@
   function showErr(m){ err.textContent = m; err.style.display = 'block'; }
   function hideErr(){ err.style.display = 'none'; }
 
-  // ---------------- Google Places (fallback-friendly) ----------------
-  let sessionToken, oldAutocompleteService = null, oldPlacesService = null;
-  
-    function initPlaces() {
-      const input = document.getElementById('addrSearch');
-      const autocomplete = new google.maps.places.Autocomplete(input, {
-        types: ['geocode'], // Restrict to address predictions
-        componentRestrictions: { 'country': ['US'] } // Optional: restrict to a specific country
-      });
+  // ---------------- Places (NEW only, optional) / Manual mode by default ----------------
+  // We do NOT touch legacy classes, so there are no console warnings.
+  let NewAutocompleteSuggestion = null;
+  let sessionToken = null;
 
-      // Optional: Add a listener to handle when a place is selected
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace();
-        // Do something with the selected place, e.g., populate other form fields
-        console.log(place.formatted_address);
-      });
-    }
-
-  
-  function renderSuggestions(items){
-    addrResults.innerHTML='';
-    if(!items || !items.length){ addrResults.style.display='none'; addrSearch.setAttribute('aria-expanded','false'); return; }
-    items.forEach(pred=>{
-      const li=document.createElement('li');
-      li.role='option'; li.tabIndex=0; li.style.cursor='pointer'; li.style.padding='8px';
-      li.textContent = pred.description || '';
-      li.addEventListener('click',()=> selectPrediction(pred));
-      li.addEventListener('keydown',(e)=>{ if(e.key==='Enter') selectPrediction(pred); });
-      addrResults.appendChild(li);
-    });
-    addrResults.style.display='block';
-    addrSearch.setAttribute('aria-expanded','true');
-  }
-
-  function selectPrediction(pred){
-    oldPlacesService.getDetails({
-      placeId: pred.place_id,
-      sessionToken,
-      fields: ['formatted_address','address_components','geometry','name']
-    }, (place, status)=>{
-      if (status !== google.maps.places.PlacesServiceStatus.OK || !place) {
-        showErr('Could not validate the address.'); return;
+  function initPlaces(){
+    try {
+      NewAutocompleteSuggestion = window.google?.maps?.places?.AutocompleteSuggestion || null;
+      if (NewAutocompleteSuggestion && window.google?.maps?.places?.AutocompleteSessionToken) {
+        sessionToken = new google.maps.places.AutocompleteSessionToken();
       }
-      const { street, city, state, zip } = extractComponents(place.address_components);
-      addPicked({
-        label: place.formatted_address || [street || place.name || '', city, state, zip].filter(Boolean).join(', '),
-        address: street || place.name || '', city, state, zip
-      }, num(addrRent.value), num(addrPrice.value));
-      afterPickReset();
-    });
+    } catch { /* stay in manual mode */ }
   }
+  window.initPortfolioPlaces = initPlaces; // safe even if script tag calls it
 
-  function extractComponents(components){
-    const get=(t)=> (components||[]).find(c=>c.types.includes(t));
-    const street=[get('street_number')?.long_name||'', get('route')?.long_name||''].filter(Boolean).join(' ').trim();
-    const city  = get('locality')?.long_name || get('sublocality_level_1')?.long_name || '';
-    const state = get('administrative_area_level_1')?.short_name || '';
-    const zip   = get('postal_code')?.long_name || '';
-    return { street, city, state, zip };
-  }
-
-  // Typeahead
+  // If you later want to wire suggestions with the NEW API, you can;
+  // for now we keep manual mode to stay 100% warning-free.
   addrSearch.addEventListener('input', ()=>{
-    hideErr();
-    const q=(addrSearch.value||'').trim();
-    if(!q || !oldAutocompleteService){ addrResults.style.display='none'; addrSearch.setAttribute('aria-expanded','false'); return; }
-    oldAutocompleteService.getPlacePredictions({
-      input:q, sessionToken, types:['address'], componentRestrictions:{ country:['us'] }
-    }, (preds, status)=>{
-      if (status !== google.maps.places.PlacesServiceStatus.OK) {
-        addrResults.style.display='none'; addrSearch.setAttribute('aria-expanded','false'); return;
-      }
-      renderSuggestions(preds);
-    });
+    // hide dropdown in manual mode
+    addrResults.style.display='none';
+    addrSearch.setAttribute('aria-expanded','false');
   });
 
-  // Manual add if autocomplete unused
+  // Manual add (Enter or Add button)
   addrSearch.addEventListener('keydown', (e)=>{
     if (e.key === 'Enter') { e.preventDefault(); addManualCurrent(); }
   });
   addBtn.addEventListener('click', addManualCurrent);
+
+  function parseCityStateZip(label){
+    // Try to find ZIP (last 5 digits) and STATE (2 letters just before ZIP or anywhere in tail)
+    const zipMatch = label.match(/(\d{5})(?:-\d{4})?\s*$/);
+    const zip = zipMatch ? zipMatch[1] : '';
+
+    // Look for a 2-letter token before ZIP or near the end
+    let state = '';
+    if (zipMatch) {
+      const head = label.slice(0, zipMatch.index).trim();
+      const tailTokens = head.split(/[\s,]+/);
+      for (let i = tailTokens.length - 1; i >= 0; i--) {
+        if (/^[A-Za-z]{2}$/.test(tailTokens[i])) { state = tailTokens[i].toUpperCase(); break; }
+      }
+    } else {
+      const tokens = label.split(/[\s,]+/);
+      for (let i = tokens.length - 1; i >= 0; i--) {
+        if (/^[A-Za-z]{2}$/.test(tokens[i])) { state = tokens[i].toUpperCase(); break; }
+      }
+    }
+
+    // City is optional for the API, but try to infer a best-effort city
+    let city = '';
+    if (state) {
+      // Grab token sequence right before state, up to a comma
+      const parts = label.split(',');
+      // use the part that contains the state to find the previous comma chunk as city
+      const stateIdx = parts.findIndex(p => new RegExp(`\\b${state}\\b`, 'i').test(p));
+      if (stateIdx > 0) city = parts[stateIdx - 1].trim();
+    }
+    return { city, state, zip };
+  }
 
   function addManualCurrent(){
     const label = (addrSearch.value||'').trim();
@@ -118,12 +98,7 @@
     if (!label){ showErr('Enter an address to add.'); return; }
     if (!price){ showErr('Enter a purchase price for this address.'); return; }
 
-    // quick parse for city/state/zip (best-effort only)
-    const parts = label.split(/[\s,]+/);
-    const zip   = parts.find(p=>/^\d{5}$/.test(p)) || '';
-    const state = parts.find(p=>/^[A-Z]{2}$/i.test(p)) || '';
-    const city  = ''; // optional — you asked to hide city/state/zip in table
-
+    const { city, state, zip } = parseCityStateZip(label);
     addPicked({ label, address: label, city, state, zip }, rent, price);
     afterPickReset();
   }
@@ -132,9 +107,7 @@
     addrSearch.value=''; addrRent.value=''; addrPrice.value='';
     addrResults.innerHTML=''; addrResults.style.display='none';
     addrSearch.setAttribute('aria-expanded','false');
-    newSessionToken();
   }
-
   clearBtn.addEventListener('click', afterPickReset);
 
   // ---------------- Picked list table ----------------
@@ -207,7 +180,6 @@
     const price = Number(picked.price || 0);
     if (!price) throw new Error(`Missing price for: ${picked.label}`);
 
-    // optional prefetch (adds taxes/expenses/appreciation when possible)
     const prefetch = await maybePrefetch(picked, price);
 
     const inputs = {
@@ -219,40 +191,29 @@
       otherIncome: 0, vacancyPct: shared.vacancyPct
     };
 
-    // NOTE: Correct endpoint name per your note
     const analyzed = await postJSON(`${FN_BASE}/api/rent-analyzer`, { inputs, prefetch });
     analyzed.prefetch = prefetch || null;
     return analyzed;
   }
 
   // ---------------- Render ranked table + sorting ----------------
-  let lastResults = [];  // keep the full results for client-side resort
+  let lastResults = [];
   let lastOrder   = null;
 
   function derive5yTotalReturn(item){
-    // Primary: model metric if present
     const direct = Number(item.metrics?.totalReturnPctProjected ?? NaN);
     if (!Number.isNaN(direct)) return direct;
 
-    // Fallbacks from prefetch appreciation (shape may vary)
     const appr = item.prefetch?.ai?.appreciation || null;
     if (appr) {
-      // common shapes seen in earlier code: { horizon_years:[1,3,5], pct:[...]} or keyed
       if (Array.isArray(appr.horizon_years) && Array.isArray(appr.pct)) {
         const idx = appr.horizon_years.findIndex((y)=> Number(y) === 5);
         if (idx >= 0 && Number.isFinite(Number(appr.pct[idx]))) return Number(appr.pct[idx]) * 100;
       }
-      if (Array.isArray(appr.pct_5y) && appr.pct_5y.length) {
-        return Number(appr.pct_5y[0]) * 100;
-      }
-      if (typeof appr.pct_5y === 'number') {
-        return Number(appr.pct_5y) * 100;
-      }
-      if (typeof appr.total_return_5y === 'number') {
-        return Number(appr.total_return_5y) * 100;
-      }
+      if (Array.isArray(appr.pct_5y) && appr.pct_5y.length) return Number(appr.pct_5y[0]) * 100;
+      if (typeof appr.pct_5y === 'number')  return Number(appr.pct_5y) * 100;
+      if (typeof appr.total_return_5y === 'number') return Number(appr.total_return_5y) * 100;
     }
-    // If nothing, show 0 (still sortable)
     return 0;
   }
 
@@ -288,17 +249,15 @@
   }
 
   // Sorting
-  let sortState = { key: 'rank', dir: 'asc' }; // dir: 'asc' | 'desc'
+  let sortState = { key: 'rank', dir: 'asc' };
 
   function applySort(key){
     if (!lastResults.length) return;
-
-    // Build array of {idx, item} to preserve link to original order for rank display
     const arr = (lastOrder ? lastOrder : lastResults.map((_,i)=> i)).map(idx => ({ idx, item: lastResults[idx] }));
 
     const getField = (obj) => {
       switch (key) {
-        case 'rank': return arr.indexOf(obj); // initial row order
+        case 'rank': return arr.indexOf(obj);
         case 'address':
           return (obj.item.address || [obj.item.inputs?.address, obj.item.inputs?.city, obj.item.inputs?.state, obj.item.inputs?.zip].filter(Boolean).join(', ')).toLowerCase();
         case 'price': return Number(obj.item.metrics?.price || 0);
@@ -320,9 +279,8 @@
       return sortState.dir === 'asc' ? (va - vb) : (vb - va);
     });
 
-    // Render in sorted order
     const newOrder = arr.map(x => x.idx);
-    renderTable(lastResults, newOrder, { ok: !!lastOrder }); // preserve note behavior
+    renderTable(lastResults, newOrder, { ok: !!lastOrder });
   }
 
   function attachSortHandlers(){
@@ -338,7 +296,6 @@
           sortState.dir = 'asc';
         }
         applySort(sortState.key);
-        // Simple visual arrow cue
         portHead.querySelectorAll('.sort-arrow').forEach(el=> el.textContent = '');
         th.querySelector('.sort-arrow').textContent = sortState.dir === 'asc' ? '▲' : '▼';
       });
@@ -374,7 +331,6 @@
         results.push(await analyzeOne(shared, p));
       }
 
-      // Rank on server; fall back client-side
       try{
         const rankResp = await postJSON(`${FN_BASE}/api/portfolio-rank`, { items: results, aiMode: 'auto' });
         const order = Array.isArray(rankResp.order) ? rankResp.order : null;
@@ -405,7 +361,5 @@
       submitBtn.disabled = false; submitBtn.textContent = 'Analyze & Rank';
     }
   });
-
-  // Expose for Google callback
-  window.initPortfolioPlaces = initPlaces;
 })();
+</script>
