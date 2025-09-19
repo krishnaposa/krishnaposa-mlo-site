@@ -167,27 +167,28 @@
           </form>
 
           <!-- Ranked results -->
-          <div class="result-wrap tool-card" id="portfolioResult" style="display:none">
-            <h2>Ranked Results</h2>
-            <p class="muted" id="portfolioNote"></p>
-            <div class="table-wrap">
-              <table id="portfolioTable" aria-label="Portfolio ranking" style="min-width:860px">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Address</th>
-                    <th>Price</th>
-                    <th>Rent</th>
-                    <th>Cash Flow / mo</th>
-                    <th>Cap Rate</th>
-                    <th>CoC</th>
-                    <th>DSCR</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
+        <!-- Ranked results -->
+<div class="result-wrap tool-card" id="portfolioResult" style="display:none">
+  <h2>Ranked Results</h2>
+  <p class="muted" id="portfolioNote"></p>
+  <div class="table-wrap">
+    <table id="portfolioTable" aria-label="Portfolio ranking" style="min-width:860px">
+      <thead>
+        <tr>
+          <th data-sort="rank"># <span class="sort-arrow"></span></th>
+          <th data-sort="address">Address <span class="sort-arrow"></span></th>
+          <th data-sort="price">Price <span class="sort-arrow"></span></th>
+          <th data-sort="rent">Rent <span class="sort-arrow"></span></th>
+          <th data-sort="cash_flow_monthly">Cash Flow / mo <span class="sort-arrow"></span></th>
+          <th data-sort="cap_rate">Cap Rate <span class="sort-arrow"></span></th>
+          <th data-sort="cash_on_cash">CoC <span class="sort-arrow"></span></th>
+          <th data-sort="dscr">DSCR <span class="sort-arrow"></span></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
 
         </div>
       </div>
