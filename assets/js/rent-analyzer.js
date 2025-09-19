@@ -9,6 +9,10 @@
   const mmCap  = document.getElementById('mm_caprate');
   const mmCoC  = document.getElementById('mm_coc');
   const mmDSCR = document.getElementById('mm_dscr');
+  // New (optional) mini-metrics (render only if present in HTML)
+  const mmTR  = document.getElementById('mm_totalreturn');
+  const mmIRR = document.getElementById('mm_irr');
+  const assumptionLine = document.getElementById('assumptionLine');
 
   const monthlyTbody = document.querySelector('#monthlyTable tbody');
   const annualTbody  = document.querySelector('#annualTable tbody');
@@ -18,6 +22,7 @@
   const dollars = (n)=> Number(n ?? 0).toLocaleString(undefined, { style:'currency', currency:'USD' });
   const pct     = (n,d=2)=> `${Number(n ?? 0).toFixed(d)}%`;
   const toNum   = (v)=> (v === '' || v == null ? 0 : Number(v));
+  const clamp   = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
   function pmt(ratePct, years, loanAmount){
     const r = ratePct/100/12, n = years*12;
@@ -34,11 +39,49 @@
     if (toNum(d.downPct) < 0 || toNum(d.downPct) > 100) throw new Error('Down Payment (%) must be between 0 and 100.');
   }
 
-  function localAnalyze(data){
+  // --- IRR via bisection (robust) ---
+  function npv(rate, cashflows){
+    let v = 0;
+    for (let t = 0; t < cashflows.length; t++){
+      v += cashflows[t] / Math.pow(1 + rate, t);
+    }
+    return v;
+  }
+  function irr(cashflows){
+    // bracket IRR between -99% and 500%
+    let lo = -0.99, hi = 5.0;
+    let fLo = npv(lo, cashflows), fHi = npv(hi, cashflows);
+    if (!isFinite(fLo) || !isFinite(fHi) || fLo * fHi > 0) return 0;
+    for (let i=0;i<80;i++){
+      const mid = (lo+hi)/2, fMid = npv(mid, cashflows);
+      if (Math.abs(fMid) < 1e-7) return mid;
+      if (fLo * fMid < 0){ hi = mid; fHi = fMid; } else { lo = mid; fLo = fMid; }
+    }
+    return (lo+hi)/2;
+  }
+
+  // Remaining balance after X months of amortization
+  function remainingBalance(ratePct, years, principal, monthsPaid){
+    const r = ratePct/100/12;
+    const n = years*12;
+    if (r === 0) return Math.max(0, principal * (1 - monthsPaid/n));
+    const payment = (principal * r) / (1 - Math.pow(1 + r, -n));
+    const bal = principal * Math.pow(1 + r, monthsPaid) - payment * ((Math.pow(1 + r, monthsPaid) - 1) / r);
+    return Math.max(0, bal);
+  }
+
+  // Appreciation/selling defaults
+  const DEFAULT_APPRECIATION_PCT = 3.0; // %/yr
+  const DEFAULT_SELLING_COST_PCT = 6.0; // % of sale price
+
+  // Allow injection of appreciation hints
+  function localAnalyze(data, apprHints = {}){
     const price  = toNum(data.purchasePrice);
     const down   = price * (toNum(data.downPct)/100);
     const loan   = Math.max(0, price - down);
-    const pi     = pmt(toNum(data.rate), toNum(data.termYears), loan);
+    const rate   = toNum(data.rate);
+    const term   = toNum(data.termYears);
+    const pi     = pmt(rate, term, loan);
 
     const rent        = toNum(data.rent);
     const other       = toNum(data.otherIncome);
@@ -71,6 +114,37 @@
     const coc = totalCashToClose ? (cashFlowMonthly*12/totalCashToClose)*100 : 0;
     const dscr = pi ? (noiMonthly/pi) : 0;
 
+    // ---- 5-year projections (with appreciation) ----
+    // Appreciation hint can come as:
+    //   apprHints.appreciationAnnualPct
+    //   apprHints.appreciationPct
+    //   apprHints.aoai_appreciation (number or string)
+    const apprPct = clamp(
+      toNum(
+        apprHints.appreciationAnnualPct ??
+        apprHints.appreciationPct ??
+        apprHints.aoai_appreciation ??
+        DEFAULT_APPRECIATION_PCT
+      ), -20, 20
+    );
+    const sellingCostPct = clamp(toNum(apprHints.sellingCostPct ?? DEFAULT_SELLING_COST_PCT), 0, 12);
+
+    const months5 = Math.min(60, term*12);
+    const balAfter5 = remainingBalance(rate, term, loan, months5);
+    const principalPaid5 = Math.max(0, loan - balAfter5);
+
+    const valueAfter5 = price * Math.pow(1 + apprPct/100, 5);
+    const sellingCosts = valueAfter5 * (sellingCostPct/100);
+    const netSaleProceeds = Math.max(0, valueAfter5 - sellingCosts - balAfter5);
+
+    const annualCF = cashFlowMonthly * 12;
+    const cashFlow5y = annualCF * 5;
+    const totalGain5y = cashFlow5y + (netSaleProceeds - totalCashToClose);
+    const totalReturnPct5y = totalCashToClose > 0 ? (totalGain5y / totalCashToClose) * 100 : 0;
+
+    const cfs = [-totalCashToClose, annualCF, annualCF, annualCF, annualCF, annualCF + netSaleProceeds];
+    const irr5y = irr(cfs) * 100;
+
     const sensitivity = [-100,0,100].map(delta=>{
       const r2 = rent + delta;
       const g2 = r2 + other;
@@ -102,7 +176,17 @@
         cashFlowMonthly,
         cashFlowAnnual: cashFlowMonthly*12,
         cashOnCash: coc,
-        dscr
+        dscr,
+
+        // 5y projections
+        appreciationAnnualPct: apprPct,
+        sellingCostPct,
+        valueAfter5,
+        principalPaid5,
+        cashFlow5y,
+        netSaleProceeds,
+        totalReturnPctProjected: totalReturnPct5y,
+        irr5y
       },
       sensitivity,
       explanation: 'Calculated locally from your inputs.',
@@ -118,10 +202,22 @@
        <p><strong>Scenario</strong>: ${i.propertyType || 'Property'} · Price ${dollars(out.metrics.price)} · Down ${pct(i.downPct||0)} · Rate ${pct(i.rate||0)} · Term ${i.termYears||'—'} yrs</p>
        <p class="note">HOA/Rules: ${out.rentalRestrictions?.notes || 'Unknown'}</p>`;
 
-    mmCash.textContent = dollars(out.metrics.cashFlowMonthly);
-    mmCap.textContent  = pct(out.metrics.capRate);
-    mmCoC.textContent  = pct(out.metrics.cashOnCash);
-    mmDSCR.textContent = (out.metrics.dscr ?? 0).toFixed(2);
+    // Mini metrics (existing)
+    mmCash && (mmCash.textContent = dollars(out.metrics.cashFlowMonthly));
+    mmCap  && (mmCap.textContent  = pct(out.metrics.capRate));
+    mmCoC  && (mmCoC.textContent  = pct(out.metrics.cashOnCash));
+    mmDSCR && (mmDSCR.textContent = (out.metrics.dscr ?? 0).toFixed(2));
+
+    // NEW optional mini metrics (render only if the elements exist)
+    if (mmTR)  mmTR.textContent  = pct(out.metrics.totalReturnPctProjected ?? 0, 1);
+    if (mmIRR) mmIRR.textContent = pct(out.metrics.irr5y ?? 0, 2);
+
+    // Assumption line if present
+    if (assumptionLine) {
+      const ap = out.metrics.appreciationAnnualPct;
+      const sc = out.metrics.sellingCostPct;
+      assumptionLine.textContent = `Assumptions: Appreciation ${pct(ap ?? 3.0, 1)} per year, Selling costs ${pct(sc ?? 6.0, 1)} at sale in year 5.`;
+    }
 
     clearTables();
     const m = out.metrics, me = m.monthlyExpenses || {};
@@ -137,13 +233,33 @@
       const tr = document.createElement('tr'); tr.innerHTML = `<td>${k}</td><td>${v}</td>`; monthlyTbody.appendChild(tr);
     });
 
-    [
-      ['NOI (annual)', dollars(m.noiAnnual)], ['Cap Rate', pct(m.capRate)],
-      ['Cash Flow (annual)', dollars(m.cashFlowAnnual)], ['Cash-on-Cash', pct(m.cashOnCash)],
-      ['Loan Amount', dollars(m.loanAmount)], ['Down Payment', dollars(m.downPayment)],
-      ['Points Cost', dollars(m.pointsCost)], ['Closing Costs (est.)', dollars(m.closingCosts)],
+    // Annual table stays compatible with your current HTML,
+    // but if you later add rows for 5y items, you can show them here as well.
+    const annualRows = [
+      ['NOI (annual)', dollars(m.noiAnnual)],
+      ['Cap Rate', pct(m.capRate)],
+      ['Cash Flow (annual)', dollars(m.cashFlowAnnual)],
+      ['Cash-on-Cash', pct(m.cashOnCash)],
+      ['Loan Amount', dollars(m.loanAmount)],
+      ['Down Payment', dollars(m.downPayment)],
+      ['Points Cost', dollars(m.pointsCost)],
+      ['Closing Costs (est.)', dollars(m.closingCosts)],
       ['Total Cash to Close', dollars(m.totalCashToClose)]
-    ].forEach(([k,v])=>{
+    ];
+
+    // If your HTML expects 5y metrics too, append them safely:
+    if ('principalPaid5' in m || 'valueAfter5' in m || 'netSaleProceeds' in m || 'totalReturnPctProjected' in m || 'irr5y' in m) {
+      annualRows.push(
+        ['Principal Paid (5 yr)', dollars(m.principalPaid5 ?? 0)],
+        ['Value After 5 yr', dollars(m.valueAfter5 ?? 0)],
+        ['Net Sale Proceeds (yr 5)', dollars(m.netSaleProceeds ?? 0)],
+        ['Cash Flow (5 yr total)', dollars(m.cashFlow5y ?? 0)],
+        ['5-Yr Total Return', pct(m.totalReturnPctProjected ?? 0, 1)],
+        ['IRR (5 yr)', pct(m.irr5y ?? 0, 2)]
+      );
+    }
+
+    annualRows.forEach(([k,v])=>{
       const tr = document.createElement('tr'); tr.innerHTML = `<td>${k}</td><td>${v}</td>`; annualTbody.appendChild(tr);
     });
 
@@ -202,16 +318,48 @@
         rentalRules: data.rentalRules || ''
       };
 
+      // extract appreciation hints from prefetch (supports both shapes)
+      const apprHints = {
+        appreciationAnnualPct:
+          prefetch?.ai?.appreciation?.annualPct ??
+          prefetch?.ai?.appreciation?.pct ??
+          undefined,
+        aoai_appreciation: prefetch?.ai?.aoai_appreciation, // if your backend puts it here
+        sellingCostPct: prefetch?.ai?.sellingCostPct
+      };
+
       let analyzed;
       try {
         analyzed = await postJSON(`${FN_BASE}/api/rent-analyze`, { inputs, prefetch });
       } catch {
-        analyzed = localAnalyze(inputs); // fallback
+        analyzed = localAnalyze(inputs, apprHints); // fallback
       }
-      if (!analyzed.metrics) {
-        const fallback = localAnalyze(inputs);
-        analyzed = { ...fallback, ...analyzed, metrics: { ...fallback.metrics, ...(analyzed.metrics||{}) } };
-      }
+
+      // Make sure 5y metrics exist even if server doesn't return them
+      if (!analyzed.metrics) analyzed.metrics = {};
+      const local = localAnalyze(inputs, apprHints);
+      const m = analyzed.metrics;
+      const addIfMissing = (k, v) => { if (m[k] == null) m[k] = v; };
+      addIfMissing('appreciationAnnualPct', local.metrics.appreciationAnnualPct);
+      addIfMissing('sellingCostPct',        local.metrics.sellingCostPct);
+      addIfMissing('valueAfter5',           local.metrics.valueAfter5);
+      addIfMissing('principalPaid5',        local.metrics.principalPaid5);
+      addIfMissing('cashFlow5y',            local.metrics.cashFlow5y);
+      addIfMissing('netSaleProceeds',       local.metrics.netSaleProceeds);
+      addIfMissing('totalReturnPctProjected', local.metrics.totalReturnPctProjected);
+      addIfMissing('irr5y',                 local.metrics.irr5y);
+      // also ensure base fields present
+      [
+        'price','downPayment','loanAmount','pointsCost','closingCosts','totalCashToClose',
+        'piMonthly','monthlyIncome','noiMonthly','noiAnnual','capRate','cashFlowMonthly',
+        'cashFlowAnnual','cashOnCash','dscr'
+      ].forEach(k=> addIfMissing(k, local.metrics[k]));
+
+      // suit the outer object (address, inputs, sensitivity)
+      if (!analyzed.address) analyzed.address = local.address;
+      if (!analyzed.inputs) analyzed.inputs = inputs;
+      if (!analyzed.sensitivity) analyzed.sensitivity = local.sensitivity;
+      if (!analyzed.rentalRestrictions) analyzed.rentalRestrictions = local.rentalRestrictions;
 
       render(analyzed);
       window.dataLayer = window.dataLayer || [];
