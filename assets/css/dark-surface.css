@@ -199,3 +199,60 @@
 .dark-surface .compare-intro .tool-card a:hover{
   color:var(--kp-blue-hover);
 }
+
+/* --- Dark dropdowns (values inside the list) --- */
+.dark-surface .field select {
+  background: var(--kp-input);
+  color: var(--kp-text);
+  border: 1px solid var(--kp-border);
+  border-radius: 4px;
+  padding: 8px 34px 8px 10px;        /* room for custom arrow */
+  line-height: 1.35;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  color-scheme: dark;                 /* hints the UA to render popups in dark */
+  background-image:
+    url("data:image/svg+xml;utf8,\
+      <svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa5b1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>\
+        <polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+}
+
+.dark-surface .field select:focus {
+  outline: none;
+  border-color: var(--kp-blue);
+  box-shadow: 0 0 0 2px rgba(11,95,255,.25);
+}
+
+/* Options inside the expanded list (supported by most UAs) */
+.dark-surface .field select option {
+  background: var(--kp-card);        /* popup row background */
+  color: var(--kp-text);             /* popup row text */
+}
+.dark-surface .field select option:disabled {
+  color: var(--kp-muted);
+}
+
+/* Group labels in lists */
+.dark-surface .field select optgroup {
+  background: var(--kp-card);
+  color: var(--kp-muted);
+}
+
+/* Windows-specific (old Edge/IE) arrow hide, harmless elsewhere */
+.dark-surface .field select::-ms-expand { display: none; }
+
+/* Firefox scrollbar inside long dropdown lists */
+.dark-surface .field select {
+  scrollbar-color: var(--kp-subtle) transparent;
+}
+
+/* Placeholder-like "Select" option styling (if you use an empty first option) */
+.dark-surface .field select option[disabled][value=""],
+.dark-surface .field select option[disabled][value=" "],
+.dark-surface .field select option[disabled]:first-child {
+  color: var(--kp-subtle);
+}
