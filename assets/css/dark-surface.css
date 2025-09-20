@@ -1,9 +1,12 @@
-/* dark-surface.css */
-/* Scope every override to pages that add <body class="dark-surface"> */
+/* dark-surface.css (full)
+   Scope all overrides to pages that add <body class="dark-surface"> */
+
+/* ---------- Tokens ---------- */
 :root{
   /* Neutral + brand tokens for dark */
   --kp-bg:#0b1220;           /* page background */
   --kp-card:#0f172a;         /* card surface */
+  --kp-card-soft:#0c152a;    /* soft alt card */
   --kp-hero:rgba(11,95,255,.12);
   --kp-border:rgba(255,255,255,.12);
   --kp-border-strong:rgba(255,255,255,.18);
@@ -13,27 +16,26 @@
   --kp-subtle:#6b7280;       /* placeholders, hints */
   --kp-input:#0b1220;        /* input bg (subtle) */
   --kp-table-head:#111a2e;   /* thead background */
-  --kp-card-soft:#0c152a;    /* soft alt card */
-
   --kp-blue:#0b5fff;         /* brand primary */
   --kp-blue-hover:#094ecc;
-  --kp-danger:#ff6b6b;       /* for error text on dark */
+  --kp-danger:#ff6b6b;       /* error text on dark */
 }
 
+/* ---------- Page base ---------- */
 .dark-surface{
   background:var(--kp-bg);
   color:var(--kp-text);
 }
 
-/* ---------------- Hero ---------------- */
+/* ---------- Hero ---------- */
 .dark-surface .page-hero{
   background:linear-gradient(180deg,var(--kp-hero),transparent);
 }
 .dark-surface .page-hero h1{ color:var(--kp-text); }
 .dark-surface .page-hero .small{ color:var(--kp-muted); }
 
-/* ---------------- Headings & section titles ---------------- */
-/* Make headings look like field labels (smaller + muted) */
+/* ---------- Headings & section titles ----------
+   Make them look like compact field labels */
 .dark-surface h2,
 .dark-surface h3{
   color:var(--kp-muted);
@@ -42,7 +44,7 @@
   font-weight:600;
   margin:0 0 8px;
 }
-/* Keep the main page title larger */
+/* Keep main page title larger */
 .dark-surface .page-hero h1{
   font-size:1.75rem;
   font-weight:800;
@@ -53,7 +55,7 @@
 .dark-surface .note,
 .dark-surface .helper{ color:var(--kp-muted); }
 
-/* ---------------- Tool/Card containers ---------------- */
+/* ---------- Cards / tool containers ---------- */
 .dark-surface .tool-card,
 .dark-surface .card{
   background:var(--kp-card);
@@ -61,7 +63,7 @@
   box-shadow:none;
 }
 
-/* ---------------- Buttons ---------------- */
+/* ---------- Buttons ---------- */
 .dark-surface .btn{
   background:var(--kp-blue);
   color:#fff;
@@ -70,65 +72,78 @@
 .dark-surface .btn:hover{ background:var(--kp-blue-hover); }
 .dark-surface .btn.btn-blue{ background:var(--kp-blue); }
 
-/* ---------------- Fields ---------------- */
+/* Outline buttons (used in karaoke + tools) */
+.dark-surface .btn.btn-outline{
+  background:transparent;
+  color:var(--kp-text);
+  border:1px solid var(--kp-border);
+}
+.dark-surface .btn.btn-outline:hover{
+  background:rgba(255,255,255,.04);
+}
+
+/* ---------- Fields ---------- */
 .dark-surface .field label{
   color:var(--kp-muted);
   font-size:.9rem;
   font-weight:600;
 }
 .dark-surface .field input,
-.dark-surface .field select{
+.dark-surface .field select,
+.dark-surface input[type="text"],
+.dark-surface input[type="number"],
+.dark-surface input[type="url"],
+.dark-surface input[type="file"]{
   background:var(--kp-input);
   color:var(--kp-text);
   border:1px solid var(--kp-border);
+  border-radius:10px;
 }
-.dark-surface .field input::placeholder{
-  color:var(--kp-subtle);
-}
+.dark-surface .field input::placeholder,
+.dark-surface input::placeholder{ color:var(--kp-subtle); }
 .dark-surface .field input:focus,
-.dark-surface .field select:focus{
+.dark-surface .field select:focus,
+.dark-surface input:focus,
+.dark-surface select:focus{
   outline:none;
   border-color:var(--kp-blue);
-  box-shadow:0 0 0 2px rgba(11,95,255,.25);
+  box-shadow:0 0 0 3px rgba(11,95,255,.25);
 }
 
-/* Make native dropdown menus match the theme */
-.dark-surface .field select {
-  background: var(--kp-input);
-  color: var(--kp-text);
-  border: 1px solid var(--kp-border);
-  border-radius: 4px;
-  padding: 8px 34px 8px 10px;
-  line-height: 1.35;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  color-scheme: dark;
+/* Native dropdown menus – align with theme */
+.dark-surface .field select{
+  appearance:none;
+  -webkit-appearance:none;
+  -moz-appearance:none;
+  color-scheme:dark;
+  padding:8px 34px 8px 10px;
+  line-height:1.35;
   background-image:
     url("data:image/svg+xml;utf8,\
       <svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa5b1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>\
         <polyline points='6 9 12 15 18 9'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 16px;
+  background-repeat:no-repeat;
+  background-position:right 10px center;
+  background-size:16px;
 }
-.dark-surface .field select option{
-  background:var(--kp-card);
-  color:var(--kp-text);
+.dark-surface .field select option,
+.dark-surface select option{
+  background:var(--kp-card);      /* popup row background */
+  color:var(--kp-text);           /* popup row text */
 }
-.dark-surface .field select:disabled{
-  color:var(--kp-muted);
-}
-.dark-surface .field select::-ms-expand { display:none; }
-.dark-surface .field select { scrollbar-color: var(--kp-subtle) transparent; }
-/* Placeholder-like "Select" option */
+.dark-surface .field select optgroup{ color:var(--kp-muted); }
+.dark-surface .field select:disabled{ color:var(--kp-muted); }
+.dark-surface .field select::-ms-expand{ display:none; } /* old Edge/IE */
+.dark-surface .field select{ scrollbar-color:var(--kp-subtle) transparent; }
+
+/* Placeholder-like first option */
 .dark-surface .field select option[disabled][value=""],
 .dark-surface .field select option[disabled][value=" "],
-.dark-surface .field select option[disabled]:first-child {
-  color: var(--kp-subtle);
+.dark-surface .field select option[disabled]:first-child{
+  color:var(--kp-subtle);
 }
 
-/* Inputs disabled / readonly */
+/* Disabled / readonly */
 .dark-surface input[disabled],
 .dark-surface select[disabled],
 .dark-surface input[readonly]{
@@ -137,12 +152,10 @@
   border-color:var(--kp-border);
 }
 
-/* ---------------- Error box ---------------- */
-.dark-surface .error-box{
-  color:var(--kp-danger);
-}
+/* ---------- Errors ---------- */
+.dark-surface .error-box{ color:var(--kp-danger); }
 
-/* ---------------- Tables (generic) ---------------- */
+/* ---------- Tables (general) ---------- */
 .dark-surface .table-wrap table{
   color:var(--kp-text);
   background:transparent;
@@ -156,32 +169,62 @@
   color:var(--kp-muted);
   font-weight:700;
 }
-.dark-surface table tr:hover td{
+.dark-surface table tr:hover td{ background:rgba(255,255,255,.03); }
+.dark-surface .sort-arrow{ color:var(--kp-muted); }
+
+/* ---------- Compare intro card ---------- */
+.dark-surface .compare-intro .tool-card{
+  background:#161c2c;
+  border:1px solid #2a2f45;
+}
+.dark-surface .compare-intro .tool-card h3{
+  color:var(--kp-muted);
+  font-size:1rem;
+  font-weight:600;
+}
+.dark-surface .compare-intro .tool-card p{ color:var(--kp-text); }
+.dark-surface .compare-intro .tool-card a{ color:var(--kp-blue); }
+.dark-surface .compare-intro .tool-card a:hover{ color:var(--kp-blue-hover); }
+
+/* ---------- Picked list table (compare.html) ---------- */
+.dark-surface #pickedTable{
+  background:var(--kp-card);
+  border:1px solid var(--kp-border);
+  box-shadow:none;
+}
+.dark-surface #pickedTable thead th{
+  background:var(--kp-table-head);
+  color:var(--kp-muted);
+  border-bottom:1px solid var(--kp-border);
+}
+.dark-surface #pickedTable tbody td{
+  border-bottom:1px solid var(--kp-border);
+}
+.dark-surface #pickedTable tbody tr:hover{
   background:rgba(255,255,255,.03);
 }
+.dark-surface #pickedTable [data-meta]{ color:var(--kp-muted); }
 
-/* Sort arrows in compare table (if present) */
-.dark-surface .sort-arrow{
-  color:var(--kp-muted);
-}
-
-/* ---------------- Mini-metrics ---------------- */
-.dark-surface .mini-metrics .card{
-  background:var(--kp-card-soft);
+/* Autocomplete dropdown in dark */
+.dark-surface #addrResults{
+  background:var(--kp-card);
   border:1px solid var(--kp-border);
+  box-shadow:0 10px 14px rgba(0,0,0,.25);
 }
-.dark-surface .mini-metrics .badge{
-  color:var(--kp-muted);
+.dark-surface #addrResults li:hover,
+.dark-surface #addrResults li:focus{
+  background:rgba(255,255,255,.05);
 }
+.dark-surface #addrResults li.is-active{ background:rgba(11,95,255,.15); }
 
-/* ---------------- Links ---------------- */
+/* ---------- Links ---------- */
 .dark-surface a{ color:var(--kp-blue); }
 .dark-surface a:hover{ color:var(--kp-blue-hover); }
 
-/* ---------------- Sticky CTA bar ---------------- */
+/* ---------- Sticky CTA ---------- */
 .dark-surface .sticky-cta .btn{ color:#fff; }
 
-/* Header/footer containers that rely on site defaults */
+/* Header/footer containers */
 .dark-surface #header,
 .dark-surface #footer{
   background:transparent;
@@ -192,73 +235,68 @@
 /* Ensure any “white-space:normal” address cells stay readable */
 .dark-surface td{ color:var(--kp-text); }
 
-/* Helper: lightweight badges/labels if any */
+/* Lightweight badges */
 .dark-surface .label-ai{
   background:rgba(11,95,255,.18);
   color:#cfe1ff;
   border:1px solid color-mix(in oklab, var(--kp-blue) 30%, #fff 0%);
 }
 
-/* Tool-specific light backgrounds → dark equivalents */
-.dark-surface .mini-metrics .card,
-.dark-surface .tool-card.info{
+/* ---------- Mini-metrics ---------- */
+.dark-surface .mini-metrics .card{
   background:var(--kp-card-soft);
-}
-
-/* ---------------- Compare intro card ---------------- */
-.dark-surface .compare-intro .tool-card {
-  background:#1e1e2f;
-  border:1px solid #2a2f45;
-  color:#f0f0f0;
-}
-.dark-surface .compare-intro .tool-card h3{
-  /* match “Address / City / State” label look */
-  color:var(--kp-muted);
-  font-size:1rem;
-  font-weight:600;
-}
-.dark-surface .compare-intro .tool-card p{
-  color:var(--kp-text);
-}
-.dark-surface .compare-intro .tool-card a{
-  color:var(--kp-blue);
-}
-.dark-surface .compare-intro .tool-card a:hover{
-  color:var(--kp-blue-hover);
-}
-
-/* ---------------- Compare page: picked table & dropdown suggestions ---------------- */
-/* Override light hard-codes from portfolio-address-analyzer.css without touching it */
-.dark-surface #pickedTable{
-  background:var(--kp-card) !important;
-  box-shadow:none !important;
   border:1px solid var(--kp-border);
 }
-.dark-surface #pickedTable thead th{
-  background:var(--kp-table-head) !important;
-  color:var(--kp-muted) !important;
-  border-bottom:1px solid var(--kp-border-strong) !important;
-}
-.dark-surface #pickedTable tbody td{
-  color:var(--kp-text) !important;
-  border-bottom:1px solid var(--kp-border) !important;
-}
-.dark-surface #pickedTable tbody tr:hover{
-  background:rgba(255,255,255,.03) !important;
-}
-.dark-surface #pickedTable [data-meta]{ color:var(--kp-muted) !important; }
+.dark-surface .mini-metrics .badge{ color:var(--kp-muted); }
 
-/* Address suggestions dropdown under the address box */
-.dark-surface #addrResults{
-  background:var(--kp-card) !important;
-  border:1px solid var(--kp-border) !important;
-  box-shadow:0 12px 18px rgba(0,0,0,.45) !important;
+/* =========================================================
+   Karaoke page dark overrides (works with karaoke.css)
+   ========================================================= */
+
+/* Page background already set by dark-surface; keep container readable */
+.dark-surface body,
+.dark-surface main.container{ color:var(--kp-text); }
+
+/* Cards, headings, help text */
+.dark-surface .card{ background:var(--kp-card); border:1px solid var(--kp-border); }
+.dark-surface h1, .dark-surface h2{ color:var(--kp-text); }
+.dark-surface p.help{ color:var(--kp-muted); border:none; }
+
+/* Inputs + selects (karaoke) */
+.dark-surface select,
+.dark-surface input[type="text"],
+.dark-surface input[type="number"],
+.dark-surface input[type="url"]{
+  background:var(--kp-input);
+  color:var(--kp-text);
+  border:1px solid var(--kp-border);
 }
-.dark-surface #addrResults li{ color:var(--kp-text); }
-.dark-surface #addrResults li:hover,
-.dark-surface #addrResults li:focus{
-  background:rgba(255,255,255,.06);
+.dark-surface select option{ background:var(--kp-card); color:var(--kp-text); }
+.dark-surface select:focus,
+.dark-surface input:focus{ border-color:var(--kp-blue); box-shadow:0 0 0 3px rgba(11,95,255,.25); }
+
+/* Now Playing chip */
+.dark-surface .now-playing{
+  background:var(--kp-card-soft);
+  border:1px solid var(--kp-border);
+  color:var(--kp-text);
 }
-.dark-surface #addrResults li.is-active{
-  background:rgba(11,95,255,.18);
+.dark-surface #trackTitle{ color:var(--kp-text); }
+
+/* Lyrics box */
+.dark-surface #lyricsBox{
+  background:var(--kp-card);
+  border:1px solid var(--kp-border);
+  color:var(--kp-text);
 }
+.dark-surface #lyricsBox::selection{ background:rgba(11,95,255,.28); }
+
+/* Progress bar */
+.dark-surface .progress{ background:rgba(255,255,255,.08); }
+.dark-surface .progress .bar{ background:var(--kp-blue); }
+
+/* Status / alerts */
+.dark-surface .error{ color:#ff7a7a; }
+.dark-surface .success{ color:#34d399; }
+
+/* End of dark-surface.css */
