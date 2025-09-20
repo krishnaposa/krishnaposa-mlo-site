@@ -1,0 +1,52 @@
+:root{
+  --kp-bg:#0b1220;         /* page background */
+  --kp-card:#0f172a;       /* card surface */
+  --kp-border:rgba(255,255,255,.10);
+  --kp-text:#e5e7eb;       /* main text */
+  --kp-muted:#9aa5b1;      /* secondary text */
+  --kp-input:#0b1220;      /* input bg */
+  --kp-hero:rgba(11,95,255,.12);
+}
+
+/* Scope to these pages only via the body class */
+.dark-surface{
+  background:var(--kp-bg);
+  color:var(--kp-text);
+}
+
+.dark-surface .page-hero{
+  background:linear-gradient(180deg,var(--kp-hero),transparent);
+}
+
+.dark-surface .tool-card,
+.dark-surface .card{
+  background:var(--kp-card);
+  border:1px solid var(--kp-border);
+}
+
+.dark-surface .table th,
+.dark-surface .table td{
+  border-color:var(--kp-border);
+}
+
+.dark-surface label,
+.dark-surface .muted,
+.dark-surface .note{
+  color:var(--kp-muted);
+}
+
+.dark-surface input,
+.dark-surface select,
+.dark-surface textarea{
+  background:var(--kp-input);
+  color:var(--kp-text);
+  border:1px solid var(--kp-border);
+}
+
+.dark-surface input::placeholder,
+.dark-surface textarea::placeholder{
+  color:#6b7280;
+}
+
+.dark-surface .table thead th{ color:var(--kp-muted); }
+.dark-surface .btn{ color:#fff; } /* keep brand button colors; just ensure text readable */
