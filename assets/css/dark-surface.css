@@ -8,9 +8,9 @@
   --kp-border:rgba(255,255,255,.12);
   --kp-border-strong:rgba(255,255,255,.18);
   --kp-text:#e5e7eb;         /* main text */
-  --kp-text-strong:#ffffff;  /* headings, strong labels */
-  --kp-muted:#9aa5b1;        /* secondary text */
-  --kp-subtle:#6b7280;        /* placeholders, hints */
+  --kp-text-strong:#ffffff;  /* extra-bright text if needed */
+  --kp-muted:#9aa5b1;        /* secondary text (labels/titles) */
+  --kp-subtle:#6b7280;       /* placeholders, hints */
   --kp-input:#0b1220;        /* input bg (subtle) */
   --kp-table-head:#111a2e;   /* thead background */
   --kp-card-soft:#0c152a;    /* soft alt card */
@@ -29,16 +29,24 @@
 .dark-surface .page-hero{
   background:linear-gradient(180deg,var(--kp-hero),transparent);
 }
-.dark-surface .page-hero h1{ color:var(--kp-text-strong); }
+.dark-surface .page-hero h1{ color:var(--kp-text); }
 .dark-surface .page-hero .small{ color:var(--kp-muted); }
 
-/* ---------------- Headings & emphasis ---------------- */
-.dark-surface h1,
+/* ---------------- Headings & section titles ---------------- */
+/* Make headings look like field labels (smaller + muted) */
 .dark-surface h2,
 .dark-surface h3{
-  color:var(--kp-text-strong);
+  color:var(--kp-muted);
+  font-size:1rem;
+  line-height:1.35;
+  font-weight:600;
+  margin:0 0 8px;
 }
-.dark-surface strong{ color:var(--kp-text-strong); }
+/* Keep the main page title larger */
+.dark-surface .page-hero h1{
+  font-size:1.75rem;
+  font-weight:800;
+}
 
 /* Generic text helpers */
 .dark-surface .muted,
@@ -50,7 +58,7 @@
 .dark-surface .card{
   background:var(--kp-card);
   border:1px solid var(--kp-border);
-  box-shadow:none; /* avoid light-looking shadow */
+  box-shadow:none;
 }
 
 /* ---------------- Buttons ---------------- */
@@ -64,7 +72,9 @@
 
 /* ---------------- Fields ---------------- */
 .dark-surface .field label{
-  color:var(--kp-text); /* brighter than muted for better legibility */
+  color:var(--kp-muted);                 /* labels are muted */
+  font-size:.9rem;                       /* match compact label feel */
+  font-weight:600;
 }
 .dark-surface .field input,
 .dark-surface .field select{
@@ -80,6 +90,15 @@
   outline:none;
   border-color:var(--kp-blue);
   box-shadow:0 0 0 2px rgba(11,95,255,.25);
+}
+
+/* Make native dropdown menus match the theme */
+.dark-surface .field select option{
+  background:var(--kp-card);
+  color:var(--kp-text);
+}
+.dark-surface .field select:disabled{
+  color:var(--kp-muted);
 }
 
 /* Inputs disabled / readonly */
@@ -107,10 +126,9 @@
 }
 .dark-surface .table-wrap th{
   background:var(--kp-table-head);
-  color:var(--kp-text-strong); /* brighter header text so column titles (e.g., Property) pop */
+  color:var(--kp-muted);   /* column headers also muted */
   font-weight:700;
 }
-/* Table row hover (subtle) */
 .dark-surface table tr:hover td{
   background:rgba(255,255,255,.03);
 }
@@ -139,7 +157,7 @@
 /* Header/footer containers that rely on site defaults */
 .dark-surface #header,
 .dark-surface #footer{
-  background:transparent;  /* let page bg show through */
+  background:transparent;
   color:var(--kp-text);
   border-color:var(--kp-border);
 }
@@ -160,19 +178,24 @@
   background:var(--kp-card-soft);
 }
 
-/* ---------------- Compare intro card fix ---------------- */
+/* ---------------- Compare intro card ---------------- */
 .dark-surface .compare-intro .tool-card {
-  background:#1e1e2f;   /* dark neutral background */
+  background:#1e1e2f;
   border:1px solid #2a2f45;
-  color:#f0f0f0;        /* default text */
+  color:#f0f0f0;
 }
-.dark-surface .compare-intro .tool-card h3 {
-  color:#ffffff;        /* keep headline bright */
+.dark-surface .compare-intro .tool-card h3{
+  /* match “Address / City / State” label look */
+  color:var(--kp-muted);
+  font-size:1rem;
+  font-weight:600;
 }
-.dark-surface .compare-intro .tool-card p,
-.dark-surface .compare-intro .tool-card a {
-  color:#cfd8ff;        /* softer, readable blue for links/text */
+.dark-surface .compare-intro .tool-card p{
+  color:var(--kp-text);
 }
-.dark-surface .compare-intro .tool-card a:hover {
-  color:#4da6ff;        /* brighter on hover */
+.dark-surface .compare-intro .tool-card a{
+  color:var(--kp-blue);
+}
+.dark-surface .compare-intro .tool-card a:hover{
+  color:var(--kp-blue-hover);
 }
