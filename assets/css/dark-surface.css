@@ -1,52 +1,154 @@
+/* dark-surface.css */
+/* Scope every override to pages that add <body class="dark-surface"> */
 :root{
-  --kp-bg:#0b1220;         /* page background */
-  --kp-card:#0f172a;       /* card surface */
-  --kp-border:rgba(255,255,255,.10);
-  --kp-text:#e5e7eb;       /* main text */
-  --kp-muted:#9aa5b1;      /* secondary text */
-  --kp-input:#0b1220;      /* input bg */
+  /* Neutral + brand tokens for dark */
+  --kp-bg:#0b1220;           /* page background */
+  --kp-card:#0f172a;         /* card surface */
   --kp-hero:rgba(11,95,255,.12);
+  --kp-border:rgba(255,255,255,.12);
+  --kp-border-strong:rgba(255,255,255,.18);
+  --kp-text:#e5e7eb;         /* main text */
+  --kp-muted:#9aa5b1;        /* secondary text */
+  --kp-subtle:#6b7280;       /* placeholders, hints */
+  --kp-input:#0b1220;        /* input bg (subtle) */
+  --kp-table-head:#111a2e;   /* thead background */
+  --kp-card-soft:#0c152a;    /* soft alt card */
+
+  --kp-blue:#0b5fff;         /* brand primary */
+  --kp-blue-hover:#094ecc;
+  --kp-danger:#ff6b6b;       /* for error text on dark */
 }
 
-/* Scope to these pages only via the body class */
 .dark-surface{
   background:var(--kp-bg);
   color:var(--kp-text);
 }
 
+/* Hero */
 .dark-surface .page-hero{
   background:linear-gradient(180deg,var(--kp-hero),transparent);
 }
+.dark-surface .page-hero h1{ color:var(--kp-text); }
+.dark-surface .page-hero .small{ color:var(--kp-muted); }
 
+/* Generic text helpers */
+.dark-surface .muted,
+.dark-surface .note{ color:var(--kp-muted); }
+
+/* Tool/Card containers */
 .dark-surface .tool-card,
 .dark-surface .card{
   background:var(--kp-card);
   border:1px solid var(--kp-border);
+  box-shadow:none; /* avoid light-looking shadow */
 }
 
-.dark-surface .table th,
-.dark-surface .table td{
-  border-color:var(--kp-border);
+/* Buttons (reuse brand) */
+.dark-surface .btn{
+  background:var(--kp-blue);
+  color:#fff;
+  border:none;
 }
+.dark-surface .btn:hover{ background:var(--kp-blue-hover); }
+.dark-surface .btn.btn-blue{ background:var(--kp-blue); }
 
-.dark-surface label,
-.dark-surface .muted,
-.dark-surface .note{
+/* Fields */
+.dark-surface .field label{
   color:var(--kp-muted);
 }
-
-.dark-surface input,
-.dark-surface select,
-.dark-surface textarea{
+.dark-surface .field input,
+.dark-surface .field select{
   background:var(--kp-input);
   color:var(--kp-text);
   border:1px solid var(--kp-border);
 }
-
-.dark-surface input::placeholder,
-.dark-surface textarea::placeholder{
-  color:#6b7280;
+.dark-surface .field input::placeholder{
+  color:var(--kp-subtle);
+}
+.dark-surface .field input:focus,
+.dark-surface .field select:focus{
+  outline:none;
+  border-color:var(--kp-blue);
+  box-shadow:0 0 0 1px color-mix(in oklab, var(--kp-blue) 40%, transparent);
 }
 
-.dark-surface .table thead th{ color:var(--kp-muted); }
-.dark-surface .btn{ color:#fff; } /* keep brand button colors; just ensure text readable */
+/* Error box */
+.dark-surface .error-box{
+  color:var(--kp-danger);
+}
+
+/* Tables */
+.dark-surface .table-wrap table{
+  color:var(--kp-text);
+}
+.dark-surface .table-wrap th,
+.dark-surface .table-wrap td{
+  border:1px solid var(--kp-border);
+}
+.dark-surface .table-wrap th{
+  background:var(--kp-table-head);
+  color:var(--kp-muted);
+  font-weight:600;
+}
+
+/* Mini-metrics */
+.dark-surface .mini-metrics .card{
+  background:var(--kp-card-soft);
+  border:1px solid var(--kp-border);
+}
+.dark-surface .mini-metrics .badge{
+  color:var(--kp-muted);
+}
+
+/* Sort arrows in compare table (if present) */
+.dark-surface .sort-arrow{
+  color:var(--kp-muted);
+}
+
+/* Links */
+.dark-surface a{ color:var(--kp-blue); }
+.dark-surface a:hover{ color:var(--kp-blue-hover); }
+
+/* Sticky CTA bar – just ensure text has contrast */
+.dark-surface .sticky-cta .btn{ color:#fff; }
+
+/* Header/footer containers that rely on site defaults */
+.dark-surface #header,
+.dark-surface #footer{
+  background:transparent;  /* let page bg show through */
+  color:var(--kp-text);
+  border-color:var(--kp-border);
+}
+
+/* Table row hover (subtle) */
+.dark-surface table tr:hover td{
+  background:rgba(255,255,255,.03);
+}
+
+/* Inputs disabled / readonly */
+.dark-surface input[disabled],
+.dark-surface select[disabled],
+.dark-surface input[readonly]{
+  background:color-mix(in oklab, var(--kp-input) 70%, #000);
+  color:var(--kp-muted);
+  border-color:var(--kp-border);
+}
+
+/* Helper: lightweight badges/labels if any */
+.dark-surface .label-ai{
+  background:rgba(11,95,255,.18);
+  color:#cfe1ff;
+  border:1px solid color-mix(in oklab, var(--kp-blue) 30%, #fff 0%);
+}
+
+/* Tool-specific light backgrounds → dark equivalents */
+.dark-surface .mini-metrics .card,
+.dark-surface .tool-card.info{
+  background:var(--kp-card-soft);
+}
+
+/* Ensure any “white-space:normal” address cells stay readable */
+.dark-surface td{ color:var(--kp-text); }
+
+/* Forms helper text under fields */
+.dark-surface .helper{ color:var(--kp-muted); }
