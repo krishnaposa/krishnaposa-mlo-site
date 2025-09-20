@@ -72,8 +72,8 @@
 
 /* ---------------- Fields ---------------- */
 .dark-surface .field label{
-  color:var(--kp-muted);                 /* labels are muted */
-  font-size:.9rem;                       /* match compact label feel */
+  color:var(--kp-muted);
+  font-size:.9rem;
   font-weight:600;
 }
 .dark-surface .field input,
@@ -93,12 +93,39 @@
 }
 
 /* Make native dropdown menus match the theme */
+.dark-surface .field select {
+  background: var(--kp-input);
+  color: var(--kp-text);
+  border: 1px solid var(--kp-border);
+  border-radius: 4px;
+  padding: 8px 34px 8px 10px;
+  line-height: 1.35;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  color-scheme: dark;
+  background-image:
+    url("data:image/svg+xml;utf8,\
+      <svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa5b1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>\
+        <polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+}
 .dark-surface .field select option{
   background:var(--kp-card);
   color:var(--kp-text);
 }
 .dark-surface .field select:disabled{
   color:var(--kp-muted);
+}
+.dark-surface .field select::-ms-expand { display:none; }
+.dark-surface .field select { scrollbar-color: var(--kp-subtle) transparent; }
+/* Placeholder-like "Select" option */
+.dark-surface .field select option[disabled][value=""],
+.dark-surface .field select option[disabled][value=" "],
+.dark-surface .field select option[disabled]:first-child {
+  color: var(--kp-subtle);
 }
 
 /* Inputs disabled / readonly */
@@ -115,7 +142,7 @@
   color:var(--kp-danger);
 }
 
-/* ---------------- Tables ---------------- */
+/* ---------------- Tables (generic) ---------------- */
 .dark-surface .table-wrap table{
   color:var(--kp-text);
   background:transparent;
@@ -126,7 +153,7 @@
 }
 .dark-surface .table-wrap th{
   background:var(--kp-table-head);
-  color:var(--kp-muted);   /* column headers also muted */
+  color:var(--kp-muted);
   font-weight:700;
 }
 .dark-surface table tr:hover td{
@@ -200,59 +227,38 @@
   color:var(--kp-blue-hover);
 }
 
-/* --- Dark dropdowns (values inside the list) --- */
-.dark-surface .field select {
-  background: var(--kp-input);
-  color: var(--kp-text);
-  border: 1px solid var(--kp-border);
-  border-radius: 4px;
-  padding: 8px 34px 8px 10px;        /* room for custom arrow */
-  line-height: 1.35;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  color-scheme: dark;                 /* hints the UA to render popups in dark */
-  background-image:
-    url("data:image/svg+xml;utf8,\
-      <svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa5b1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>\
-        <polyline points='6 9 12 15 18 9'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 16px;
+/* ---------------- Compare page: picked table & dropdown suggestions ---------------- */
+/* Override light hard-codes from portfolio-address-analyzer.css without touching it */
+.dark-surface #pickedTable{
+  background:var(--kp-card) !important;
+  box-shadow:none !important;
+  border:1px solid var(--kp-border);
 }
-
-.dark-surface .field select:focus {
-  outline: none;
-  border-color: var(--kp-blue);
-  box-shadow: 0 0 0 2px rgba(11,95,255,.25);
+.dark-surface #pickedTable thead th{
+  background:var(--kp-table-head) !important;
+  color:var(--kp-muted) !important;
+  border-bottom:1px solid var(--kp-border-strong) !important;
 }
-
-/* Options inside the expanded list (supported by most UAs) */
-.dark-surface .field select option {
-  background: var(--kp-card);        /* popup row background */
-  color: var(--kp-text);             /* popup row text */
+.dark-surface #pickedTable tbody td{
+  color:var(--kp-text) !important;
+  border-bottom:1px solid var(--kp-border) !important;
 }
-.dark-surface .field select option:disabled {
-  color: var(--kp-muted);
+.dark-surface #pickedTable tbody tr:hover{
+  background:rgba(255,255,255,.03) !important;
 }
+.dark-surface #pickedTable [data-meta]{ color:var(--kp-muted) !important; }
 
-/* Group labels in lists */
-.dark-surface .field select optgroup {
-  background: var(--kp-card);
-  color: var(--kp-muted);
+/* Address suggestions dropdown under the address box */
+.dark-surface #addrResults{
+  background:var(--kp-card) !important;
+  border:1px solid var(--kp-border) !important;
+  box-shadow:0 12px 18px rgba(0,0,0,.45) !important;
 }
-
-/* Windows-specific (old Edge/IE) arrow hide, harmless elsewhere */
-.dark-surface .field select::-ms-expand { display: none; }
-
-/* Firefox scrollbar inside long dropdown lists */
-.dark-surface .field select {
-  scrollbar-color: var(--kp-subtle) transparent;
+.dark-surface #addrResults li{ color:var(--kp-text); }
+.dark-surface #addrResults li:hover,
+.dark-surface #addrResults li:focus{
+  background:rgba(255,255,255,.06);
 }
-
-/* Placeholder-like "Select" option styling (if you use an empty first option) */
-.dark-surface .field select option[disabled][value=""],
-.dark-surface .field select option[disabled][value=" "],
-.dark-surface .field select option[disabled]:first-child {
-  color: var(--kp-subtle);
+.dark-surface #addrResults li.is-active{
+  background:rgba(11,95,255,.18);
 }
