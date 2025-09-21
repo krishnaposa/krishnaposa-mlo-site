@@ -234,7 +234,7 @@ def _score_with_azure_openai(tickers, strategy: str, horizon_text: str) -> dict:
     return json.loads(resp.choices[0].message.content)
 
 # ---------- Timer: refresh cache ----------
-@app.schedule(schedule="0 0 */6 * * *", arg_name="myTimer", run_on_startup=True, use_monitor=True)
+@app.schedule(schedule="0 9 * * 1-5", arg_name="myTimer", run_on_startup=True, use_monitor=True)
 def refresh_universe(myTimer: func.TimerRequest) -> None:
     try:
         tickers = _compute_universe_budgeted(UNIVERSE_MAX_SECONDS)
