@@ -9,9 +9,9 @@ const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewe
 const FUNCTION_CODE = ''; // optional: '...'; leave '' if authLevel="anonymous"
 const OUTPUT_BASE = '';   // leave '' for private SAS links
 
-const submitUrl   = `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
-const statusUrl   = (jobId) => `${API_BASE}/api/status/${encodeURIComponent(jobId)}${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
-const lyricsApiUrl= `${API_BASE}/api/lyrics${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
+const submitUrl    = `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
+const statusUrl    = (jobId) => `${API_BASE}/api/status/${encodeURIComponent(jobId)}${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
+const lyricsApiUrl = `${API_BASE}/api/lyrics${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
 
 // =================== ELEMENTS (upload page) ===================
 const els = {
@@ -30,7 +30,7 @@ const els = {
 let vocalsUrl = '';
 let bandUrl   = '';
 let pollTimer = null;
-let currentJobId = null;   // <— used for Save Lyrics
+let currentJobId = null;   // <— used for load/save lyrics
 
 // =================== HELPERS ===================
 function setStatus(t) { if (els.status) els.status.textContent = t || ''; }
@@ -44,7 +44,9 @@ function resetUI() {
   if (els.bar) els.bar.style.width = '0%';
   els.playerCard?.classList.add('hide');
   vocalsUrl = bandUrl = '';
+  currentJobId = null;
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+
   // lyrics area
   const lyricsBox = document.getElementById('lyricsBox');
   const lyrText   = document.getElementById('lyrText');
@@ -320,7 +322,6 @@ document.getElementById('testBand')?.addEventListener('click',   ()=>playBeep('b
 const lyricsBtn   = document.getElementById('loadLyrics');
 const saveBtn     = document.getElementById('saveLyrics');
 const lyricsBox   = document.getElementById('lyricsBox');
-const lyrArtist   = document.getElementById('lyrArtist');
 const lyrText     = document.getElementById('lyrText');
 const lyricsMsg   = document.getElementById('lyricsMsg');
 
@@ -328,42 +329,49 @@ let _lrcLines = null, _lyricsTimer = null;
 
 function parseLRC(lrcText){
   const lines=[]; const re=/\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\](.*)/g; let m;
-  while((m=re.exec(lrcText))!==null){ const min=+m[1], sec=+m[2], ms=m[3]?+m[3].padEnd(3,'0'):0; const t=min*60+sec+ms/1000; lines.push({t, text:(m[4]||'').trim()}); }
-  lines.sort((a,b)=>a.t-b.t); return lines;
+  while((m=re.exec(lrcText))!==null){ 
+    const min=+m[1], sec=+m[2], ms=m[3]?+m[3].padEnd(3,'0'):0; 
+    const t=min*60+sec+ms/1000; 
+    lines.push({t, text:(m[4]||'').trim()}); 
+  }
+  lines.sort((a,b)=>a.t-b.t); 
+  return lines;
 }
 function renderUnsynced(text){ if(lyricsBox) lyricsBox.textContent = text || 'No lyrics found.'; }
 function stopLyricsSync(){ if(_lyricsTimer){ clearInterval(_lyricsTimer); _lyricsTimer=null; } }
 function startLyricsSync(){
   if(!_lrcLines||!lyricsBox) return; stopLyricsSync();
-  _lyricsTimer=setInterval(()=>{ const ct=bandEl?.currentTime||vocalsEl?.currentTime||0; let i=_lrcLines.findIndex(l=>l.t>ct); if(i===-1)i=_lrcLines.length; const idx=Math.max(0,i-1); const prev=Math.max(0,idx-3); const next=Math.min(_lrcLines.length, idx+4);
-    const chunk=_lrcLines.slice(prev,next).map(l=>l===_lrcLines[idx]?`> ${l.text}`:`  ${l.text}`).join('\n'); lyricsBox.textContent=chunk||'—'; },250);
+  _lyricsTimer=setInterval(()=>{ 
+    const ct=bandEl?.currentTime||vocalsEl?.currentTime||0; 
+    let i=_lrcLines.findIndex(l=>l.t>ct); 
+    if(i===-1)i=_lrcLines.length; 
+    const idx=Math.max(0,i-1); 
+    const prev=Math.max(0,idx-3); 
+    const next=Math.min(_lrcLines.length, idx+4);
+    const chunk=_lrcLines.slice(prev,next).map(l=>l===_lrcLines[idx]?`> ${l.text}`:`  ${l.text}`).join('\n'); 
+    lyricsBox.textContent=chunk||'—'; 
+  },250);
 }
 function onPlaybackStarted(){ startLyricsSync(); }
 function onPlaybackPaused(){ stopLyricsSync(); }
 
-// Load current lyrics (favor uploaded meta.json via your Function)
+// Load (prefer job_id → meta.json; backend falls back to LRCLIB if not found)
 lyricsBtn?.addEventListener('click', async () => {
   try{
-    const titleText=(trackTitle?.textContent||'').trim();
-    let title=(titleText && titleText!=='—' && titleText!=='Unknown Track')?titleText:'';
-    if(!title){ const guess=(vocalsUrl||bandUrl||'').split('?')[0].split('/').pop(); title=guess?guess.replace(/\.(wav|mp3|m4a|flac|aac)$/i,''):''; }
-    const artist=lyrArtist?.value?.trim()||''; const duration=Math.round(bandEl?.duration||vocalsEl?.duration||0);
-
+    if (!currentJobId){ lyricsMsg && (lyricsMsg.textContent='Upload or pick a song first.'); return; }
     const url=new URL(lyricsApiUrl);
-    if (currentJobId) url.searchParams.set('job_id', currentJobId);
-    if (title)        url.searchParams.set('title', title);
-    if (artist)       url.searchParams.set('artist', artist);
-    if (duration)     url.searchParams.set('duration', String(duration));
+    url.searchParams.set('job_id', currentJobId);
 
     lyricsMsg && (lyricsMsg.textContent='Fetching lyrics…');
-    const r=await fetch(url.toString(), {mode:'cors'}); const data=await r.json();
+    const r=await fetch(url.toString(), {mode:'cors'}); 
+    const data=await r.json();
     stopLyricsSync(); _lrcLines=null;
 
     if(!data || data.found===false){ renderUnsynced('No lyrics found.'); lyricsMsg && (lyricsMsg.textContent=''); return; }
     if(data.synced && data.lrc){
       _lrcLines=parseLRC(data.lrc);
       lyricsBox.textContent='Synced lyrics loaded.';
-      lyrText && (lyrText.value = data.lrc); // fill editor with what we loaded
+      lyrText && (lyrText.value = data.lrc); // fill editor
       if(isPlaying) startLyricsSync();
     } else {
       renderUnsynced(data.text || 'No lyrics text available.');
@@ -376,28 +384,14 @@ lyricsBtn?.addEventListener('click', async () => {
   }
 });
 
-// Save (upsert) lyrics for this song/job
+// Save (upsert) { job_id, text }
 saveBtn?.addEventListener('click', async () => {
   try{
+    if (!currentJobId){ lyricsMsg && (lyricsMsg.textContent='No job id. Upload first.'); return; }
     const text = (lyrText?.value || '').trim();
     if (!text){ lyricsMsg && (lyricsMsg.textContent='Paste lyrics before saving.'); return; }
 
-    // detect LRC by presence of time tags
-    const isLRC = /\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/.test(text);
-
-    const titleText=(trackTitle?.textContent||'').trim();
-    let title=(titleText && titleText!=='—' && titleText!=='Unknown Track')?titleText:'';
-    if(!title){ const guess=(vocalsUrl||bandUrl||'').split('?')[0].split('/').pop(); title=guess?guess.replace(/\.(wav|mp3|m4a|flac|aac)$/i,''):''; }
-    const artist=lyrArtist?.value?.trim()||'';
-
-    const payload = {
-      synced: !!isLRC
-    };
-    if (currentJobId) payload.job_id = currentJobId;
-    if (title)        payload.title  = title;
-    if (artist)       payload.artist = artist;
-    if (isLRC)        payload.lrc    = text;
-    else              payload.text   = text;
+    const payload = { job_id: currentJobId, text };
 
     lyricsMsg && (lyricsMsg.textContent='Saving…');
     const r = await fetch(lyricsApiUrl, {
@@ -411,7 +405,7 @@ saveBtn?.addEventListener('click', async () => {
       throw new Error(resp.error || `Save failed (${r.status})`);
     }
     lyricsMsg && (lyricsMsg.textContent='Saved.');
-    // Refresh preview to reflect final source of truth
+    // reload to reflect saved source
     document.getElementById('loadLyrics')?.click();
   }catch(e){
     console.warn(e);
@@ -454,6 +448,7 @@ if (window.KARAOKE_MODE === 'player') {
           return;
         }
 
+        // newest first if timestamps present
         items.sort((a,b) => (b.updated||'').localeCompare(a.updated||''));
 
         for (const it of items) {
@@ -480,9 +475,9 @@ if (window.KARAOKE_MODE === 'player') {
       if (!val) return;
       try {
         const sel = JSON.parse(val);
-        vocalsUrl   = sel.vocals || '';
-        bandUrl     = sel.band   || '';
-        currentJobId= sel.job_id || null;
+        vocalsUrl    = sel.vocals || '';
+        bandUrl      = sel.band   || '';
+        currentJobId = sel.job_id || null;
         showTrackTitle(sel.title || 'Unknown Track');
 
         // Reset playback + lyrics because sources changed
