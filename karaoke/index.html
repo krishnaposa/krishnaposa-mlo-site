@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <!-- page-specific styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
-<link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
 
   <!-- Expose endpoints to JS (override defaults if you like) -->
   <!-- Example:
@@ -57,6 +57,33 @@
     <div id="done" class="success hide">
       <div><strong>Ready!</strong> Download:</div>
       <ul id="links"></ul>
+    </div>
+  </section>
+
+  <!-- Lyrics Upload (NEW, matches your page structure; logic handled in karaoke.js) -->
+  <section class="card">
+    <h2>Upload Lyrics</h2>
+    <p class="help">Paste lyrics for a song. When anyone fetches lyrics for this title/artist, your uploaded version is returned first.</p>
+
+    <div class="grid-2">
+      <div class="field">
+        <label for="lyrTitle">Song Title</label>
+        <input id="lyrTitle" type="text" placeholder="e.g. Tum Hi Ho" />
+      </div>
+      <div class="field">
+        <label for="lyrArtist">Artist (optional)</label>
+        <input id="lyrArtist" type="text" placeholder="e.g. Arijit Singh" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="lyrText">Lyrics</label>
+      <textarea id="lyrText" rows="12" class="lyrics-box" placeholder="Paste lyrics here…"></textarea>
+    </div>
+
+    <div class="row">
+      <button id="uploadLyrics" class="btn btn-blue" type="button">Upload Lyrics</button>
+      <span id="lyrStatus" class="help" aria-live="polite"></span>
     </div>
   </section>
 
