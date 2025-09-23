@@ -1,7 +1,6 @@
-# init.py  — Azure Function: /api/lyrics
-# - GET:  first return user-uploaded lyrics from Blob; otherwise query LRCLIB
-# - POST: save uploaded lyrics JSON (UTF-8) to Blob
-# - OPTIONS: CORS preflight
+# init.py — /api/lyrics
+# GET: user-uploaded lyrics (Blob) → LRCLIB fallback
+# POST: upsert by job_id (+ lrc or text), inferring title/artist from status blob
 
 import json, os, re, logging, datetime
 import azure.functions as func
@@ -9,23 +8,22 @@ import requests
 from azure.storage.blob import BlobServiceClient
 from azure.core.exceptions import ResourceNotFoundError
 
-# ---------- External source (fallback) ----------
 LRCLIB_GET    = "https://lrclib.net/api/get"
 LRCLIB_SEARCH = "https://lrclib.net/api/search"
 REQ_HEADERS   = {"User-Agent": "kp-karaoke/1.0 (+https://www.krishposa.com)"}
 
-# ---------- Storage ----------
+# Storage + containers
 STORAGE_CONN      = os.getenv("AzureWebJobsStorage") or os.getenv("STORAGE_CONN")
 LYRICS_CONTAINER  = os.getenv("LYRICS_CONTAINER", "karaoke-lyrics")
+STATUS_CONTAINER  = os.getenv("STATUS_CONTAINER", "karaoke-status")
 
 BLOB = BlobServiceClient.from_connection_string(STORAGE_CONN) if STORAGE_CONN else None
 if BLOB:
-    try:
-        BLOB.create_container(LYRICS_CONTAINER)
-    except Exception:
-        pass
+    for c in (LYRICS_CONTAINER, STATUS_CONTAINER):
+        try: BLOB.create_container(c)
+        except Exception: pass
 
-# ---------- CORS ----------
+# ---------- CORS / helpers ----------
 def _cors():
     return {
         "Access-Control-Allow-Origin": "*",
@@ -34,40 +32,38 @@ def _cors():
     }
 
 def _ok(payload: dict, status: int = 200) -> func.HttpResponse:
-    body = json.dumps(payload, ensure_ascii=False)
-    return func.HttpResponse(body, status_code=status,
+    return func.HttpResponse(json.dumps(payload, ensure_ascii=False),
+                             status_code=status,
                              mimetype="application/json; charset=utf-8",
                              headers=_cors())
 
 def _err(msg: str, status: int = 400) -> func.HttpResponse:
     return _ok({"error": msg}, status)
 
-# ---------- Helpers ----------
 _slug_re = re.compile(r"[^a-z0-9]+")
 def slugify(s: str) -> str:
     s = (s or "").strip().lower()
     s = _slug_re.sub("-", s).strip("-")
     return re.sub(r"-{2,}", "-", s)[:120] or "untitled"
 
-def make_blob_key(title: str, artist: str) -> str:
-    # We keep a simple, stable key scheme. You can change prefixing if desired.
-    return f"{slugify(title)}__{slugify(artist or 'unknown')}.json"
-
-def clean(s: str) -> str:
-    if not s:
-        return ""
-    s = re.sub(r"\s*\((official|audio|video|lyrics?|hd|4k|remastered)[^)]*\)\s*$",
-               "", s, flags=re.I).strip()
-    s = re.sub(r"\s+", " ", s)
+def clean_decorations(s: str) -> str:
+    if not s: return ""
+    s = re.sub(r"\s*\((official|audio|video|lyrics?|hd|4k|remastered)[^)]*\)\s*$", "", s, flags=re.I)
+    s = re.sub(r"\s+", " ", s).strip()
     return s
 
 def _int_or_none(v):
     try:
-        if v is None or v == "":
-            return None
+        if v is None or v == "": return None
         return int(float(v))
     except Exception:
         return None
+
+def canonical_key(title: str, artist: str) -> str:
+    return f"{slugify(title)}__{slugify(artist or 'unknown')}.json"
+
+def job_alias_key(job_id: str) -> str:
+    return f"by-job/{slugify(job_id)}.json"
 
 def _to_payload(track: dict, fallback_title: str, fallback_artist: str, source: str) -> dict:
     title  = track.get("trackName")  or fallback_title
@@ -75,7 +71,7 @@ def _to_payload(track: dict, fallback_title: str, fallback_artist: str, source: 
     synced = bool(track.get("syncedLyrics"))
     return {
         "found":  True,
-        "source": source,   # "user" or "lrclib"
+        "source": source,
         "title":  title,
         "artist": artist,
         "synced": synced,
@@ -83,18 +79,15 @@ def _to_payload(track: dict, fallback_title: str, fallback_artist: str, source: 
         "text":   track.get("plainLyrics")  or ""
     }
 
+# ---------- Blob helpers ----------
 def fetch_user_lyrics(title: str, artist: str):
-    """Return JSON dict from Blob if present, else None."""
-    if not BLOB:
-        logging.warning("No STORAGE connection; cannot read user lyrics.")
-        return None
-    key = make_blob_key(title, artist)
-    logging.info("Checking user-lyrics blob: container=%s key=%s", LYRICS_CONTAINER, key)
+    if not BLOB: return None
+    key = canonical_key(title, artist)
+    logging.info("lookup user lyrics: %s/%s", LYRICS_CONTAINER, key)
     try:
-        data = BLOB.get_container_client(LYRICS_CONTAINER).download_blob(key).readall()
-        doc = json.loads(data.decode("utf-8"))
-        # Normalize to the same payload shape we return from LRCLIB
-        payload = {
+        raw = BLOB.get_container_client(LYRICS_CONTAINER).download_blob(key).readall()
+        doc = json.loads(raw.decode("utf-8"))
+        return {
             "found":  True,
             "source": "user",
             "title":  doc.get("title")  or title,
@@ -103,50 +96,65 @@ def fetch_user_lyrics(title: str, artist: str):
             "lrc":    doc.get("lrc")  or "",
             "text":   doc.get("text") or ""
         }
-        logging.info("User lyrics FOUND for %s - %s", title, artist)
-        return payload
     except ResourceNotFoundError:
-        logging.info("User lyrics NOT found for %s - %s", title, artist)
         return None
 
-def save_user_lyrics(doc: dict):
-    """Persist JSON to Blob (UTF-8) under normalized key."""
-    if not BLOB:
-        raise RuntimeError("Storage not configured (AzureWebJobsStorage)")
-    title  = doc.get("title")  or ""
-    artist = doc.get("artist") or ""
-    key = make_blob_key(title, artist)
-    body = json.dumps(doc, ensure_ascii=False).encode("utf-8")
-    meta = {"uploaded": "true"}
-    cc = BLOB.get_container_client(LYRICS_CONTAINER)
-    cc.upload_blob(key, body, overwrite=True, metadata=meta)
-    logging.info("Saved user lyrics → %s/%s", LYRICS_CONTAINER, key)
-    return key
+def read_status(job_id: str) -> dict | None:
+    if not BLOB: return None
+    key = f"{slugify(job_id)}.json"
+    try:
+        raw = BLOB.get_container_client(STATUS_CONTAINER).download_blob(key).readall()
+        return json.loads(raw.decode("utf-8"))
+    except ResourceNotFoundError:
+        logging.info("status not found for job_id=%s", job_id)
+        return None
 
-# ---------- Main ----------
+def save_lyrics_docs(doc: dict, title: str, artist: str, job_id: str):
+    if not BLOB:
+        raise RuntimeError("Storage not configured")
+    body = json.dumps(doc, ensure_ascii=False).encode("utf-8")
+    cc   = BLOB.get_container_client(LYRICS_CONTAINER)
+
+    main_key = canonical_key(title, artist)
+    cc.upload_blob(main_key, body, overwrite=True, metadata={"uploaded":"true"})
+    # also a job alias for future updates by job_id
+    alias_key = job_alias_key(job_id)
+    cc.upload_blob(alias_key, body, overwrite=True, metadata={"alias":"true","main":main_key})
+    return main_key, alias_key
+
+# ---------- Function entry ----------
 def main(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=204, headers=_cors())
 
     try:
         if req.method == "POST":
-            # Expected JSON: { title, artist?, synced?, lrc? or text?, job_id? }
             try:
                 body = req.get_json()
             except Exception as e:
                 logging.error("POST invalid JSON: %s", e)
                 return _err("invalid JSON", 400)
 
-            logging.info("POST /lyrics body: %s", body)
-            title  = clean(body.get("title", ""))
-            artist = clean(body.get("artist", ""))
-            if not title:
-                return _err("title required", 400)
+            job_id = (body.get("job_id") or "").strip()
+            lrc    = body.get("lrc")
+            text   = body.get("text")
+            # allow optional overrides, but not required:
+            override_title  = body.get("title")
+            override_artist = body.get("artist")
 
-            lrc  = body.get("lrc")
-            text = body.get("text")
+            if not job_id:
+                return _err("job_id required", 400)
             if not (lrc or text):
                 return _err("either 'lrc' or 'text' required", 400)
+
+            status = read_status(job_id) or {}
+            # infer title/artist from status
+            orig = status.get("original_name") or status.get("title") or job_id
+            # strip path & extension
+            base = orig.split("/")[-1]
+            base = re.sub(r"\.(wav|mp3|m4a|flac|aac)$", "", base, flags=re.I)
+            title  = clean_decorations(override_title or base)
+            artist = clean_decorations(override_artist or status.get("artist",""))
 
             synced = bool(body.get("synced")) or bool(lrc)
             doc = {
@@ -155,53 +163,49 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 "synced":  synced,
                 "lrc":     lrc or "",
                 "text":    text or "",
-                "job_id":  body.get("job_id") or "",
+                "job_id":  job_id,
                 "uploaded_at": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
             }
-            key = save_user_lyrics(doc)
-            return _ok({"ok": True, "saved_as": key})
+
+            main_key, alias_key = save_lyrics_docs(doc, title, artist, job_id)
+            logging.info("saved lyrics main=%s alias=%s", main_key, alias_key)
+            return _ok({"ok": True, "saved_as": main_key, "alias": alias_key, "title": title, "artist": artist})
 
         # ---------- GET ----------
-        # Query: ?title=...&artist=...&duration=...
-        title   = clean(req.params.get("title", ""))
-        artist  = clean(req.params.get("artist", ""))
-        album   = clean(req.params.get("album", ""))
+        title   = clean_decorations(req.params.get("title", ""))
+        artist  = clean_decorations(req.params.get("artist", ""))
+        album   = clean_decorations(req.params.get("album", ""))
         dur     = _int_or_none(req.params.get("duration"))
-
-        logging.info("GET /lyrics title='%s' artist='%s' dur=%s", title, artist, dur)
 
         if not title:
             return _err("title required", 400)
 
-        # 1) User-uploaded first
-        user_hit = fetch_user_lyrics(title, artist)
-        if user_hit:
-            return _ok(user_hit)
+        # 1) user upload first
+        hit = fetch_user_lyrics(title, artist)
+        if hit:
+            return _ok(hit)
 
-        # 2) LRCLIB precise
+        # 2) LRCLIB /get
         get_params = {"track_name": title}
         if artist: get_params["artist_name"] = artist
-        if dur:    get_params["duration"]   = dur
-
+        if dur:    get_params["duration"]    = dur
         try:
             r = requests.get(LRCLIB_GET, params=get_params, headers=REQ_HEADERS, timeout=10)
-            logging.info("LRCLIB /get status=%s url=%s", r.status_code, r.url)
             if r.status_code == 404:
                 raise requests.HTTPError("not found", response=r)
             r.raise_for_status()
             data = r.json()
             return _ok(_to_payload(data, title, artist, source="lrclib"))
         except requests.HTTPError:
-            logging.info("LRCLIB /get miss → trying /search")
+            pass
 
-        # 3) LRCLIB fallback /search (pick best)
+        # 3) LRCLIB /search
         search_params = {"track_name": title, "limit": 5}
         if artist: search_params["artist_name"] = artist
         if album:  search_params["album_name"]  = album
         if dur:    search_params["duration"]    = dur
 
         rs = requests.get(LRCLIB_SEARCH, params=search_params, headers=REQ_HEADERS, timeout=10)
-        logging.info("LRCLIB /search status=%s url=%s", rs.status_code, rs.url)
         if rs.status_code == 404:
             return _ok({"found": False})
         rs.raise_for_status()
@@ -214,11 +218,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         best = None
         for it in items:
             if norm(it.get("trackName")) == t_norm and (not a_norm or norm(it.get("artistName")) == a_norm):
-                best = it
-                break
-        if best is None:
-            best = items[0]
-
+                best = it; break
+        if best is None: best = items[0]
         return _ok(_to_payload(best, title, artist, source="lrclib"))
 
     except Exception as e:
