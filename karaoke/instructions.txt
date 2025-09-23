@@ -42,3 +42,7 @@ az storage message get --queue-name karaoke-jobs-poison --connection-string "$ST
 # Then re-send it to the main queue
 az storage message put --queue-name karaoke-jobs --connection-string "$STORAGE_CONN" --content '{"job_id":"...","src":{...}}'
 
+curl -X POST "https://<yourfunc>.azurewebsites.net/api/lyrics" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"job_id\":\"test123\",\"title\":\"Sample\",\"text\":\"Hello lyrics\"}"
+
