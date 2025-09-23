@@ -112,33 +112,22 @@
   </section>
 
 <!-- Lyrics (load / edit / save) -->
+<!-- Upload Lyrics (optional, after song upload) -->
 <section class="card">
-  <h2>Lyrics</h2>
-  <p class="help">Paste plain text or LRC (with timestamps like <code>[01:23.45]</code>). Save ties to this song.</p>
+  <h2>Upload Lyrics</h2>
+  <p class="help">
+    Paste lyrics for this song. We’ll tie them to the uploaded track automatically using the job ID.
+  </p>
 
-  <div class="grid-2">
-    <div class="field">
-      <label for="lyrArtist">Artist (optional, helps lookup)</label>
-      <input id="lyrArtist" type="text" placeholder="Artist">
-    </div>
-    <div class="field">
-      <label>&nbsp;</label>
-      <div class="row">
-        <button id="loadLyrics" class="btn btn-outline" type="button">Load Lyrics</button>
-        <button id="saveLyrics" class="btn btn-blue" type="button">Save Lyrics</button>
-        <span id="lyricsMsg" class="help" aria-live="polite"></span>
-      </div>
-    </div>
+  <!-- Lyrics textarea -->
+  <div class="field">
+    <label for="lyrText">Lyrics</label>
+    <textarea id="lyrText" placeholder="Paste lyrics here…"></textarea>
   </div>
 
-  <div class="field">
-    <label for="lyrText">Edit / Paste lyrics (plain text or LRC)</label>
-    <textarea id="lyrText" rows="10" placeholder="Paste lyrics here…"></textarea>
-  </div>
-
-  <div class="field">
-    <label>Preview</label>
-    <pre id="lyricsBox"></pre>
+  <div class="row">
+    <button id="saveLyrics" class="btn btn-blue" type="button">Save Lyrics</button>
+    <span id="lyricsSaveStatus" class="help" aria-live="polite"></span>
   </div>
 </section>
 </main>
