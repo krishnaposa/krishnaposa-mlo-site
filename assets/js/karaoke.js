@@ -30,7 +30,10 @@ const els = {
 let vocalsUrl = '';
 let bandUrl   = '';
 let pollTimer = null;
-let currentJobId = null;   // <— used for load/save lyrics
+let currentJobId = null;   // used for load/save lyrics
+
+// also grab optional manual Job ID field (if present in page)
+const lyrJobIdIn = document.getElementById('lyrJobId');
 
 // =================== HELPERS ===================
 function setStatus(t) { if (els.status) els.status.textContent = t || ''; }
@@ -45,6 +48,7 @@ function resetUI() {
   els.playerCard?.classList.add('hide');
   vocalsUrl = bandUrl = '';
   currentJobId = null;
+  if (lyrJobIdIn) lyrJobIdIn.value = '';
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 
   // lyrics area
@@ -103,7 +107,8 @@ async function doPoll(jobId) {
       setTimeout(() => { if (els.prog) els.prog.hidden = true; if (els.bar) els.bar.style.width = '0%'; }, 800);
       setStatus('Done!');
 
-      currentJobId = jobId; // <— tie saves to this processed song
+      currentJobId = jobId;                    // <— tie saves to this processed song
+      if (lyrJobIdIn) lyrJobIdIn.value = jobId; // also show it to the user
 
       els.done?.classList.remove('hide');
       if (els.links) els.links.innerHTML = '';
@@ -163,7 +168,8 @@ els.go?.addEventListener('click', async () => {
     const jobId = data && data.job_id;
     if (!jobId) throw new Error('No job id returned.');
 
-    currentJobId = jobId; // <— capture for lyrics save
+    currentJobId = jobId;                // capture for lyrics save
+    if (lyrJobIdIn) lyrJobIdIn.value = jobId;
 
     (window.dataLayer = window.dataLayer || []).push({ event: 'karaoke_submit' });
     setStatus('Queued. Processing…');
@@ -355,12 +361,15 @@ function startLyricsSync(){
 function onPlaybackStarted(){ startLyricsSync(); }
 function onPlaybackPaused(){ stopLyricsSync(); }
 
-// Load (prefer job_id → meta.json; backend falls back to LRCLIB if not found)
+// Load (prefer manual job_id if typed; else auto currentJobId).
 lyricsBtn?.addEventListener('click', async () => {
   try{
-    if (!currentJobId){ lyricsMsg && (lyricsMsg.textContent='Upload or pick a song first.'); return; }
+    const typedJobId = (lyrJobIdIn?.value || '').trim();
+    const jobIdToUse = typedJobId || currentJobId;
+    if (!jobIdToUse){ lyricsMsg && (lyricsMsg.textContent='Provide a Job ID or upload/pick a song first.'); return; }
+
     const url=new URL(lyricsApiUrl);
-    url.searchParams.set('job_id', currentJobId);
+    url.searchParams.set('job_id', jobIdToUse);
 
     lyricsMsg && (lyricsMsg.textContent='Fetching lyrics…');
     const r=await fetch(url.toString(), {mode:'cors'}); 
@@ -371,7 +380,7 @@ lyricsBtn?.addEventListener('click', async () => {
     if(data.synced && data.lrc){
       _lrcLines=parseLRC(data.lrc);
       lyricsBox.textContent='Synced lyrics loaded.';
-      lyrText && (lyrText.value = data.lrc); // fill editor
+      lyrText && (lyrText.value = data.lrc);
       if(isPlaying) startLyricsSync();
     } else {
       renderUnsynced(data.text || 'No lyrics text available.');
@@ -384,14 +393,17 @@ lyricsBtn?.addEventListener('click', async () => {
   }
 });
 
-// Save (upsert) { job_id, text }
+// Save (upsert) { job_id, text } — prefer manual Job ID if provided
 saveBtn?.addEventListener('click', async () => {
   try{
-    if (!currentJobId){ lyricsMsg && (lyricsMsg.textContent='No job id. Upload first.'); return; }
+    const typedJobId = (lyrJobIdIn?.value || '').trim();
+    const jobIdToUse = typedJobId || currentJobId;
+    if (!jobIdToUse){ lyricsMsg && (lyricsMsg.textContent='Provide a Job ID or upload/pick a song first.'); return; }
+
     const text = (lyrText?.value || '').trim();
     if (!text){ lyricsMsg && (lyricsMsg.textContent='Paste lyrics before saving.'); return; }
 
-    const payload = { job_id: currentJobId, text };
+    const payload = { job_id: jobIdToUse, text };
 
     lyricsMsg && (lyricsMsg.textContent='Saving…');
     const r = await fetch(lyricsApiUrl, {
@@ -478,6 +490,7 @@ if (window.KARAOKE_MODE === 'player') {
         vocalsUrl    = sel.vocals || '';
         bandUrl      = sel.band   || '';
         currentJobId = sel.job_id || null;
+        if (lyrJobIdIn) lyrJobIdIn.value = currentJobId || '';
         showTrackTitle(sel.title || 'Unknown Track');
 
         // Reset playback + lyrics because sources changed
@@ -485,9 +498,12 @@ if (window.KARAOKE_MODE === 'player') {
         isPlaying = false;
         pauseAll();
         stopLyricsSync();
-        if (lyricsBox) lyricsBox.textContent = '—';
-        if (lyrText)   lyrText.value = '';
-        if (lyricsMsg) lyricsMsg.textContent = '';
+        const lyricsBoxEl = document.getElementById('lyricsBox');
+        const lyrTextEl   = document.getElementById('lyrText');
+        const lyricsMsgEl = document.getElementById('lyricsMsg');
+        if (lyricsBoxEl) lyricsBoxEl.textContent = '—';
+        if (lyrTextEl)   lyrTextEl.value = '';
+        if (lyricsMsgEl) lyricsMsgEl.textContent = '';
 
         if (vocalsUrlIn) vocalsUrlIn.value = vocalsUrl;
         if (bandUrlIn)   bandUrlIn.value   = bandUrl;
