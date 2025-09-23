@@ -122,7 +122,7 @@ input:focus,select:focus{
 #deviceMsg{min-height:1.25rem}
 
 /* ===== Player: lyrics box (container-width by default) ===== */
-#lyricsBox{
+#lyricsBox, #lyrText{
   display:block;
   width:100%;               /* fills the card/container width */
   background:#fff;
