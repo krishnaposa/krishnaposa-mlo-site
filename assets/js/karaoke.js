@@ -10,10 +10,10 @@ const FUNCTION_CODE = ''; // optional: '...'; leave '' if authLevel="anonymous"
 const OUTPUT_BASE = '';
 // ^ For private containers, leave ''. We'll use SAS URLs from /api/list or /status.
 
-const submitUrl = `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
-const statusUrl = (jobId) =>
-  `${API_BASE}/api/status/${encodeURIComponent(jobId)}${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
-const lyricsApiUrl = `${API_BASE}/api/lyrics${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
+// Endpoints
+const submitUrl   = `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
+const statusUrl   = (jobId) => `${API_BASE}/api/status/${encodeURIComponent(jobId)}${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
+const lyricsApiUrl= `${API_BASE}/api/lyrics${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
 
 // =================== ELEMENTS (upload page) ===================
 const els = {
@@ -112,11 +112,14 @@ async function doPoll(jobId) {
       bandUrl   = asUrl((s.outputs || {})['no_vocals.wav'] || '');
       if (els.playerCard && vocalsUrl && bandUrl && vocalsUrl !== '#' && bandUrl !== '#') {
         els.playerCard.classList.remove('hide');
-        // Show a friendly title if we can guess one
+
+        // Guess a friendly title → fill Now Playing + seed the Lyrics Title field
         const base = (s.original_name || '').split('/').pop() || '—';
         const title = base.replace(/\.(wav|mp3|m4a|flac|aac)$/i,'');
         const tEl = document.getElementById('trackTitle');
         if (tEl) tEl.textContent = title || '—';
+        const lyrTitle = document.getElementById('lyrTitle');
+        if (lyrTitle && title) lyrTitle.value = title;
       }
       return;
     }
@@ -171,7 +174,7 @@ const bandOut   = document.getElementById('bandOut');
 const initBtn   = document.getElementById('initAudio');
 const playBtn   = document.getElementById('play');
 const pauseBtn  = document.getElementById('pause');
-const restartBtn= document.getElementById('restart');
+const restartBtn= document.getElementById('restart'); // optional (not on this page)
 const offsetIn  = document.getElementById('offset');
 const trackTitle= document.getElementById('trackTitle');
 
@@ -301,15 +304,16 @@ async function playBeep(which, sinkId, freq=880, ms=600){
   osc.frequency.value=freq; osc.type='sine'; const dest=ac.createMediaStreamDestination(); osc.connect(gain); gain.connect(dest);
   try{ await outEl.setSinkId(sinkId||'default'); }catch{}
   outEl.srcObject=dest.stream;
-  try{ osc.start(); await outEl.play(); const endT=ac.currentTime+ms/1000; gain.gain.exponentialRampToValueAtTime(0.0001,endT-0.05); osc.stop(endT); setTimeout(()=>{outEl.pause(); outEl.srcObject=null; ac.close().catch(()=>{});}, ms+120); }catch{ ac.close().catch(()=>{}); }
+  try{ osc.start(); await outEl.play(); const endT=ac.currentTime+ms/1000; gain.gain.exponentialRampToValueAtTime(0.0001,endT-0.05); osc.stop(endT);
+       setTimeout(()=>{outEl.pause(); outEl.srcObject=null; ac.close().catch(()=>{});}, ms+120); }catch{ ac.close().catch(()=>{}); }
 }
 document.getElementById('testVocals')?.addEventListener('click', ()=>playBeep('vocals', vocalsOut?.value, 880, 500));
-document.getElementById('testBand')?.addEventListener('click',   ()=>playBeep('band',   bandOut?.value,   660, 500));
+document.getElementById('testBand')  ?.addEventListener('click', ()=>playBeep('band',   bandOut  ?.value, 660, 500));
 
 // =================== LYRICS (synced LRC if available) ===================
 const lyricsBtn  = document.getElementById('loadLyrics');
 const lyricsBox  = document.getElementById('lyricsBox');
-const lyrArtist  = document.getElementById('lyrArtist');
+const lyrArtistQ = document.getElementById('lyrArtist'); // (player fetch - optional)
 let _lrcLines = null, _lyricsTimer = null;
 
 function parseLRC(lrcText){
@@ -334,7 +338,7 @@ lyricsBtn?.addEventListener('click', async () => {
     let title=(titleText && titleText!=='—' && titleText!=='Unknown Track')?titleText:'';
     if(!title){ const guess=(vocalsUrl||bandUrl||'').split('?')[0].split('/').pop(); title=guess?guess.replace(/\.(wav|mp3|m4a|flac|aac)$/i,''):''; }
     if(!title){ lyricsBox.textContent='Unable to determine track title.'; return; }
-    const artist=lyrArtist?.value?.trim()||''; const duration=Math.round(bandEl?.duration||vocalsEl?.duration||0);
+    const artist=lyrArtistQ?.value?.trim()||''; const duration=Math.round(bandEl?.duration||vocalsEl?.duration||0);
     const url=new URL(lyricsApiUrl); url.searchParams.set('title',title); if(artist) url.searchParams.set('artist',artist); if(duration) url.searchParams.set('duration', String(duration));
     if(lyricsBox) lyricsBox.textContent='Fetching lyrics…';
     const r=await fetch(url.toString(), {mode:'cors'}); const data=await r.json();
@@ -343,6 +347,42 @@ lyricsBtn?.addEventListener('click', async () => {
     if(data.synced && data.lrc){ _lrcLines=parseLRC(data.lrc); lyricsBox.textContent='Synced lyrics loaded.'; if(isPlaying) startLyricsSync(); }
     else { renderUnsynced(data.text || 'No lyrics text available.'); }
   }catch{ if(lyricsBox) lyricsBox.textContent='Failed to fetch lyrics.'; }
+});
+
+// =================== LYRICS UPLOAD (POST /api/lyrics) ===================
+const lyrTitleIn  = document.getElementById('lyrTitle');
+const lyrArtistIn = document.getElementById('lyrArtist'); // (upload form)
+const lyrTextIn   = document.getElementById('lyrText');
+const uploadBtn   = document.getElementById('uploadLyrics');
+const lyrStatus   = document.getElementById('lyrStatus');
+
+function setLyrStatus(t){ if (lyrStatus) lyrStatus.textContent = t || ''; }
+
+uploadBtn?.addEventListener('click', async () => {
+  try{
+    const title  = (lyrTitleIn?.value || '').trim();
+    const artist = (lyrArtistIn?.value || '').trim();
+    const text   = (lyrTextIn?.value || '').trim();
+    if (!title)  { setLyrStatus('Please enter a song title.'); return; }
+    if (!text)   { setLyrStatus('Please paste the lyrics text.'); return; }
+
+    setLyrStatus('Uploading…');
+    const res = await fetch(lyricsApiUrl, {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, artist, text }) // server stores as JSON alongside the track key
+    });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+
+    setLyrStatus('Lyrics uploaded ✔');
+    // If a lyrics panel is present, show them immediately
+    if (lyricsBox && text) lyricsBox.textContent = text;
+
+  } catch(e){
+    setLyrStatus(e.message || 'Failed to upload lyrics.');
+  }
 });
 
 // =================== PLAYER MODE (unchanged; uses /api/list providing SAS) ===================
