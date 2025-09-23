@@ -14,10 +14,10 @@
 
   <!-- site base styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
-  <!-- page-specific styles -->
-
+  <!-- page-specific styles, then dark theme overrides -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
+
   <!-- (optional) override endpoints via meta if you ever need to
   <meta name="karaoke-submit" content="https://<yourfunc>.azurewebsites.net/api/submit?code=<FUNCTION_KEY>">
   <meta name="karaoke-status" content="https://<yourfunc>.azurewebsites.net/api/status/{job_id}?code=<FUNCTION_KEY>">
@@ -39,25 +39,6 @@
     <div class="field">
       <label for="file">Upload file</label>
       <input id="file" name="file" type="file" accept=".mp3,.wav,.flac,.m4a,.aac" />
-    </div>
-
-    <!-- Lyrics (optional) – these are used by the same Submit button -->
-    <h2 style="margin-top:1rem">Upload Lyrics <span class="help">(optional)</span></h2>
-    <p class="help">Paste lyrics for a song. When anyone fetches lyrics for this title/artist, your uploaded version is returned first.</p>
-
-    <div class="field">
-      <label for="lyrTitle">Song Title</label>
-      <input id="lyrTitle" type="text" placeholder="e.g. Tum Hi Ho" autocomplete="off">
-    </div>
-
-    <div class="field">
-      <label for="lyrArtist">Artist (optional)</label>
-      <input id="lyrArtist" type="text" placeholder="e.g. Arijit Singh" autocomplete="off">
-    </div>
-
-    <div class="field">
-      <label for="lyrText">Lyrics</label>
-      <textarea id="lyrText" class="lyrics-box" rows="8" placeholder="Paste lyrics here…"></textarea>
     </div>
 
     <div class="row">
@@ -83,6 +64,11 @@
     <h2>Play & Route Audio</h2>
     <p class="help">On Chrome/Edge (desktop), choose different outputs per track. Safari/iOS doesn’t allow per-element output selection.</p>
 
+    <!-- Now Playing -->
+    <div class="now-playing" style="margin-bottom:.5rem">
+      <strong>Now Playing:</strong> <span id="trackTitle">—</span>
+    </div>
+
     <div class="grid-2">
       <div class="field">
         <label for="vocalsOut">Vocals output</label>
@@ -94,10 +80,17 @@
       </div>
     </div>
 
-    <div class="row">
+    <div class="row" style="margin-top:.5rem">
       <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
+      <button id="testVocals" class="btn btn-outline" type="button">Test Vocals</button>
+      <button id="testBand" class="btn btn-outline" type="button">Test Band</button>
+      <span id="deviceMsg" class="help" style="margin-left:.5rem" aria-live="polite"></span>
+    </div>
+
+    <div class="row" style="margin-top:.5rem">
       <button id="play" class="btn btn-blue" type="button">Play</button>
       <button id="pause" class="btn btn-outline" type="button">Pause</button>
+      <button id="restart" class="btn btn-outline" type="button">Restart</button>
     </div>
 
     <div class="row">
@@ -111,25 +104,41 @@
     <audio id="bandEl" crossorigin="anonymous" preload="auto"></audio>
   </section>
 
-<!-- Lyrics (load / edit / save) -->
-<!-- Upload Lyrics (optional, after song upload) -->
-<section class="card">
-  <h2>Upload Lyrics</h2>
-  <p class="help">
-    Paste lyrics for this song. We’ll tie them to the uploaded track automatically using the job ID.
-  </p>
+  <!-- Lyrics Editor (load / edit / save later with Job ID) -->
+  <section class="card">
+    <h2>Lyrics Editor</h2>
+    <p class="help">
+      Enter a <strong>Job ID</strong> to fetch or save lyrics for a processed track.
+      If you just uploaded a song, the page already knows its Job ID.
+    </p>
 
-  <!-- Lyrics textarea -->
-  <div class="field">
-    <label for="lyrText">Lyrics</label>
-    <textarea id="lyrText" placeholder="Paste lyrics here…"></textarea>
-  </div>
+    <div class="field">
+      <label for="lyrJobId">Job ID</label>
+      <input id="lyrJobId" type="text" placeholder="Paste job ID here (optional if you just uploaded)">
+    </div>
 
-  <div class="row">
-    <button id="saveLyrics" class="btn btn-blue" type="button">Save Lyrics</button>
-    <span id="lyricsSaveStatus" class="help" aria-live="polite"></span>
-  </div>
-</section>
+    <div class="row">
+      <button id="loadLyrics" class="btn btn-outline" type="button">Load Lyrics</button>
+      <span class="help">Loads your uploaded version first (if any), otherwise searches the library.</span>
+    </div>
+
+    <div class="field" style="margin-top:.5rem">
+      <label for="lyrText">Lyrics</label>
+      <textarea id="lyrText" class="lyrics-box" rows="10" placeholder="Paste or edit lyrics…"></textarea>
+    </div>
+
+    <div class="row">
+      <button id="saveLyrics" class="btn btn-blue" type="button">Save Lyrics</button>
+      <span id="lyricsMsg" class="help" aria-live="polite"></span>
+    </div>
+
+    <!-- Optional live-preview area when loading from library -->
+    <div class="field" style="margin-top:.5rem">
+      <label for="lyricsBox">Preview</label>
+      <pre id="lyricsBox"></pre>
+    </div>
+  </section>
+
 </main>
 
 <div id="footer"></div>
