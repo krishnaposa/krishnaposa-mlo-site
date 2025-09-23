@@ -122,7 +122,7 @@ input:focus,select:focus{
 #deviceMsg{min-height:1.25rem}
 
 /* ===== Player: lyrics box (container-width by default) ===== */
-#lyricsBox, #lyrText{
+#lyricsBox{
   display:block;
   width:100%;               /* fills the card/container width */
   background:#fff;
@@ -141,6 +141,24 @@ input:focus,select:focus{
 /* highlight current line when JS prefixes with "> " */
 #lyricsBox{tab-size:2}
 
+/* Apply same look to upload textarea as lyricsBox */
+#lyrText {
+  display: block;
+  width: 100%;
+  background: #f8fafc;          /* same as lyricsBox */
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .75rem .9rem;
+  white-space: pre-wrap;
+  max-height: 260px;
+  overflow: auto;
+  line-height: 1.4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 1rem;
+}
+#lyrText::selection {
+  background: rgba(11,95,255,.18);
+}
 /* ===== Optional: full-bleed lyrics (edge-to-edge across page) =====
    Add class 'full-page' to the lyrics box element if you want this behavior:
    <pre id="lyricsBox" class="full-page"></pre>
