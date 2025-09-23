@@ -12,16 +12,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Karaoke Split – Vocals to Buds, Band to Speakers</title>
 
-  <!-- site base styles -->
+  <!-- Base styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
-  <!-- page-specific styles, then dark theme overrides -->
+  <!-- Page styles then dark overrides -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
-
-  <!-- (optional) override endpoints via meta if you ever need to
-  <meta name="karaoke-submit" content="https://<yourfunc>.azurewebsites.net/api/submit?code=<FUNCTION_KEY>">
-  <meta name="karaoke-status" content="https://<yourfunc>.azurewebsites.net/api/status/{job_id}?code=<FUNCTION_KEY>">
-  -->
 </head>
 <body class="dark-surface">
 <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
@@ -59,12 +54,11 @@
     </div>
   </section>
 
-  <!-- Playback + routing -->
+  <!-- Player -->
   <section id="playerCard" class="card hide">
     <h2>Play & Route Audio</h2>
     <p class="help">On Chrome/Edge (desktop), choose different outputs per track. Safari/iOS doesn’t allow per-element output selection.</p>
 
-    <!-- Now Playing -->
     <div class="now-playing" style="margin-bottom:.5rem">
       <strong>Now Playing:</strong> <span id="trackTitle">—</span>
     </div>
@@ -104,22 +98,20 @@
     <audio id="bandEl" crossorigin="anonymous" preload="auto"></audio>
   </section>
 
-  <!-- Lyrics Editor (load / edit / save later with Job ID) -->
+  <!-- Lyrics editor (no preview) -->
   <section class="card">
-    <h2>Lyrics Editor</h2>
+    <h2>Lyrics</h2>
     <p class="help">
-      Enter a <strong>Job ID</strong> to fetch or save lyrics for a processed track.
-      If you just uploaded a song, the page already knows its Job ID.
+      Enter a <strong>Job ID</strong> to load/save lyrics for a processed track. If you just uploaded a song, the Job ID is already set.
     </p>
 
     <div class="field">
       <label for="lyrJobId">Job ID</label>
-      <input id="lyrJobId" type="text" placeholder="Paste job ID here (optional if you just uploaded)">
+      <input id="lyrJobId" type="text" placeholder="Paste job ID (optional if you just uploaded)">
     </div>
 
     <div class="row">
       <button id="loadLyrics" class="btn btn-outline" type="button">Load Lyrics</button>
-      <span class="help">Loads your uploaded version first (if any), otherwise searches the library.</span>
     </div>
 
     <div class="field" style="margin-top:.5rem">
@@ -131,12 +123,6 @@
       <button id="saveLyrics" class="btn btn-blue" type="button">Save Lyrics</button>
       <span id="lyricsMsg" class="help" aria-live="polite"></span>
     </div>
-
-    <!-- Optional live-preview area when loading from library -->
-    <div class="field" style="margin-top:.5rem">
-      <label for="lyricsBox">Preview</label>
-      <pre id="lyricsBox"></pre>
-    </div>
   </section>
 
 </main>
@@ -144,7 +130,7 @@
 <div id="footer"></div>
 <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
-<!-- Karaoke logic -->
+<!-- Page logic -->
 <script src="https://www.krishposa.com/assets/js/karaoke.js"></script>
 </body>
 </html>
