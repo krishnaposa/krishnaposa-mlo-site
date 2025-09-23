@@ -141,8 +141,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(status_code=204, headers=_cors())
 
     try:
-        if req.method == "POST":
-            body = req.get_json()
+           try:
+              body = req.get_json()
+              logging.info("POST body: %s", body)
+           except Exception as e:
+              logging.error("Failed to parse JSON: %s", e)
+              return _err("invalid JSON", 400)
             job_id = (body.get("job_id") or "").strip()
             title  = clean(body.get("title", ""))
             artist = clean(body.get("artist", ""))
