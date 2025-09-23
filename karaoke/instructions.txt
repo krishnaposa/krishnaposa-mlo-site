@@ -42,7 +42,9 @@ az storage message get --queue-name karaoke-jobs-poison --connection-string "$ST
 # Then re-send it to the main queue
 az storage message put --queue-name karaoke-jobs --connection-string "$STORAGE_CONN" --content '{"job_id":"...","src":{...}}'
 
-curl -X POST "https://<yourfunc>.azurewebsites.net/api/lyrics" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"job_id\":\"test123\",\"title\":\"Sample\",\"text\":\"Hello lyrics\"}"
-
+curl -X POST "https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/lyrics" \
+  -H "Content-Type: application/json; charset=utf-8" \
+  --data '{
+    "job_id": "1f388398d84a6a5b3",
+    "text": "Abhi Main Na Dekhoon Khwaab Woo\r\nJin Mein Na Tu Mile\r\nLe Khole Honth Maine\r\nAb Tak The Jo Sile\r\nMujhko Na Jitna Mujh Pe\r\nUtna Iss Dil Ko Tujh Pe\r\nHone Laga Aitbaar\r\n"
+  }'
