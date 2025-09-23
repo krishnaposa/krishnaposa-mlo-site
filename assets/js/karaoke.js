@@ -1,19 +1,19 @@
 /* assets/js/karaoke.js
    Upload + poll (submit page) and "player mode" listing (private storage via SAS).
-   Output device routing, beep tests, correct Play/Pause/Restart behavior,
-   and lyrics (load + save). Save writes meta.json next to outputs using /api/lyrics (POST).
+   Output device routing, beep tests, play/pause/restart.
+   Lyrics: simplified — Load/Save with job_id, no preview box.
 */
 
 // =================== CONFIG ===================
-const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net'; // your Function App
-const FUNCTION_CODE = ''; // optional: '...'; leave '' if authLevel="anonymous"
-const OUTPUT_BASE = '';   // leave '' for private SAS links
+const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net';
+const FUNCTION_CODE = '';
+const OUTPUT_BASE = '';
 
 const submitUrl    = `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
 const statusUrl    = (jobId) => `${API_BASE}/api/status/${encodeURIComponent(jobId)}${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
 const lyricsApiUrl = `${API_BASE}/api/lyrics${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`;
 
-// =================== ELEMENTS (upload page) ===================
+// =================== ELEMENTS ===================
 const els = {
   file: document.getElementById('file'),
   go: document.getElementById('go'),
@@ -25,43 +25,40 @@ const els = {
   prog: document.getElementById('prog'),
   bar: document.getElementById('bar'),
   playerCard: document.getElementById('playerCard'),
+  lyrJobId: document.getElementById('lyrJobId'),
+  lyrText: document.getElementById('lyrText'),
+  loadLyrics: document.getElementById('loadLyrics'),
+  saveLyrics: document.getElementById('saveLyrics'),
+  lyricsMsg: document.getElementById('lyricsMsg'),
 };
 
 let vocalsUrl = '';
 let bandUrl   = '';
 let pollTimer = null;
-let currentJobId = null;   // used for load/save lyrics
-
-// also grab optional manual Job ID field (if present in page)
-const lyrJobIdIn = document.getElementById('lyrJobId');
+let currentJobId = null;
 
 // =================== HELPERS ===================
-function setStatus(t) { if (els.status) els.status.textContent = t || ''; }
+function setStatus(t) { els.status && (els.status.textContent = t || ''); }
 function showError(msg) { if (els.alert) { els.alert.textContent = msg; els.alert.classList.remove('hide'); } }
 function hideError() { if (els.alert) { els.alert.classList.add('hide'); els.alert.textContent = ''; } }
 function resetUI() {
   setStatus(''); hideError();
   els.done?.classList.add('hide');
-  if (els.links) els.links.innerHTML = '';
-  if (els.prog) els.prog.hidden = true;
-  if (els.bar) els.bar.style.width = '0%';
+  els.links && (els.links.innerHTML = '');
+  els.prog && (els.prog.hidden = true);
+  els.bar && (els.bar.style.width = '0%');
   els.playerCard?.classList.add('hide');
   vocalsUrl = bandUrl = '';
   currentJobId = null;
-  if (lyrJobIdIn) lyrJobIdIn.value = '';
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-
-  // lyrics area
-  const lyricsBox = document.getElementById('lyricsBox');
-  const lyrText   = document.getElementById('lyrText');
-  const lyricsMsg = document.getElementById('lyricsMsg');
-  if (lyricsBox) lyricsBox.textContent = '';
-  if (lyrText)   lyrText.value = '';
-  if (lyricsMsg) lyricsMsg.textContent = '';
+  // lyrics editor
+  els.lyrJobId && (els.lyrJobId.value = '');
+  els.lyrText && (els.lyrText.value = '');
+  els.lyricsMsg && (els.lyricsMsg.textContent = '');
 }
 
 function asUrl(valueOrKey) {
-  if (/^https?:\/\//i.test(valueOrKey)) return valueOrKey; // SAS or absolute
+  if (/^https?:\/\//i.test(valueOrKey)) return valueOrKey;
   return OUTPUT_BASE ? `${OUTPUT_BASE.replace(/\/$/,'')}/${valueOrKey.replace(/^\/+/,'')}` : '#';
 }
 
@@ -71,7 +68,7 @@ els.clear?.addEventListener('click', () => {
   resetUI();
 });
 
-// =================== POLLING (upload page) ===================
+// =================== POLLING ===================
 async function doPoll(jobId) {
   try {
     const r = await fetch(statusUrl(jobId), { mode: 'cors' });
@@ -79,39 +76,38 @@ async function doPoll(jobId) {
     const s = await r.json();
 
     if (s.state === 'queued') {
-      setStatus('Queued…'); if (els.prog) els.prog.hidden = false;
+      setStatus('Queued…');
+      els.prog && (els.prog.hidden = false);
       if (els.bar && !els.bar.style.width) els.bar.style.width = '10%';
       return;
     }
-
     if (s.state === 'running') {
       const p = Math.max(10, Math.min(95, s.progress ?? 50));
-      if (els.prog) els.prog.hidden = false;
-      if (els.bar) els.bar.style.width = p + '%';
+      els.prog && (els.prog.hidden = false);
+      els.bar && (els.bar.style.width = p + '%');
       setStatus(`Processing… (${p}%)`);
       return;
     }
-
     if (s.state === 'failed') {
       setStatus('Error.');
       const retryTxt = s.retrying ? ` Retrying (attempt ${s.attempt}) in ${s.next_retry_in_seconds}s.` : '';
       showError((s.error || 'Job failed.') + retryTxt);
       if (!s.retrying && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-      if (els.prog) els.prog.hidden = true; if (els.bar) els.bar.style.width = '0%';
+      els.prog && (els.prog.hidden = true);
+      els.bar && (els.bar.style.width = '0%');
       return;
     }
-
     if (s.state === 'done') {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-      if (els.bar) els.bar.style.width = '100%';
-      setTimeout(() => { if (els.prog) els.prog.hidden = true; if (els.bar) els.bar.style.width = '0%'; }, 800);
+      els.bar && (els.bar.style.width = '100%');
+      setTimeout(() => { els.prog && (els.prog.hidden = true); els.bar && (els.bar.style.width = '0%'); }, 800);
       setStatus('Done!');
 
-      currentJobId = jobId;                    // <— tie saves to this processed song
-      if (lyrJobIdIn) lyrJobIdIn.value = jobId; // also show it to the user
+      currentJobId = jobId;
+      if (els.lyrJobId) els.lyrJobId.value = jobId; // expose to user
 
       els.done?.classList.remove('hide');
-      if (els.links) els.links.innerHTML = '';
+      els.links && (els.links.innerHTML = '');
       for (const [name, val] of Object.entries(s.outputs || {})) {
         const href = asUrl(val);
         if (els.links) {
@@ -127,7 +123,6 @@ async function doPoll(jobId) {
       bandUrl   = asUrl((s.outputs || {})['no_vocals.wav'] || '');
       if (els.playerCard && vocalsUrl && bandUrl && vocalsUrl !== '#' && bandUrl !== '#') {
         els.playerCard.classList.remove('hide');
-        // Friendly title from original file name if available
         const base = (s.original_name || '').split('/').pop() || '—';
         const title = base.replace(/\.(wav|mp3|m4a|flac|aac)$/i,'');
         const tEl = document.getElementById('trackTitle');
@@ -135,9 +130,7 @@ async function doPoll(jobId) {
       }
       return;
     }
-
     setStatus(s.state || '…');
-
   } catch (err) {
     console.warn('poll error', err);
   }
@@ -148,10 +141,10 @@ function startPolling(jobId) {
   pollTimer = setInterval(() => doPoll(jobId), 1500);
 }
 
-// =================== SUBMIT (upload page) ===================
+// =================== SUBMIT ===================
 els.go?.addEventListener('click', async () => {
   try {
-    hideError(); els.done?.classList.add('hide'); if (els.links) els.links.innerHTML = '';
+    hideError(); els.done?.classList.add('hide'); els.links && (els.links.innerHTML = '');
     setStatus('Submitting…'); els.prog && (els.prog.hidden = false); els.bar && (els.bar.style.width = '10%');
 
     const fd = new FormData();
@@ -159,29 +152,26 @@ els.go?.addEventListener('click', async () => {
     if (!fd.has('file')) throw new Error('Please choose a file to upload.');
 
     const res = await fetch(submitUrl, { method: 'POST', body: fd, mode: 'cors' });
-    let data = null;
-    try { data = await res.json(); } catch {}
+    let data = null; try { data = await res.json(); } catch {}
     if (!res.ok) {
       const msg = (data && (data.error || data.message)) || (await res.text());
       throw new Error(msg || `Submit failed (${res.status})`);
     }
     const jobId = data && data.job_id;
     if (!jobId) throw new Error('No job id returned.');
-
-    currentJobId = jobId;                // capture for lyrics save
-    if (lyrJobIdIn) lyrJobIdIn.value = jobId;
+    currentJobId = jobId;
+    if (els.lyrJobId) els.lyrJobId.value = jobId;
 
     (window.dataLayer = window.dataLayer || []).push({ event: 'karaoke_submit' });
     setStatus('Queued. Processing…');
     startPolling(jobId);
-
   } catch (e) {
     showError(e.message || String(e));
-    setStatus(''); if (els.prog) els.prog.hidden = true; if (els.bar) els.bar.style.width = '0%';
+    setStatus(''); els.prog && (els.prog.hidden = true); els.bar && (els.bar.style.width = '0%');
   }
 });
 
-// =================== DUAL-OUTPUT ROUTING + CONTROLS ===================
+// =================== AUDIO ROUTING ===================
 const vocalsEl  = document.getElementById('vocalsEl');
 const bandEl    = document.getElementById('bandEl');
 const vocalsOut = document.getElementById('vocalsOut');
@@ -193,10 +183,10 @@ const restartBtn= document.getElementById('restart');
 const offsetIn  = document.getElementById('offset');
 const trackTitle= document.getElementById('trackTitle');
 
-function showTrackTitle(t){ if (trackTitle) trackTitle.textContent = t || ''; }
+function showTrackTitle(t){ trackTitle && (trackTitle.textContent = t || ''); }
 
 const deviceMsg = document.getElementById('deviceMsg');
-function setDeviceMsg(t){ if (deviceMsg) deviceMsg.textContent = t || ''; }
+function setDeviceMsg(t){ deviceMsg && (deviceMsg.textContent = t || ''); }
 
 const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
 let isLoaded  = false;
@@ -255,7 +245,7 @@ async function applySinks() {
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 function clearSyncTimer(){ if (window._syncTimer){ clearInterval(window._syncTimer); window._syncTimer=null; } }
-function pauseAll(){ clearSyncTimer(); try{vocalsEl?.pause()}catch{}; try{bandEl?.pause()}catch{}; if(vocalsEl) vocalsEl.playbackRate=1; if(bandEl) bandEl.playbackRate=1; isPlaying=false; onPlaybackPaused(); }
+function pauseAll(){ clearSyncTimer(); try{vocalsEl?.pause()}catch{}; try{bandEl?.pause()}catch{}; if(vocalsEl) vocalsEl.playbackRate=1; if(bandEl) bandEl.playbackRate=1; isPlaying=false; }
 
 async function preloadIfNeeded() {
   if (isLoaded) return;
@@ -269,28 +259,14 @@ async function preloadIfNeeded() {
   isLoaded = true;
 }
 
-async function resumePlay(){ await Promise.all([vocalsEl.play().catch(()=>{}), bandEl.play().catch(()=>{})]); isPlaying=true; startDriftCorrection(currentOffsetMs()); onPlaybackStarted(); }
-
+async function resumePlay(){ await Promise.all([vocalsEl.play().catch(()=>{}), bandEl.play().catch(()=>{})]); isPlaying=true; }
 async function startFromZeroWithOffset(offsetMs){
   vocalsEl.currentTime=0; bandEl.currentTime=0;
   if (offsetMs >= 0){ await bandEl.play(); await sleep(offsetMs); await vocalsEl.play(); }
   else { await vocalsEl.play(); await sleep(-offsetMs); await bandEl.play(); }
-  isPlaying=true; startDriftCorrection(offsetMs); onPlaybackStarted();
+  isPlaying=true;
 }
-
 function currentOffsetMs(){ return parseInt(offsetIn?.value || '0', 10) || 0; }
-
-function startDriftCorrection(offsetMs){
-  clearSyncTimer();
-  window._syncTimer = setInterval(() => {
-    if (!isPlaying) return;
-    const driftMs = (vocalsEl.currentTime - bandEl.currentTime) * 1000 - offsetMs;
-    if (Math.abs(driftMs) > 60) {
-      if (driftMs > 0) { const r=vocalsEl.playbackRate; vocalsEl.playbackRate=Math.max(0.9,r-0.05); setTimeout(()=>{vocalsEl.playbackRate=r},300); }
-      else { const r=bandEl.playbackRate; bandEl.playbackRate=Math.max(0.9,r-0.05); setTimeout(()=>{bandEl.playbackRate=r},300); }
-    }
-  }, 2000);
-}
 
 playBtn?.addEventListener('click', async () => {
   try {
@@ -304,108 +280,42 @@ playBtn?.addEventListener('click', async () => {
 pauseBtn?.addEventListener('click', pauseAll);
 restartBtn?.addEventListener('click', async () => { try { await preloadIfNeeded(); pauseAll(); await startFromZeroWithOffset(currentOffsetMs()); } catch (e) { console.warn('restart failed', e); alert(e.message || 'Could not restart playback.'); } });
 
-// ======= Beep tests =======
-const _beepElVocals = document.createElement('audio');
-const _beepElBand   = document.createElement('audio');
-_beepElVocals.setAttribute('playsinline',''); _beepElVocals.style.display='none';
-_beepElBand.setAttribute('playsinline','');   _beepElBand.style.display='none';
-document.body.appendChild(_beepElVocals); document.body.appendChild(_beepElBand);
-async function playBeep(which, sinkId, freq=880, ms=600){
-  const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
-  if (!supportSink){ alert('Output selection not supported in this browser.'); return; }
-  const outEl = which==='band'?_beepElBand:_beepElVocals;
-  const ac = new (window.AudioContext||window.webkitAudioContext)(); const osc=ac.createOscillator(); const gain=ac.createGain();
-  gain.gain.setValueAtTime(0.0001, ac.currentTime); gain.gain.exponentialRampToValueAtTime(0.3, ac.currentTime+0.02);
-  osc.frequency.value=freq; osc.type='sine'; const dest=ac.createMediaStreamDestination(); osc.connect(gain); gain.connect(dest);
-  try{ await outEl.setSinkId(sinkId||'default'); }catch{}
-  outEl.srcObject=dest.stream;
-  try{ osc.start(); await outEl.play(); const endT=ac.currentTime+ms/1000; gain.gain.exponentialRampToValueAtTime(0.0001,endT-0.05); osc.stop(endT); setTimeout(()=>{outEl.pause(); outEl.srcObject=null; ac.close().catch(()=>{});}, ms+120); }catch{ ac.close().catch(()=>{}); }
-}
-document.getElementById('testVocals')?.addEventListener('click', ()=>playBeep('vocals', vocalsOut?.value, 880, 500));
-document.getElementById('testBand')?.addEventListener('click',   ()=>playBeep('band',   bandOut?.value,   660, 500));
-
-// =================== LYRICS (load + save) ===================
-const lyricsBtn   = document.getElementById('loadLyrics');
-const saveBtn     = document.getElementById('saveLyrics');
-const lyricsBox   = document.getElementById('lyricsBox');
-const lyrText     = document.getElementById('lyrText');
-const lyricsMsg   = document.getElementById('lyricsMsg');
-
-let _lrcLines = null, _lyricsTimer = null;
-
-function parseLRC(lrcText){
-  const lines=[]; const re=/\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\](.*)/g; let m;
-  while((m=re.exec(lrcText))!==null){ 
-    const min=+m[1], sec=+m[2], ms=m[3]?+m[3].padEnd(3,'0'):0; 
-    const t=min*60+sec+ms/1000; 
-    lines.push({t, text:(m[4]||'').trim()}); 
-  }
-  lines.sort((a,b)=>a.t-b.t); 
-  return lines;
-}
-function renderUnsynced(text){ if(lyricsBox) lyricsBox.textContent = text || 'No lyrics found.'; }
-function stopLyricsSync(){ if(_lyricsTimer){ clearInterval(_lyricsTimer); _lyricsTimer=null; } }
-function startLyricsSync(){
-  if(!_lrcLines||!lyricsBox) return; stopLyricsSync();
-  _lyricsTimer=setInterval(()=>{ 
-    const ct=bandEl?.currentTime||vocalsEl?.currentTime||0; 
-    let i=_lrcLines.findIndex(l=>l.t>ct); 
-    if(i===-1)i=_lrcLines.length; 
-    const idx=Math.max(0,i-1); 
-    const prev=Math.max(0,idx-3); 
-    const next=Math.min(_lrcLines.length, idx+4);
-    const chunk=_lrcLines.slice(prev,next).map(l=>l===_lrcLines[idx]?`> ${l.text}`:`  ${l.text}`).join('\n'); 
-    lyricsBox.textContent=chunk||'—'; 
-  },250);
-}
-function onPlaybackStarted(){ startLyricsSync(); }
-function onPlaybackPaused(){ stopLyricsSync(); }
-
-// Load (prefer manual job_id if typed; else auto currentJobId).
-lyricsBtn?.addEventListener('click', async () => {
+// =================== LYRICS (no preview) ===================
+els.loadLyrics?.addEventListener('click', async () => {
   try{
-    const typedJobId = (lyrJobIdIn?.value || '').trim();
-    const jobIdToUse = typedJobId || currentJobId;
-    if (!jobIdToUse){ lyricsMsg && (lyricsMsg.textContent='Provide a Job ID or upload/pick a song first.'); return; }
+    const jobId = (els.lyrJobId?.value || currentJobId || '').trim();
+    if (!jobId){ els.lyricsMsg && (els.lyricsMsg.textContent='Enter a Job ID first.'); return; }
 
     const url=new URL(lyricsApiUrl);
-    url.searchParams.set('job_id', jobIdToUse);
+    url.searchParams.set('job_id', jobId);
 
-    lyricsMsg && (lyricsMsg.textContent='Fetching lyrics…');
-    const r=await fetch(url.toString(), {mode:'cors'}); 
+    els.lyricsMsg && (els.lyricsMsg.textContent='Fetching lyrics…');
+    const r=await fetch(url.toString(), {mode:'cors'});
     const data=await r.json();
-    stopLyricsSync(); _lrcLines=null;
 
-    if(!data || data.found===false){ renderUnsynced('No lyrics found.'); lyricsMsg && (lyricsMsg.textContent=''); return; }
-    if(data.synced && data.lrc){
-      _lrcLines=parseLRC(data.lrc);
-      lyricsBox.textContent='Synced lyrics loaded.';
-      lyrText && (lyrText.value = data.lrc);
-      if(isPlaying) startLyricsSync();
-    } else {
-      renderUnsynced(data.text || 'No lyrics text available.');
-      lyrText && (lyrText.value = data.text || '');
+    if(!data || data.found===false){
+      els.lyricsMsg && (els.lyricsMsg.textContent='No saved lyrics for this job.');
+      els.lyrText && (els.lyrText.value = '');
+      return;
     }
-    lyricsMsg && (lyricsMsg.textContent='Loaded.');
+    els.lyrText && (els.lyrText.value = data.lrc || data.text || '');
+    els.lyricsMsg && (els.lyricsMsg.textContent='Loaded.');
+    currentJobId = jobId; // lock in for Save
   }catch(e){
     console.warn(e);
-    lyricsMsg && (lyricsMsg.textContent='Failed to fetch lyrics.');
+    els.lyricsMsg && (els.lyricsMsg.textContent='Failed to fetch lyrics.');
   }
 });
 
-// Save (upsert) { job_id, text } — prefer manual Job ID if provided
-saveBtn?.addEventListener('click', async () => {
+els.saveLyrics?.addEventListener('click', async () => {
   try{
-    const typedJobId = (lyrJobIdIn?.value || '').trim();
-    const jobIdToUse = typedJobId || currentJobId;
-    if (!jobIdToUse){ lyricsMsg && (lyricsMsg.textContent='Provide a Job ID or upload/pick a song first.'); return; }
+    const jobId = (els.lyrJobId?.value || currentJobId || '').trim();
+    if (!jobId){ els.lyricsMsg && (els.lyricsMsg.textContent='Enter a Job ID first.'); return; }
+    const text = (els.lyrText?.value || '').trim();
+    if (!text){ els.lyricsMsg && (els.lyricsMsg.textContent='Paste lyrics before saving.'); return; }
 
-    const text = (lyrText?.value || '').trim();
-    if (!text){ lyricsMsg && (lyricsMsg.textContent='Paste lyrics before saving.'); return; }
-
-    const payload = { job_id: jobIdToUse, text };
-
-    lyricsMsg && (lyricsMsg.textContent='Saving…');
+    const payload = { job_id: jobId, text };
+    els.lyricsMsg && (els.lyricsMsg.textContent='Saving…');
     const r = await fetch(lyricsApiUrl, {
       method:'POST',
       mode:'cors',
@@ -416,16 +326,15 @@ saveBtn?.addEventListener('click', async () => {
     if (!r.ok || resp.error){
       throw new Error(resp.error || `Save failed (${r.status})`);
     }
-    lyricsMsg && (lyricsMsg.textContent='Saved.');
-    // reload to reflect saved source
-    document.getElementById('loadLyrics')?.click();
+    els.lyricsMsg && (els.lyricsMsg.textContent='Saved.');
+    currentJobId = jobId;
   }catch(e){
     console.warn(e);
-    lyricsMsg && (lyricsMsg.textContent = e.message || 'Save failed.');
+    els.lyricsMsg && (els.lyricsMsg.textContent = e.message || 'Save failed.');
   }
 });
 
-// =================== PLAYER MODE (uses /api/list with SAS) ===================
+// =================== PLAYER MODE (list via SAS, unchanged) ===================
 if (window.KARAOKE_MODE === 'player') {
   (function(){
     const LIST_META = document.querySelector('meta[name="karaoke-list"]');
@@ -436,22 +345,20 @@ if (window.KARAOKE_MODE === 'player') {
     const refreshBtn  = document.getElementById('refreshList');
     const status      = document.getElementById('listStatus');
 
-    const vocalsUrlIn = document.getElementById('vocalsUrl'); // hidden
-    const bandUrlIn   = document.getElementById('bandUrl');   // hidden
-    const loadBtn     = document.getElementById('loadBtn');   // hidden
+    const vocalsUrlIn = document.getElementById('vocalsUrl');
+    const bandUrlIn   = document.getElementById('bandUrl');
+    const loadBtn     = document.getElementById('loadBtn');
     const loadStatus  = document.getElementById('loadStatus');
 
-    function setListStatus(t){ if (status) status.textContent = t || ''; }
+    function setListStatus(t){ status && (status.textContent = t || ''); }
 
     async function loadList(){
       try {
         if (!LIST_URL) throw new Error('Missing karaoke-list URL meta.');
         setListStatus('Loading songs…');
-
         const res = await fetch(LIST_URL, { mode: 'cors' });
         if (!res.ok) throw new Error(`List failed (${res.status})`);
         const data = await res.json();
-
         const items = (data && data.items) || [];
         if (pick) pick.innerHTML = '';
         if (!items.length) {
@@ -459,12 +366,8 @@ if (window.KARAOKE_MODE === 'player') {
           setListStatus('');
           return;
         }
-
-        // newest first if timestamps present
         items.sort((a,b) => (b.updated||'').localeCompare(a.updated||''));
-
         for (const it of items) {
-          // include job_id so Save ties to the same job
           const opt = document.createElement('option');
           opt.value = JSON.stringify({
             job_id: it.job_id,
@@ -490,25 +393,15 @@ if (window.KARAOKE_MODE === 'player') {
         vocalsUrl    = sel.vocals || '';
         bandUrl      = sel.band   || '';
         currentJobId = sel.job_id || null;
-        if (lyrJobIdIn) lyrJobIdIn.value = currentJobId || '';
         showTrackTitle(sel.title || 'Unknown Track');
 
-        // Reset playback + lyrics because sources changed
-        isLoaded  = false;
-        isPlaying = false;
-        pauseAll();
-        stopLyricsSync();
-        const lyricsBoxEl = document.getElementById('lyricsBox');
-        const lyrTextEl   = document.getElementById('lyrText');
-        const lyricsMsgEl = document.getElementById('lyricsMsg');
-        if (lyricsBoxEl) lyricsBoxEl.textContent = '—';
-        if (lyrTextEl)   lyrTextEl.value = '';
-        if (lyricsMsgEl) lyricsMsgEl.textContent = '';
+        isLoaded  = false; isPlaying = false; pauseAll();
 
         if (vocalsUrlIn) vocalsUrlIn.value = vocalsUrl;
         if (bandUrlIn)   bandUrlIn.value   = bandUrl;
         loadBtn?.click();
         if (loadStatus) loadStatus.textContent = 'Tracks loaded.';
+        if (els.lyrJobId) els.lyrJobId.value = currentJobId || '';
       } catch (e) {
         console.warn('Invalid selection', e);
       }
