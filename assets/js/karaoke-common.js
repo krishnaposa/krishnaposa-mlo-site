@@ -1,71 +1,75 @@
 /* ===== karaoke-common.js =====
-   Shared config, helpers, playback routing, and lyrics helpers.
+   Shared helpers:
+   - API endpoints
+   - $, asUrl
+   - job id set/get (with input fallback)
+   - playback controls initializer
+   - loadLyrics() and saveLyrics()
 */
 (function (w) {
-  // ---------- CONFIG ----------
   const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net';
-  const FUNCTION_CODE = ''; // e.g. '&code=...' if not anonymous
-  const OUTPUT_BASE = '';   // leave '' for private SAS links
+  const FUNCTION_CODE = ''; // if your function isn't anonymous, put code here
+  const OUTPUT_BASE = '';   // leave '' for private (SAS)
+
+  function buildUrl(path) {
+    const q = FUNCTION_CODE ? `?code=${encodeURIComponent(FUNCTION_CODE)}` : '';
+    return `${API_BASE}${path}${q}`;
+  }
 
   const endpoints = {
-    submitUrl:  `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
-    statusUrl:  (jobId) => `${API_BASE}/api/status/${encodeURIComponent(jobId)}${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
-    lyricsUrl:  `${API_BASE}/api/lyrics${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
+    submitUrl: buildUrl('/api/submit'),
+    statusUrl: (jobId) => buildUrl(`/api/status/${encodeURIComponent(jobId)}`),
+    lyricsUrl: buildUrl('/api/lyrics'),
+    listUrlFromMeta: () => {
+      const m = document.querySelector('meta[name="karaoke-list"]');
+      return m?.content || '';
+    }
   };
 
-  // ---------- STATE ----------
-  const K = (w.KARAOKE = w.KARAOKE || {});
-  K.currentJobId = null;
-  K.setJobId = (id) => { K.currentJobId = id || null; const v = document.getElementById('jobIdView'); if (v) v.textContent = K.currentJobId || '—'; };
-  K.endpoints = endpoints;
-
-  // ---------- HELPERS ----------
+  function $(id) { return document.getElementById(id); }
   function asUrl(valueOrKey) {
     if (/^https?:\/\//i.test(valueOrKey)) return valueOrKey;
-    return OUTPUT_BASE ? `${OUTPUT_BASE.replace(/\/$/,'')}/${valueOrKey.replace(/^\/+/,'')}` : '#';
+    return OUTPUT_BASE ? `${OUTPUT_BASE.replace(/\/$/,'')}/${String(valueOrKey).replace(/^\/+/,'')}` : '#';
   }
-  function $(id) { return document.getElementById(id); }
-  function setText(id, t) { const el = $(id); if (el) el.textContent = t || ''; }
 
-  // ---------- PLAYBACK (routing + controls) ----------
-  function initPlaybackControls(cfg = {}) {
-    const {
-      vocalsElId='vocalsEl', bandElId='bandEl',
-      vocalsOutId='vocalsOut', bandOutId='bandOut',
-      initBtnId='initAudio', playBtnId='play', pauseBtnId='pause', restartBtnId='restart',
-      offsetId='offset', trackTitleId='trackTitle', deviceMsgId='deviceMsg'
-    } = cfg;
+  // -------- Job ID state (with input fallback) --------
+  let _jobId = null;
+  function setJobId(id) {
+    _jobId = id || null;
+    const box = $('lyrJobId');
+    if (box && id) box.value = id;
+  }
+  function getJobId() {
+    if (_jobId) return _jobId;
+    const typed = ($('lyrJobId')?.value || '').trim();
+    return typed || null;
+  }
 
-    const vocalsEl  = $(vocalsElId);
-    const bandEl    = $(bandElId);
-    const vocalsOut = $(vocalsOutId);
-    const bandOut   = $(bandOutId);
-    const initBtn   = $(initBtnId);
-    const playBtn   = $(playBtnId);
-    const pauseBtn  = $(pauseBtnId);
-    const restartBtn= $(restartBtnId);
-    const offsetIn  = $(offsetId);
-    const titleEl   = $(trackTitleId);
-    const devMsgEl  = $(deviceMsgId);
+  // -------- Playback controls initializer --------
+  function initPlaybackControls() {
+    const vocalsEl  = $('vocalsEl');
+    const bandEl    = $('bandEl');
+    const vocalsOut = $('vocalsOut');
+    const bandOut   = $('bandOut');
+    const initBtn   = $('initAudio');
+    const playBtn   = $('play');
+    const pauseBtn  = $('pause');
+    const restartBtn= $('restart');
+    const offsetIn  = $('offset');
+    const titleEl   = $('trackTitle');
+    const deviceMsg = $('deviceMsg');
 
-    let vocalsUrl = '';
-    let bandUrl   = '';
-    let isLoaded  = false;
-    let isPlaying = false;
-
-    const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
+    const supportSink = typeof HTMLMediaElement?.prototype?.setSinkId === 'function';
+    let isLoaded = false, isPlaying = false;
+    let syncTimer = null;
+    let sources = { vocals: '', band: '' };
 
     function showTitle(t){ if (titleEl) titleEl.textContent = t || '—'; }
-    function setDeviceMsg(t){ if (devMsgEl) devMsgEl.textContent = t || ''; }
-    function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
-    function clearSyncTimer(){ if (w._syncTimer){ clearInterval(w._syncTimer); w._syncTimer=null; } }
-    function currentOffsetMs(){ return parseInt(offsetIn?.value || '0', 10) || 0; }
-
+    function setDeviceMsg(t){ if (deviceMsg) deviceMsg.textContent = t || ''; }
     async function ensurePermission() {
       try { await navigator.mediaDevices.getUserMedia({ audio: true }); return true; }
       catch { setDeviceMsg('Please allow microphone access to list audio outputs.'); return false; }
     }
-
     function fillSelect(sel, outs) {
       if (!sel) return;
       sel.innerHTML = '';
@@ -78,7 +82,6 @@
       const def = outs.find(d => d.deviceId === 'default');
       sel.value = def ? def.deviceId : (outs[0]?.deviceId || 'default');
     }
-
     function addDefaultFallback(sel) {
       if (!sel) return;
       sel.innerHTML = '';
@@ -88,7 +91,6 @@
       sel.appendChild(opt);
       sel.value = 'default';
     }
-
     async function listOutputs() {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const outs = devices.filter(d => d.kind === 'audiooutput');
@@ -96,65 +98,6 @@
       else { addDefaultFallback(vocalsOut); addDefaultFallback(bandOut); setDeviceMsg('No discrete outputs reported. Using system default.'); }
       return outs.length;
     }
-
-    async function applySinks() {
-      if (!supportSink) return;
-      try { await vocalsEl?.setSinkId(vocalsOut?.value || 'default'); } catch {}
-      try { await bandEl?.setSinkId(bandOut?.value   || 'default'); } catch {}
-    }
-
-    function pauseAll(){
-      clearSyncTimer();
-      try{vocalsEl?.pause()}catch{}
-      try{bandEl?.pause()}catch{}
-      if(vocalsEl) vocalsEl.playbackRate=1;
-      if(bandEl)   bandEl.playbackRate=1;
-      isPlaying=false;
-      // any lyrics sync stopper is page-specific
-      w.dispatchEvent(new CustomEvent('karaoke:paused'));
-    }
-
-    async function preloadIfNeeded() {
-      if (isLoaded) return;
-      if (!vocalsUrl || !bandUrl || vocalsUrl === '#' || bandUrl === '#') throw new Error('No tracks loaded yet.');
-      vocalsEl.src = vocalsUrl; bandEl.src = bandUrl;
-      await applySinks(); vocalsEl.load(); bandEl.load();
-      await Promise.all([
-        new Promise(r => vocalsEl.addEventListener('canplay', r, {once:true})),
-        new Promise(r => bandEl.addEventListener('canplay', r, {once:true})),
-      ]);
-      isLoaded = true;
-    }
-
-    function startDriftCorrection(offsetMs){
-      clearSyncTimer();
-      w._syncTimer = setInterval(() => {
-        if (!isPlaying) return;
-        const driftMs = (vocalsEl.currentTime - bandEl.currentTime) * 1000 - offsetMs;
-        if (Math.abs(driftMs) > 60) {
-          if (driftMs > 0) { const r=vocalsEl.playbackRate; vocalsEl.playbackRate=Math.max(0.9,r-0.05); setTimeout(()=>{vocalsEl.playbackRate=r},300); }
-          else { const r=bandEl.playbackRate; bandEl.playbackRate=Math.max(0.9,r-0.05); setTimeout(()=>{bandEl.playbackRate=r},300); }
-        }
-      }, 2000);
-    }
-
-    async function resumePlay(){
-      await Promise.all([vocalsEl.play().catch(()=>{}), bandEl.play().catch(()=>{})]);
-      isPlaying=true;
-      startDriftCorrection(currentOffsetMs());
-      w.dispatchEvent(new CustomEvent('karaoke:playing'));
-    }
-
-    async function startFromZeroWithOffset(offsetMs){
-      vocalsEl.currentTime=0; bandEl.currentTime=0;
-      if (offsetMs >= 0){ await bandEl.play(); await sleep(offsetMs); await vocalsEl.play(); }
-      else { await vocalsEl.play(); await sleep(-offsetMs); await bandEl.play(); }
-      isPlaying=true;
-      startDriftCorrection(offsetMs);
-      w.dispatchEvent(new CustomEvent('karaoke:playing'));
-    }
-
-    // Wire UI
     initBtn?.addEventListener('click', async () => {
       setDeviceMsg('');
       if (!supportSink) { setDeviceMsg('Output selection not supported here. Use Chrome/Edge desktop.'); return; }
@@ -164,90 +107,146 @@
       try { navigator.mediaDevices.addEventListener('devicechange', listOutputs); } catch {}
     });
 
+    async function applySinks() {
+      if (!supportSink) return;
+      try { await vocalsEl?.setSinkId(vocalsOut?.value || 'default'); } catch{}
+      try { await bandEl?.setSinkId(bandOut?.value   || 'default'); } catch{}
+    }
+    function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+    function clearSyncTimer(){ if (syncTimer){ clearInterval(syncTimer); syncTimer=null; } }
+    function onPlaybackPaused(){}
+    function onPlaybackStarted(){}
+    function pauseAll(){ clearSyncTimer(); try{vocalsEl?.pause()}catch{}; try{bandEl?.pause()}catch{}; if(vocalsEl) vocalsEl.playbackRate=1; if(bandEl) bandEl.playbackRate=1; isPlaying=false; onPlaybackPaused(); }
+    function currentOffsetMs(){ return parseInt(offsetIn?.value || '0', 10) || 0; }
+    function startDriftCorrection(offsetMs){
+      clearSyncTimer();
+      syncTimer = setInterval(() => {
+        if (!isPlaying) return;
+        const driftMs = (vocalsEl.currentTime - bandEl.currentTime) * 1000 - offsetMs;
+        if (Math.abs(driftMs) > 60) {
+          if (driftMs > 0) { const r=vocalsEl.playbackRate; vocalsEl.playbackRate=Math.max(0.9,r-0.05); setTimeout(()=>{vocalsEl.playbackRate=r},300); }
+          else { const r=bandEl.playbackRate; bandEl.playbackRate=Math.max(0.9,r-0.05); setTimeout(()=>{bandEl.playbackRate=r},300); }
+        }
+      }, 2000);
+    }
+    async function preloadIfNeeded() {
+      if (isLoaded) return;
+      if (!sources.vocals || !sources.band || sources.vocals === '#' || sources.band === '#')
+        throw new Error('No tracks loaded yet.');
+      vocalsEl.src = sources.vocals;
+      bandEl.src   = sources.band;
+      await applySinks(); vocalsEl.load(); bandEl.load();
+      await Promise.all([
+        new Promise(r => vocalsEl.addEventListener('canplay', r, {once:true})),
+        new Promise(r => bandEl.addEventListener('canplay', r, {once:true})),
+      ]);
+      isLoaded = true;
+    }
+    async function resumePlay(){
+      await Promise.all([vocalsEl.play().catch(()=>{}), bandEl.play().catch(()=>{})]);
+      isPlaying=true; startDriftCorrection(currentOffsetMs()); onPlaybackStarted();
+    }
+    async function startFromZeroWithOffset(offsetMs){
+      vocalsEl.currentTime=0; bandEl.currentTime=0;
+      if (offsetMs >= 0){ await bandEl.play(); await sleep(offsetMs); await vocalsEl.play(); }
+      else { await vocalsEl.play(); await sleep(-offsetMs); await bandEl.play(); }
+      isPlaying=true; startDriftCorrection(offsetMs); onPlaybackStarted();
+    }
+
     playBtn?.addEventListener('click', async () => {
-      try{
+      try {
         if (!vocalsEl || !bandEl) return;
         if (isPlaying) return;
         await preloadIfNeeded();
         if (vocalsEl.paused && bandEl.paused && (vocalsEl.currentTime>0 || bandEl.currentTime>0)) await resumePlay();
         else await startFromZeroWithOffset(currentOffsetMs());
-      }catch(e){ alert(e.message || 'Could not start playback.'); }
+      } catch (e) { console.warn('play failed', e); alert(e.message || 'Could not start playback.'); }
     });
-
     pauseBtn?.addEventListener('click', pauseAll);
     restartBtn?.addEventListener('click', async () => {
       try { await preloadIfNeeded(); pauseAll(); await startFromZeroWithOffset(currentOffsetMs()); }
-      catch(e){ alert(e.message || 'Could not restart playback.'); }
+      catch (e) { console.warn('restart failed', e); alert(e.message || 'Could not restart playback.'); }
     });
 
-    // Public API for page scripts
+    // expose a tiny API for pages
     return {
-      setSources: (vocals, band) => { vocalsUrl = asUrl(vocals); bandUrl = asUrl(band); isLoaded=false; isPlaying=false; },
-      showTitle,
-      getDurations: () => ({ vocals: vocalsEl?.duration || 0, band: bandEl?.duration || 0 }),
-      elements: { vocalsEl, bandEl }
+      setSources(vocals, band){
+        sources.vocals = asUrl(vocals);
+        sources.band   = asUrl(band);
+        isLoaded = false; // force reload next play
+      },
+      showTitle: showTitle,
+      getDurations(){
+        return {
+          vocals: parseFloat(vocalsEl?.duration || 0) || 0,
+          band:   parseFloat(bandEl?.duration   || 0) || 0,
+        };
+      }
     };
   }
 
-  // ---------- LYRICS HELPERS ----------
-  async function loadLyrics({ jobId, title, artist, duration, lyricsBoxId, msgId }) {
-    const lyricsBox = $(lyricsBoxId);
-    const msg = $(msgId);
+  // -------- Lyrics helpers --------
+  function _setMsg(msgId, t){ const el=$(msgId); if (el) el.textContent = t || ''; }
+  function _setBox(lyricsBoxId, text){ const el=$(lyricsBoxId); if (el) el.textContent = text ?? ''; }
+
+  async function loadLyrics({ jobId, title, artist, duration, lyricsBoxId='lyricsBox', msgId='lyricsMsg' }) {
+    const useJob = jobId || getJobId();
     try{
-      const url = new URL(K.endpoints.lyricsUrl);
-      if (jobId) url.searchParams.set('job_id', jobId);
-      if (!jobId && title)   url.searchParams.set('title', title);
-      if (!jobId && artist)  url.searchParams.set('artist', artist);
-      if (!jobId && duration)url.searchParams.set('duration', String(duration));
-
-      if (msg) msg.textContent = jobId ? `Fetching lyrics for job ${jobId}…` : 'Fetching lyrics…';
-      const r = await fetch(url.toString(), { mode:'cors' });
-      const data = await r.json();
-
-      if (!data || data.found === false) {
-        if (lyricsBox) lyricsBox.textContent = 'No lyrics found.';
-        if (msg) msg.textContent = '';
-        return { found:false };
+      const url = new URL(endpoints.lyricsUrl);
+      if (useJob) {
+        url.searchParams.set('job_id', useJob);
+      } else {
+        if (!title) { _setMsg(msgId, 'Provide a job id or a title.'); return; }
+        url.searchParams.set('title', title);
+        if (artist)   url.searchParams.set('artist', artist);
+        if (duration) url.searchParams.set('duration', String(duration));
       }
-      const text = (data.synced && data.lrc) ? data.lrc : (data.text || 'No lyrics text available.');
-      if (lyricsBox) lyricsBox.textContent = text;
-      if (msg) msg.textContent = 'Loaded.';
-      return { found:true, text, synced:!!data.synced };
+
+      _setMsg(msgId, 'Fetching lyrics…');
+      const r = await fetch(url.toString(), { mode:'cors' });
+      const data = await r.json().catch(()=>null);
+      if (!r.ok || !data) { _setMsg(msgId, 'Failed to fetch lyrics.'); return; }
+
+      if (data.found === false) { _setBox(lyricsBoxId, '—'); _setMsg(msgId, ''); return; }
+
+      const text = (data.synced && data.lrc) ? data.lrc : (data.text || '');
+      _setBox(lyricsBoxId, text || '—');
+      _setMsg(msgId, 'Loaded.');
     } catch (e) {
-      if (msg) msg.textContent = 'Failed to fetch lyrics.';
-      return { found:false, error:String(e) };
+      console.warn(e);
+      _setMsg(msgId, 'Failed to fetch lyrics.');
     }
   }
 
-  async function saveLyrics({ jobId, text, msgId }) {
-    const msg = $(msgId);
-    try{
-      if (!jobId) throw new Error('No job id.');
-      if (!text || !text.trim()) throw new Error('Paste lyrics before saving.');
+  async function saveLyrics({ jobId, text, msgId='lyricsMsg' }) {
+    const useJob = jobId || getJobId();
+    if (!useJob) { _setMsg(msgId, 'No job id. Paste it above.'); return; }
+    const body = { job_id: useJob, text: (text || '').trim() };
+    if (!body.text) { _setMsg(msgId, 'Paste lyrics before saving.'); return; }
 
-      if (msg) msg.textContent = 'Saving…';
-      const r = await fetch(K.endpoints.lyricsUrl, {
+    try{
+      _setMsg(msgId, 'Saving…');
+      const r = await fetch(endpoints.lyricsUrl, {
         method:'POST',
         mode:'cors',
-        headers:{'Content-Type':'application/json; charset=utf-8'},
-        body: JSON.stringify({ job_id: jobId, text })
+        headers:{ 'Content-Type':'application/json; charset=utf-8' },
+        body: JSON.stringify(body)
       });
-      const resp = await r.json().catch(()=>({}));
-      if (!r.ok || resp.error) throw new Error(resp.error || `Save failed (${r.status})`);
-      if (msg) msg.textContent = 'Saved.';
-      return { ok:true };
+      const data = await r.json().catch(()=>null);
+      if (!r.ok || (data && data.error)) throw new Error(data?.error || `Save failed (${r.status})`);
+      _setMsg(msgId, 'Saved.');
     } catch (e) {
-      if (msg) msg.textContent = e.message || 'Save failed.';
-      return { ok:false, error:String(e) };
+      console.warn(e);
+      _setMsg(msgId, e.message || 'Save failed.');
     }
   }
 
-  // Expose shared API
-  K.asUrl = asUrl;
-  K.$ = $;
-  K.setText = setText;
-  K.initPlaybackControls = initPlaybackControls;
-  K.loadLyrics = loadLyrics;
-  K.saveLyrics = saveLyrics;
-
+  // namespace
+  w.KARAOKE = {
+    endpoints, $, asUrl,
+    setJobId, getJobId,
+    initPlaybackControls,
+    loadLyrics, saveLyrics,
+    get currentJobId(){ return getJobId(); }
+  };
 })(window);
