@@ -1,293 +1,284 @@
 /* ===== karaoke-common.js =====
-   Shared helpers + robust playback controller.
+   Shared helpers (state, endpoints, playback, lyrics).
 */
 (function (w) {
-  const K = w.KARAOKE = w.KARAOKE || {};
-
-  // ---------- Endpoints (override here if needed) ----------
   const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net';
-  const FUNCTION_CODE = '';
+  const FUNCTION_CODE = ''; // if your function needs ?code=
+  const withCode = (u) => FUNCTION_CODE ? `${u}?code=${FUNCTION_CODE}` : u;
+
+  const K = w.KARAOKE || (w.KARAOKE = {});
+
+  // --- Endpoints ---
   K.endpoints = {
-    submitUrl  : `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
-    statusUrl  : (jobId) => `${API_BASE}/api/status/${encodeURIComponent(jobId)}${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
-    lyricsUrl  : `${API_BASE}/api/lyrics${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
-    listUrl    : (document.querySelector('meta[name="karaoke-list"]')?.content || '')
+    submitUrl : withCode(`${API_BASE}/api/submit`),
+    statusUrl : (jobId) => withCode(`${API_BASE}/api/status/${encodeURIComponent(jobId)}`),
+    lyricsUrl : withCode(`${API_BASE}/api/lyrics`),
   };
 
-  // ---------- Tiny DOM helpers ----------
+  // --- Utilities ---
   K.$ = (id) => document.getElementById(id);
-  K.asUrl = (s) => s; // SAS is already absolute in player; index shows '#' for private unless SAS is used.
-  K.currentJobId = null;
-  K.setJobId = (id) => (K.currentJobId = id);
-  K.getJobId = () => K.currentJobId;
+  K.asUrl = (v) => /^https?:\/\//i.test(v) ? v : v; // expecting SAS/absolute
 
-  // ---------- Playback ----------
-  K.initPlaybackControls = function initPlaybackControls() {
-    const vEl   = K.$('vocalsEl');
-    const bEl   = K.$('bandEl');
-    const playB = K.$('play');
-    const pauseB= K.$('pause');
-    const restartB = K.$('restart');
+  // --- Job state ---
+  K.currentJobId = null;
+  K.setJobId = (id) => { K.currentJobId = id || null; };
+
+  // --- Playback controls (dual audio elements + routing) ---
+  K.initPlaybackControls = function initPlaybackControls () {
+    const vEl = K.$('vocalsEl');
+    const bEl = K.$('bandEl');
+    const playBtn = K.$('play');
+    const pauseBtn = K.$('pause');
+    const restartBtn = K.$('restart');
     const offsetIn = K.$('offset');
-    const msgEl = K.$('msg');   // optional <div id="msg" class="error">
+    const initBtn = K.$('initAudio');
+    const vOut = K.$('vocalsOut');
+    const bOut = K.$('bandOut');
+    const deviceMsg = K.$('deviceMsg');
 
     const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
-    let urls = { v:'', b:'' };
-    let isLoaded = false;
-    let isPlaying = false;
-    let syncTimer = null;
+    let isLoaded = false, isPlaying = false, driftTimer = null;
 
-    function showMsg(t){
-      if (!msgEl) return;
-      msgEl.textContent = t || '';
-      if (t) msgEl.classList.remove('hide'); else msgEl.classList.add('hide');
+    function setDeviceMsg(t){ if (deviceMsg) deviceMsg.textContent = t || ''; }
+    async function ensurePermission(){
+      try { await navigator.mediaDevices.getUserMedia({ audio:true }); return true; }
+      catch { setDeviceMsg('Please allow microphone access to list audio outputs.'); return false; }
     }
-
-    function showTitle(t){
-      const el = K.$('trackTitle');
-      if (el) el.textContent = t || '—';
-    }
-
-    function getOffsetMs(){
-      const n = parseInt(offsetIn?.value || '0', 10);
-      return Number.isFinite(n) ? n : 0;
-    }
-
-    function clearSync(){
-      if (syncTimer){ clearInterval(syncTimer); syncTimer = null; }
-    }
-
-    function stopAll(){
-      clearSync();
-      try{ vEl.pause(); }catch{}
-      try{ bEl.pause(); }catch{}
-      vEl.playbackRate = 1;
-      bEl.playbackRate = 1;
-      isPlaying = false;
-    }
-
-    function waitCanPlay(audio, label, timeoutMs=12000){
-      return new Promise((resolve, reject) => {
-        let done = false;
-        const to = setTimeout(() => {
-          if (!done) { done = true; reject(new Error(`${label} not ready (timeout)`)); }
-        }, timeoutMs);
-        const ok = () => {
-          if (!done) { done = true; clearTimeout(to); resolve(); }
-        };
-        if (audio.readyState >= 3) ok();
-        else {
-          audio.addEventListener('canplay', ok, { once:true });
-          audio.addEventListener('loadeddata', ok, { once:true });
-          audio.addEventListener('error', () => {
-            if (!done) { done = true; clearTimeout(to); reject(new Error(`${label} error`)); }
-          }, { once:true });
-        }
+    function fillSelect(sel, outs){
+      sel.innerHTML = '';
+      outs.forEach(d => {
+        const o = document.createElement('option');
+        o.value = d.deviceId; o.textContent = d.label || `Output ${d.deviceId}`;
+        sel.appendChild(o);
       });
+      const def = outs.find(d => d.deviceId === 'default');
+      sel.value = def ? def.deviceId : (outs[0]?.deviceId || 'default');
     }
+    function addDefault(sel){
+      sel.innerHTML = '';
+      const o = document.createElement('option');
+      o.value = 'default'; o.textContent = 'System default';
+      sel.appendChild(o); sel.value = 'default';
+    }
+    async function listOutputs(){
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      const outs = devs.filter(d => d.kind === 'audiooutput');
+      if (outs.length) { fillSelect(vOut, outs); fillSelect(bOut, outs); setDeviceMsg(`Found ${outs.length} output device(s).`); }
+      else { addDefault(vOut); addDefault(bOut); setDeviceMsg('No discrete outputs reported. Using system default.'); }
+      return outs.length;
+    }
+    initBtn?.addEventListener('click', async () => {
+      setDeviceMsg('');
+      if (!supportSink) { setDeviceMsg('Output selection not supported here. Use Chrome/Edge desktop.'); return; }
+      if (!await ensurePermission()) return;
+      const count = await listOutputs();
+      initBtn.textContent = count ? 'Device list ready' : 'Device list (default only)';
+      try { navigator.mediaDevices.addEventListener('devicechange', listOutputs); } catch {}
+    });
 
-    async function applySinksIfAny(){
+    async function applySinks(){
       if (!supportSink) return;
-      const vSel = K.$('vocalsOut');
-      const bSel = K.$('bandOut');
-      try { if (vSel && vSel.value) await vEl.setSinkId(vSel.value); } catch{}
-      try { if (bSel && bSel.value) await bEl.setSinkId(bSel.value); } catch{}
+      try { await vEl?.setSinkId(vOut?.value || 'default'); } catch {}
+      try { await bEl?.setSinkId(bOut?.value || 'default'); } catch {}
     }
 
-    async function preload(){
-      if (!urls.v || !urls.b || urls.v === '#' || urls.b === '#') {
-        throw new Error('Tracks not loaded. Pick a song (or wait until processing finishes).');
-      }
-      // set sources (ensure HTTPS to avoid mixed-content)
-      vEl.src = urls.v; bEl.src = urls.b;
-      vEl.crossOrigin = 'anonymous';
-      bEl.crossOrigin = 'anonymous';
+    function currentOffsetMs(){
+      const v = parseInt((offsetIn?.value || '0'), 10);
+      return Number.isFinite(v) ? v : 0;
+    }
+
+    function clearDriftTimer(){
+      if (driftTimer) { clearInterval(driftTimer); driftTimer = null; }
+    }
+
+    function startDriftCorrection(offsetMs){
+      clearDriftTimer();
+      driftTimer = setInterval(() => {
+        if (!isPlaying || !vEl || !bEl) return;
+        const driftMs = (vEl.currentTime - bEl.currentTime) * 1000 - offsetMs;
+        if (Math.abs(driftMs) > 60) {
+          if (driftMs > 0) {
+            const r = vEl.playbackRate; vEl.playbackRate = Math.max(0.9, r - 0.05);
+            setTimeout(() => { vEl.playbackRate = r; }, 300);
+          } else {
+            const r = bEl.playbackRate; bEl.playbackRate = Math.max(0.9, r - 0.05);
+            setTimeout(() => { bEl.playbackRate = r; }, 300);
+          }
+        }
+      }, 2000);
+    }
+
+    function hardResync(){
+      if (!vEl || !bEl) return;
+      const off = currentOffsetMs(); // vocals leads by off ms
+      try {
+        // align band to vocals - off
+        bEl.currentTime = Math.max(0, vEl.currentTime - off / 1000);
+        vEl.playbackRate = 1;
+        bEl.playbackRate = 1;
+      } catch {}
+    }
+
+    async function preloadIfNeeded(){
+      if (isLoaded) return;
+      await applySinks();
       vEl.load(); bEl.load();
-
-      // wait readiness
       await Promise.all([
-        waitCanPlay(vEl, 'Vocals'),
-        waitCanPlay(bEl, 'Band')
+        new Promise(r => vEl.addEventListener('canplay', r, {once:true})),
+        new Promise(r => bEl.addEventListener('canplay', r, {once:true})),
       ]);
-
       isLoaded = true;
     }
 
-    function driftCorrect(biasMs){
-  clearSync();
-
-  const FAST_WINDOW_MS = 20000;  // tighten checks early
-  const START = performance.now();
-  const SOFT_THRESH = 90;        // ms: apply gentle rate nudge
-  const HARD_THRESH = 180;       // ms: immediate re-seek
-  const NUDGE = 0.02;            // 2% speed nudge
-
-  function loop(){
-    if (!isPlaying) return;
-
-    const now = performance.now();
-    const period = (now - START) < FAST_WINDOW_MS ? 500 : 1500;
-
-    const driftMs = (vEl.currentTime - bEl.currentTime) * 1000 - biasMs;
-
-    if (Math.abs(driftMs) >= HARD_THRESH) {
-      // Hard re-sync: align band to vocals, preserving bias
-      try {
-        bEl.currentTime = Math.max(0, vEl.currentTime - biasMs / 1000);
-      } catch {}
-      // reset rates
-      vEl.playbackRate = 1;
-      bEl.playbackRate = 1;
-    } else if (Math.abs(driftMs) >= SOFT_THRESH) {
-      // Gentle nudge for 250ms
-      if (driftMs > 0) { // vocals ahead
-        vEl.playbackRate = 1 - NUDGE;
-        setTimeout(() => { vEl.playbackRate = 1; }, 250);
-      } else {            // band ahead
-        bEl.playbackRate = 1 - NUDGE;
-        setTimeout(() => { bEl.playbackRate = 1; }, 250);
-      }
-    }
-
-    syncTimer = setTimeout(loop, period);
-  }
-
-  loop();
-}
-
-async function startFromZeroWithOffset(offsetMs){
-  await applySinksIfAny();     // set sinks right before play
-  vEl.currentTime = 0;
-  bEl.currentTime = 0;
-
-  // Staggered start for initial BT latency
-  if (offsetMs >= 0){
-    await bEl.play().catch(()=>{});
-    await new Promise(r => setTimeout(r, offsetMs));
-    await vEl.play();
-  } else {
-    await vEl.play().catch(()=>{});
-    await new Promise(r => setTimeout(r, -offsetMs));
-    await bEl.play();
-  }
-
-  isPlaying = true;
-
-  // One-time settle re-sync after Bluetooth buffers fill
-  setTimeout(() => {
-    if (!isPlaying) return;
-    try { bEl.currentTime = Math.max(0, vEl.currentTime - offsetMs / 1000); } catch {}
-  }, 1000);
-
-  driftCorrect(offsetMs);
-}
     async function resumePlay(){
-      await applySinksIfAny();
-      await Promise.all([
-        vEl.play().catch(()=>{}),
-        bEl.play().catch(()=>{})
-      ]);
+      await Promise.all([ vEl.play().catch(()=>{}), bEl.play().catch(()=>{}) ]);
       isPlaying = true;
-      driftCorrect(getOffsetMs());
+      startDriftCorrection(currentOffsetMs());
     }
 
-    async function onPlay(){
-      try{
-        showMsg('');
-        if (!isLoaded) await preload();
-        if (vEl.paused && bEl.paused && (vEl.currentTime>0 || bEl.currentTime>0)) {
-          await resumePlay();
-        } else {
-          await startFromZeroWithOffset(getOffsetMs());
-        }
+    async function startFromZeroWithOffset(offsetMs){
+      vEl.currentTime = 0; bEl.currentTime = 0;
+      if (offsetMs >= 0) {
+        await bEl.play(); await new Promise(r=>setTimeout(r, offsetMs)); await vEl.play();
+      } else {
+        await vEl.play(); await new Promise(r=>setTimeout(r, -offsetMs)); await bEl.play();
+      }
+      isPlaying = true;
+      startDriftCorrection(offsetMs);
+    }
+
+    function pauseAll(){
+      clearDriftTimer();
+      try { vEl.pause(); } catch {}
+      try { bEl.pause(); } catch {}
+      if (vEl) vEl.playbackRate = 1;
+      if (bEl) bEl.playbackRate = 1;
+      isPlaying = false;
+      if (K._onPlaybackPaused) K._onPlaybackPaused();
+    }
+
+    playBtn?.addEventListener('click', async () => {
+      try {
+        if (!vEl || !bEl) return;
+        await preloadIfNeeded();
+        if (vEl.paused && bEl.paused && (vEl.currentTime > 0 || bEl.currentTime > 0)) await resumePlay();
+        else await startFromZeroWithOffset(currentOffsetMs());
+        if (K._onPlaybackStarted) K._onPlaybackStarted();
       } catch (e) {
-        // Bubble the real reason into UI so we can see it.
-        showMsg(e.message || 'Could not start playback.');
-        console.warn('play error', e);
+        console.warn('play failed', e);
+        alert(e?.message || 'Could not start playback.');
+      }
+    });
+    pauseBtn?.addEventListener('click', pauseAll);
+    restartBtn?.addEventListener('click', async () => {
+      try {
+        await preloadIfNeeded();
+        pauseAll();
+        await startFromZeroWithOffset(currentOffsetMs());
+        if (K._onPlaybackStarted) K._onPlaybackStarted();
+      } catch (e) {
+        console.warn('restart failed', e);
+        alert(e?.message || 'Could not restart playback.');
+      }
+    });
+
+    // Beep tests
+    const _beepVoc = document.createElement('audio');
+    const _beepBand = document.createElement('audio');
+    _beepVoc.setAttribute('playsinline',''); _beepVoc.style.display='none';
+    _beepBand.setAttribute('playsinline',''); _beepBand.style.display='none';
+    document.body.appendChild(_beepVoc); document.body.appendChild(_beepBand);
+    async function playBeep(which, sinkId, freq=880, ms=600){
+      if (!supportSink){ alert('Output selection not supported in this browser.'); return; }
+      const outEl = which==='band'? _beepBand : _beepVoc;
+      const ac = new (w.AudioContext||w.webkitAudioContext)();
+      const osc=ac.createOscillator(); const gain=ac.createGain();
+      gain.gain.setValueAtTime(0.0001, ac.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.3, ac.currentTime+0.02);
+      osc.frequency.value=freq; osc.type='sine';
+      const dest=ac.createMediaStreamDestination();
+      osc.connect(gain); gain.connect(dest);
+      try{ await outEl.setSinkId(sinkId||'default'); }catch{}
+      outEl.srcObject = dest.stream;
+      try{
+        osc.start(); await outEl.play();
+        const endT=ac.currentTime+ms/1000;
+        gain.gain.exponentialRampToValueAtTime(0.0001, endT-0.05);
+        osc.stop(endT);
+        setTimeout(()=>{ outEl.pause(); outEl.srcObject=null; ac.close().catch(()=>{}); }, ms+120);
+      }catch{
+        ac.close().catch(()=>{});
       }
     }
+    K.$('testVocals')?.addEventListener('click', ()=>playBeep('vocals', vOut?.value, 880, 500));
+    K.$('testBand')?.addEventListener('click',   ()=>playBeep('band',   bOut?.value, 660, 500));
 
-    async function onRestart(){
-      try{
-        showMsg('');
-        if (!isLoaded) await preload();
-        stopAll();
-        await startFromZeroWithOffset(getOffsetMs());
-      } catch (e) {
-        showMsg(e.message || 'Could not restart playback.');
-        console.warn('restart error', e);
-      }
-    }
-
-    playB?.addEventListener('click', onPlay);
-    pauseB?.addEventListener('click', () => { stopAll(); });
-    restartB?.addEventListener('click', onRestart);
-
+    // Public API from playback
     return {
       setSources(vocalsUrl, bandUrl){
-        urls = { v: vocalsUrl, b: bandUrl };
-        isLoaded = false;
-        stopAll();
+        if (!vEl || !bEl) return;
+        isLoaded = false; // force reload
+        vEl.src = vocalsUrl;
+        bEl.src = bandUrl;
       },
-      showTitle,
-      getDurations(){
-        return { vocals: vEl?.duration || 0, band: bEl?.duration || 0 };
-      }
+      showTitle(t){ const el = K.$('trackTitle'); if (el) el.textContent = t || '—'; },
+      getDurations(){ return { vocals: vEl?.duration || 0, band: bEl?.duration || 0 }; },
+      pause: pauseAll,
+      hardResync,
     };
   };
 
-  // ---------- Lyrics helpers ----------
-  K.loadLyrics = async function loadLyrics({ jobId, title, artist, duration, lyricsBoxId, msgId }) {
-    const box = K.$(lyricsBoxId);
-    const msg = K.$(msgId);
-    if (msg) msg.textContent = 'Fetching lyrics…';
+  // Expose Sync-now so player can wire a button
+  K.syncNow = () => {
+    // Will be replaced by the instance returned from initPlaybackControls
+    console.warn('syncNow called before playback init');
+  };
 
+  // Wire syncNow after initPlaybackControls returns the instance
+  // (player code will set K.syncNow = PB.hardResync)
+
+  // --- Lyrics helpers (read-only load here) ---
+  K._onPlaybackStarted = null;
+  K._onPlaybackPaused = null;
+
+  // simple LRC parser + live preview support
+  function parseLRC(lrc){
+    const out=[], re=/\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\](.*)/g; let m;
+    while((m=re.exec(lrc))!==null){
+      const min=+m[1], sec=+m[2], ms=m[3]?+m[3].padEnd(3,'0'):0;
+      out.push({ t: min*60 + sec + ms/1000, text:(m[4]||'').trim() });
+    }
+    return out.sort((a,b)=>a.t-b.t);
+  }
+
+  K.loadLyrics = async function loadLyrics({ jobId, title, artist, duration, lyricsBoxId='lyricsBox', msgId }){
+    const box = K.$(lyricsBoxId);
+    const msg = msgId ? K.$(msgId) : null;
     try{
       const url = new URL(K.endpoints.lyricsUrl);
-      if (jobId)   url.searchParams.set('job_id', jobId);
-      if (title)   url.searchParams.set('title', title);
-      if (artist)  url.searchParams.set('artist', artist);
-      if (duration)url.searchParams.set('duration', String(duration));
-
+      if (jobId) url.searchParams.set('job_id', jobId);
+      if (title) url.searchParams.set('title', title);
+      if (artist) url.searchParams.set('artist', artist);
+      if (duration) url.searchParams.set('duration', String(duration));
+      if (msg) msg.textContent = 'Fetching lyrics…';
       const r = await fetch(url.toString(), { mode:'cors' });
       const data = await r.json();
-
       if (!data || data.found === false) {
         if (box) box.textContent = 'No lyrics found.';
         if (msg) msg.textContent = '';
         return;
       }
       if (data.synced && data.lrc) {
-        if (box) box.textContent = data.lrc;
+        if (box) box.textContent = 'Synced lyrics loaded.';
+        // optional: you can render a rolling preview if you want
       } else {
         if (box) box.textContent = data.text || 'No lyrics text available.';
       }
       if (msg) msg.textContent = 'Loaded.';
-    } catch (e) {
+    }catch(e){
       console.warn(e);
       if (msg) msg.textContent = 'Failed to fetch lyrics.';
     }
   };
 
-  K.saveLyrics = async function saveLyrics({ jobId, text, msgId }) {
-    const msg = K.$(msgId);
-    if (!jobId){ if (msg) msg.textContent = 'No job id. Upload or pick a song first.'; return; }
-    const body = JSON.stringify({ job_id: jobId, text: (text||'').trim() });
-    if (!JSON.parse(body).text){ if (msg) msg.textContent = 'Paste lyrics before saving.'; return; }
-
-    try{
-      if (msg) msg.textContent = 'Saving…';
-      const r = await fetch(K.endpoints.lyricsUrl, {
-        method:'POST', mode:'cors',
-        headers:{ 'Content-Type':'application/json; charset=utf-8' },
-        body
-      });
-      const resp = await r.json().catch(()=>({}));
-      if (!r.ok || resp.error) throw new Error(resp.error || `Save failed (${r.status})`);
-      if (msg) msg.textContent = 'Saved.';
-    } catch (e) {
-      console.warn(e);
-      if (msg) msg.textContent = e.message || 'Save failed.';
-    }
-  };
 })(window);
