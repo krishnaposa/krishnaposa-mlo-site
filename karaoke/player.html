@@ -15,12 +15,12 @@
   <!-- site styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
-<link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
 
   <!-- API endpoints -->
   <meta name="karaoke-list" content="https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/list?code=">
 </head>
-<body  class="dark-surface">
+<body class="dark-surface">
 <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 <div id="header"></div>
@@ -46,11 +46,6 @@
       </div>
     </div>
 
-    <div class="row" style="margin-top:.5rem">
-      <button id="refreshList" class="btn btn-outline" type="button">Refresh list</button>
-    </div>
-
-    <!-- Now Playing display -->
     <div class="now-playing" style="margin-top:.75rem">
       <strong>Now Playing:</strong> <span id="trackTitle">—</span>
     </div>
@@ -86,9 +81,10 @@
   <section class="card">
     <h2>Play</h2>
     <div class="row" style="margin-bottom:.5rem">
-      <button id="play" class="btn btn-blue" type="button">Play</button>
-      <button id="pause" class="btn btn-outline" type="button">Pause</button>
+      <button id="play"    class="btn btn-blue"    type="button">Play</button>
+      <button id="pause"   class="btn btn-outline" type="button">Pause</button>
       <button id="restart" class="btn btn-outline" type="button">Restart</button>
+      <button id="syncNow" class="btn btn-outline" type="button">Sync now</button>
     </div>
 
     <div class="row">
@@ -97,13 +93,11 @@
       <span class="help">Positive delays vocals; negative delays band.</span>
     </div>
 
-    <div id="msg" class="error hide" role="alert"></div>
-
     <!-- Hidden players -->
     <audio id="vocalsEl" crossorigin="anonymous" preload="auto"></audio>
-    <audio id="bandEl" crossorigin="anonymous" preload="auto"></audio>
+    <audio id="bandEl"   crossorigin="anonymous" preload="auto"></audio>
 
-    <!-- Hidden inputs for karaoke.js -->
+    <!-- Hidden inputs for common code (player mode) -->
     <input id="vocalsUrl" type="hidden">
     <input id="bandUrl"   type="hidden">
     <button id="loadBtn" type="button" style="display:none"></button>
@@ -119,20 +113,22 @@
       <input id="lyrArtist" type="text" placeholder="optional" style="width:200px">
     </div>
     <pre id="lyricsBox" class="help" style="white-space:pre-wrap; max-height:260px; overflow:auto; margin-top:.5rem">—</pre>
+    <span id="lyricsMsg" class="help" aria-live="polite"></span>
   </section>
-  <!-- Navigation -->
-  <section class="card" style="text-align:center; margin-top:1rem">
-    <button class="btn btn-outline" onclick="window.location.href='index.html'">
-      Go to Upload
-    </button>
-  </section>
+
+  <div class="row" style="justify-content:flex-end">
+    <a class="btn btn-outline" href="/karaoke/index.html">← Back to Uploader</a>
+  </div>
+
 </main>
 
 <div id="footer"></div>
 <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
-<!-- Tell karaoke.js we’re in player mode -->
+<!-- Mode flag -->
 <script>window.KARAOKE_MODE = "player";</script>
+
+<!-- Scripts -->
 <script src="https://www.krishposa.com/assets/js/karaoke-common.js"></script>
 <script src="https://www.krishposa.com/assets/js/karaoke-player.js"></script>
 </body>
