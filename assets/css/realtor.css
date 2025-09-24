@@ -45,7 +45,7 @@
 }
 
 .hero-card .avatar { width:380px; height:380px; border-radius:8px; object-fit:cover; }
-.hero-card .realtor-logo { width:160px; height:160px; border-radius:8px; object-fit:cover; }
+.hero-card .realtor-logo { width:150px; height:150px; border-radius:8px; object-fit:cover; }
 .hero-card .meta { font-size:.9rem; color:#666; }
 
 /* Smaller, subdued Krish button */
