@@ -11,12 +11,11 @@
   const useBtn      = K.$('useSelection');
   const refreshBtn  = K.$('refreshList');
   const listStatus  = K.$('listStatus');
-  const jobIdView   = K.$('jobIdView'); // optional span to show job id
+  const jobIdView   = K.$('jobIdView'); // optional display element
   const lyricsBtn   = K.$('loadLyrics');
 
   function setListStatus(t){ if (listStatus) listStatus.textContent = t || ''; }
 
-  // Playback via common
   const PB = K.initPlaybackControls({});
 
   function extractJobIdFromUrl(u){
@@ -78,7 +77,7 @@
       PB.setSources(sel.vocals || '', sel.band || '');
       PB.showTitle(sel.title || 'Unknown Track');
 
-      K.setJobId(jobId);       // writes to #lyrJobId if present
+      K.setJobId(jobId);
       if (jobIdView) jobIdView.textContent = jobId || '—';
 
       const lyricsBox = K.$('lyricsBox'); if (lyricsBox) lyricsBox.textContent = '—';
@@ -86,17 +85,16 @@
     }catch(e){ console.warn('Invalid selection', e); }
   });
 
-  // Load lyrics: prefer job id (memory or typed)
+  // Load lyrics for the currently selected/loaded job
   lyricsBtn?.addEventListener('click', async () => {
     const title = (K.$('trackTitle')?.textContent || '').trim();
     const durs  = PB.getDurations();
     await K.loadLyrics({
-      jobId: K.getJobId(),
+      jobId: K.getJobId(),            // <-- use the getter that now exists
       title: title && title !== '—' ? title : '',
       artist: (K.$('lyrArtist')?.value || '').trim(),
       duration: Math.round(durs.band || durs.vocals || 0),
-      lyricsBoxId: 'lyricsBox',
-      msgId: 'lyricsMsg'
+      lyricsBoxId: 'lyricsBox'        // msgId is optional in player
     });
   });
 
