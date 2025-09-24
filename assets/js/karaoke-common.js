@@ -1,163 +1,254 @@
 /* ===== karaoke-common.js =====
-   Shared helpers used by index & player pages:
-   - Endpoint config
-   - DOM helpers
-   - Playback wiring
-   - Lyrics load/save
+   Shared helpers + robust playback controller.
 */
 (function (w) {
-  const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net';
-  const FUNCTION_CODE = ''; // add ?code=... if needed
+  const K = w.KARAOKE = w.KARAOKE || {};
 
-  const endpoints = {
-    submitUrl: `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
-    statusUrl: (jobId) => `${API_BASE}/api/status/${encodeURIComponent(jobId)}${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
-    lyricsUrl: `${API_BASE}/api/lyrics${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
-    listUrlFromMeta: () => (document.querySelector('meta[name="karaoke-list"]')?.content || '')
+  // ---------- Endpoints (override here if needed) ----------
+  const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net';
+  const FUNCTION_CODE = '';
+  K.endpoints = {
+    submitUrl  : `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
+    statusUrl  : (jobId) => `${API_BASE}/api/status/${encodeURIComponent(jobId)}${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
+    lyricsUrl  : `${API_BASE}/api/lyrics${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
+    listUrl    : (document.querySelector('meta[name="karaoke-list"]')?.content || '')
   };
 
-  // ---- Tiny DOM helpers ----
-  const $ = (id) => document.getElementById(id);
-  const setTxt = (idOrEl, t) => { const el = typeof idOrEl === 'string' ? $(idOrEl) : idOrEl; if (el) el.textContent = t ?? ''; };
-  const setVal = (idOrEl, v) => { const el = typeof idOrEl === 'string' ? $(idOrEl) : idOrEl; if (el) el.value = v ?? ''; };
+  // ---------- Tiny DOM helpers ----------
+  K.$ = (id) => document.getElementById(id);
+  K.asUrl = (s) => s; // SAS is already absolute in player; index shows '#' for private unless SAS is used.
+  K.currentJobId = null;
+  K.setJobId = (id) => (K.currentJobId = id);
+  K.getJobId = () => K.currentJobId;
 
-  // ---- Public state: Job ID ----
-  let currentJobId = null;
-  function setJobId(j) { currentJobId = (j || '').trim() || null; }
-  function getJobId()   { return currentJobId; }   // <-- added so player can call K.getJobId()
+  // ---------- Playback ----------
+  K.initPlaybackControls = function initPlaybackControls() {
+    const vEl   = K.$('vocalsEl');
+    const bEl   = K.$('bandEl');
+    const playB = K.$('play');
+    const pauseB= K.$('pause');
+    const restartB = K.$('restart');
+    const offsetIn = K.$('offset');
+    const msgEl = K.$('msg');   // optional <div id="msg" class="error">
 
-  // ---- URL helper ----
-  function asUrl(valueOrKey) {
-    if (/^https?:\/\//i.test(valueOrKey)) return valueOrKey;
-    return '#';
-  }
+    const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
+    let urls = { v:'', b:'' };
+    let isLoaded = false;
+    let isPlaying = false;
+    let syncTimer = null;
 
-  // ---- Playback controls ----
-  function initPlaybackControls() {
-    const vocalsEl = $('vocalsEl');
-    const bandEl   = $('bandEl');
-    const titleEl  = $('trackTitle');
-
-    function showTitle(t){ if (titleEl) titleEl.textContent = t || '—'; }
-
-    function setSources(vocals, band) {
-      if (vocalsEl) vocalsEl.src = vocals || '';
-      if (bandEl)   bandEl.src   = band   || '';
-      try { vocalsEl?.load(); bandEl?.load(); } catch {}
+    function showMsg(t){
+      if (!msgEl) return;
+      msgEl.textContent = t || '';
+      if (t) msgEl.classList.remove('hide'); else msgEl.classList.add('hide');
     }
 
-    function getDurations(){
-      return {
-        vocals: (vocalsEl && isFinite(vocalsEl.duration)) ? vocalsEl.duration : 0,
-        band:   (bandEl   && isFinite(bandEl.duration))   ? bandEl.duration   : 0
-      };
+    function showTitle(t){
+      const el = K.$('trackTitle');
+      if (el) el.textContent = t || '—';
     }
 
-    return { setSources, showTitle, getDurations };
-  }
-
-  // ---- LRC parsing ----
-  function parseLRC(lrcText){
-    const lines=[], re=/\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\](.*)/g; let m;
-    while((m=re.exec(lrcText))!==null){
-      const min=+m[1], sec=+m[2], ms=m[3]?+m[3].padEnd(3,'0'):0;
-      const t=min*60+sec+ms/1000;
-      lines.push({t, text:(m[4]||'').trim()});
+    function getOffsetMs(){
+      const n = parseInt(offsetIn?.value || '0', 10);
+      return Number.isFinite(n) ? n : 0;
     }
-    lines.sort((a,b)=>a.t-b.t);
-    return lines;
-  }
 
-  // ---- Lyrics: LOAD ----
-  async function loadLyrics(opts = {}){
-    const jobId   = (opts.jobId || currentJobId || '').trim();
-    const title   = (opts.title || '').trim();
-    const artist  = (opts.artist || '').trim();
-    const dur     = opts.duration ? Math.round(opts.duration) : 0;
+    function clearSync(){
+      if (syncTimer){ clearInterval(syncTimer); syncTimer = null; }
+    }
 
-    const msgEl   = opts.msgId ? $(opts.msgId) : null;
-    const boxEl   = opts.lyricsBoxId ? $(opts.lyricsBoxId) : null;
-    const editEl  = opts.textId ? $(opts.textId) : $('lyrText'); // also try default editor
+    function driftCorrect(biasMs){
+      clearSync();
+      syncTimer = setInterval(() => {
+        if (!isPlaying) return;
+        const d = (vEl.currentTime - bEl.currentTime) * 1000 - biasMs;
+        if (Math.abs(d) > 60) {
+          if (d > 0) { const r=vEl.playbackRate; vEl.playbackRate=Math.max(0.9, r-0.05); setTimeout(()=>{vEl.playbackRate=r}, 280); }
+          else       { const r=bEl.playbackRate; bEl.playbackRate=Math.max(0.9, r-0.05); setTimeout(()=>{bEl.playbackRate=r}, 280); }
+        }
+      }, 1800);
+    }
 
-    if (msgEl) msgEl.textContent = 'Fetching lyrics…';
-    if (boxEl) boxEl.textContent = '…';
+    function stopAll(){
+      clearSync();
+      try{ vEl.pause(); }catch{}
+      try{ bEl.pause(); }catch{}
+      vEl.playbackRate = 1;
+      bEl.playbackRate = 1;
+      isPlaying = false;
+    }
+
+    function waitCanPlay(audio, label, timeoutMs=12000){
+      return new Promise((resolve, reject) => {
+        let done = false;
+        const to = setTimeout(() => {
+          if (!done) { done = true; reject(new Error(`${label} not ready (timeout)`)); }
+        }, timeoutMs);
+        const ok = () => {
+          if (!done) { done = true; clearTimeout(to); resolve(); }
+        };
+        if (audio.readyState >= 3) ok();
+        else {
+          audio.addEventListener('canplay', ok, { once:true });
+          audio.addEventListener('loadeddata', ok, { once:true });
+          audio.addEventListener('error', () => {
+            if (!done) { done = true; clearTimeout(to); reject(new Error(`${label} error`)); }
+          }, { once:true });
+        }
+      });
+    }
+
+    async function applySinksIfAny(){
+      if (!supportSink) return;
+      const vSel = K.$('vocalsOut');
+      const bSel = K.$('bandOut');
+      try { if (vSel && vSel.value) await vEl.setSinkId(vSel.value); } catch{}
+      try { if (bSel && bSel.value) await bEl.setSinkId(bSel.value); } catch{}
+    }
+
+    async function preload(){
+      if (!urls.v || !urls.b || urls.v === '#' || urls.b === '#') {
+        throw new Error('Tracks not loaded. Pick a song (or wait until processing finishes).');
+      }
+      // set sources (ensure HTTPS to avoid mixed-content)
+      vEl.src = urls.v; bEl.src = urls.b;
+      vEl.crossOrigin = 'anonymous';
+      bEl.crossOrigin = 'anonymous';
+      vEl.load(); bEl.load();
+
+      // wait readiness
+      await Promise.all([
+        waitCanPlay(vEl, 'Vocals'),
+        waitCanPlay(bEl, 'Band')
+      ]);
+
+      isLoaded = true;
+    }
+
+    async function startFromZeroWithOffset(offsetMs){
+      await applySinksIfAny();     // set sinks right before play
+      vEl.currentTime = 0;
+      bEl.currentTime = 0;
+      if (offsetMs >= 0){
+        await bEl.play().catch(()=>{});
+        await new Promise(r => setTimeout(r, offsetMs));
+        await vEl.play();
+      } else {
+        await vEl.play().catch(()=>{});
+        await new Promise(r => setTimeout(r, -offsetMs));
+        await bEl.play();
+      }
+      isPlaying = true;
+      driftCorrect(offsetMs);
+    }
+
+    async function resumePlay(){
+      await applySinksIfAny();
+      await Promise.all([
+        vEl.play().catch(()=>{}),
+        bEl.play().catch(()=>{})
+      ]);
+      isPlaying = true;
+      driftCorrect(getOffsetMs());
+    }
+
+    async function onPlay(){
+      try{
+        showMsg('');
+        if (!isLoaded) await preload();
+        if (vEl.paused && bEl.paused && (vEl.currentTime>0 || bEl.currentTime>0)) {
+          await resumePlay();
+        } else {
+          await startFromZeroWithOffset(getOffsetMs());
+        }
+      } catch (e) {
+        // Bubble the real reason into UI so we can see it.
+        showMsg(e.message || 'Could not start playback.');
+        console.warn('play error', e);
+      }
+    }
+
+    async function onRestart(){
+      try{
+        showMsg('');
+        if (!isLoaded) await preload();
+        stopAll();
+        await startFromZeroWithOffset(getOffsetMs());
+      } catch (e) {
+        showMsg(e.message || 'Could not restart playback.');
+        console.warn('restart error', e);
+      }
+    }
+
+    playB?.addEventListener('click', onPlay);
+    pauseB?.addEventListener('click', () => { stopAll(); });
+    restartB?.addEventListener('click', onRestart);
+
+    return {
+      setSources(vocalsUrl, bandUrl){
+        urls = { v: vocalsUrl, b: bandUrl };
+        isLoaded = false;
+        stopAll();
+      },
+      showTitle,
+      getDurations(){
+        return { vocals: vEl?.duration || 0, band: bEl?.duration || 0 };
+      }
+    };
+  };
+
+  // ---------- Lyrics helpers ----------
+  K.loadLyrics = async function loadLyrics({ jobId, title, artist, duration, lyricsBoxId, msgId }) {
+    const box = K.$(lyricsBoxId);
+    const msg = K.$(msgId);
+    if (msg) msg.textContent = 'Fetching lyrics…';
 
     try{
-      const url = new URL(endpoints.lyricsUrl);
-      if (jobId)  url.searchParams.set('job_id', jobId);
-      if (title)  url.searchParams.set('title', title);
-      if (artist) url.searchParams.set('artist', artist);
-      if (dur)    url.searchParams.set('duration', String(dur));
-
-      console.debug('[lyrics] GET', url.toString());
+      const url = new URL(K.endpoints.lyricsUrl);
+      if (jobId)   url.searchParams.set('job_id', jobId);
+      if (title)   url.searchParams.set('title', title);
+      if (artist)  url.searchParams.set('artist', artist);
+      if (duration)url.searchParams.set('duration', String(duration));
 
       const r = await fetch(url.toString(), { mode:'cors' });
-      const isJson = (r.headers.get('content-type')||'').includes('application/json');
-      if (!r.ok) {
-        const body = isJson ? JSON.stringify(await r.json()).slice(0,300) : (await r.text()).slice(0,300);
-        throw new Error(`HTTP ${r.status} ${r.statusText} – ${body}`);
-      }
-      const data = isJson ? await r.json() : {};
-      console.debug('[lyrics] response', data);
+      const data = await r.json();
 
       if (!data || data.found === false) {
-        if (boxEl) boxEl.textContent = 'No lyrics found.';
-        if (editEl) editEl.value = '';
-        if (msgEl) msgEl.textContent = '';
+        if (box) box.textContent = 'No lyrics found.';
+        if (msg) msg.textContent = '';
         return;
       }
-
       if (data.synced && data.lrc) {
-        if (boxEl) boxEl.textContent = 'Synced lyrics loaded.';
-        if (editEl) editEl.value = data.lrc;
+        if (box) box.textContent = data.lrc;
       } else {
-        const text = data.text || '';
-        if (boxEl) boxEl.textContent = text || 'No lyrics text available.';
-        if (editEl) editEl.value = text;
+        if (box) box.textContent = data.text || 'No lyrics text available.';
       }
-      if (msgEl) msgEl.textContent = 'Loaded.';
-    } catch (e){
-      console.warn('[lyrics] load failed', e);
-      if (boxEl) boxEl.textContent = 'Failed to fetch lyrics.';
-      if (msgEl) msgEl.textContent = e.message || 'Failed to fetch lyrics.';
+      if (msg) msg.textContent = 'Loaded.';
+    } catch (e) {
+      console.warn(e);
+      if (msg) msg.textContent = 'Failed to fetch lyrics.';
     }
-  }
+  };
 
-  // ---- Lyrics: SAVE ----
-  async function saveLyrics(opts = {}){
-    const jobId = (opts.jobId || currentJobId || '').trim();
-    const text  = (opts.text || '').trim();
-    const msgEl = opts.msgId ? $(opts.msgId) : null;
+  K.saveLyrics = async function saveLyrics({ jobId, text, msgId }) {
+    const msg = K.$(msgId);
+    if (!jobId){ if (msg) msg.textContent = 'No job id. Upload or pick a song first.'; return; }
+    const body = JSON.stringify({ job_id: jobId, text: (text||'').trim() });
+    if (!JSON.parse(body).text){ if (msg) msg.textContent = 'Paste lyrics before saving.'; return; }
 
-    if (!jobId){ if (msgEl) msgEl.textContent = 'Please enter a Job ID first.'; return; }
-    if (!text){  if (msgEl) msgEl.textContent = 'Paste lyrics before saving.';   return; }
-
-    if (msgEl) msgEl.textContent = 'Saving…';
     try{
-      console.debug('[lyrics] POST', endpoints.lyricsUrl, {job_id: jobId});
-      const r = await fetch(endpoints.lyricsUrl, {
-        method:'POST',
-        mode:'cors',
+      if (msg) msg.textContent = 'Saving…';
+      const r = await fetch(K.endpoints.lyricsUrl, {
+        method:'POST', mode:'cors',
         headers:{ 'Content-Type':'application/json; charset=utf-8' },
-        body: JSON.stringify({ job_id: jobId, text })
+        body
       });
-      const isJson = (r.headers.get('content-type')||'').includes('application/json');
-      const resp = isJson ? await r.json() : {};
-      if (!r.ok || resp.error) throw new Error(resp.error || `HTTP ${r.status}`);
-      if (msgEl) msgEl.textContent = 'Saved.';
-    } catch (e){
-      console.warn('[lyrics] save failed', e);
-      if (msgEl) msgEl.textContent = e.message || 'Save failed.';
+      const resp = await r.json().catch(()=>({}));
+      if (!r.ok || resp.error) throw new Error(resp.error || `Save failed (${r.status})`);
+      if (msg) msg.textContent = 'Saved.';
+    } catch (e) {
+      console.warn(e);
+      if (msg) msg.textContent = e.message || 'Save failed.';
     }
-  }
-
-  // Expose
-  w.KARAOKE = Object.assign(w.KARAOKE || {}, {
-    endpoints, $, setTxt, setVal, asUrl,
-    currentJobId, setJobId, getJobId,  // <-- exported getJobId
-    initPlaybackControls,
-    parseLRC,
-    loadLyrics,
-    saveLyrics
-  });
+  };
 })(window);
