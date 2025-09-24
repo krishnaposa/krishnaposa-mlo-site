@@ -1,23 +1,113 @@
 /* ===== karaoke-player.js =====
-   Song picker + playback + load lyrics (read-only by default).
+   Song picker + playback + load lyrics + enable device list.
 */
 (function (w) {
   const K = w.KARAOKE;
   w.KARAOKE_MODE = 'player';
 
-  const LIST_URL = K.endpoints.listUrlFromMeta();
+  // ----- Elements -----
+  const LIST_META = document.querySelector('meta[name="karaoke-list"]');
+  const LIST_URL  = LIST_META?.content || '';
 
   const pick        = K.$('songPick');
   const useBtn      = K.$('useSelection');
   const refreshBtn  = K.$('refreshList');
   const listStatus  = K.$('listStatus');
-  const jobIdView   = K.$('jobIdView'); // optional display element
+  const jobIdView   = K.$('jobIdView');         // optional helper in HTML
   const lyricsBtn   = K.$('loadLyrics');
 
-  function setListStatus(t){ if (listStatus) listStatus.textContent = t || ''; }
+  const initBtn     = K.$('initAudio');
+  const vocalsOut   = K.$('vocalsOut');
+  const bandOut     = K.$('bandOut');
+  const deviceMsg   = K.$('deviceMsg');
 
+  // Playback controller from common bundle
   const PB = K.initPlaybackControls({});
 
+  function setListStatus(t){ if (listStatus) listStatus.textContent = t || ''; }
+  function setDeviceMsg(t){ if (deviceMsg) deviceMsg.textContent = t || ''; }
+
+  // ---------- Enable device list (self-contained) ----------
+  const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
+
+  async function ensurePermission() {
+    try {
+      // Needed so browsers reveal device labels
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      return true;
+    } catch (e) {
+      setDeviceMsg('Please allow microphone access to list audio outputs.');
+      return false;
+    }
+  }
+
+  function fillSelect(sel, outs) {
+    if (!sel) return;
+    sel.innerHTML = '';
+    outs.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || `Output ${d.deviceId}`;
+      sel.appendChild(opt);
+    });
+    const def = outs.find(d => d.deviceId === 'default');
+    sel.value = def ? def.deviceId : (outs[0]?.deviceId || 'default');
+  }
+
+  function addDefaultFallback(sel) {
+    if (!sel) return;
+    sel.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = 'default';
+    opt.textContent = 'System default';
+    sel.appendChild(opt);
+    sel.value = 'default';
+  }
+
+  async function listOutputs() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outs = devices.filter(d => d.kind === 'audiooutput');
+      if (outs.length) {
+        fillSelect(vocalsOut, outs);
+        fillSelect(bandOut, outs);
+        setDeviceMsg(`Found ${outs.length} output device(s).`);
+      } else {
+        addDefaultFallback(vocalsOut);
+        addDefaultFallback(bandOut);
+        setDeviceMsg('No discrete outputs reported. Using system default.');
+      }
+      return outs.length;
+    } catch (e) {
+      console.warn('enumerateDevices failed', e);
+      setDeviceMsg('Could not list outputs.');
+      addDefaultFallback(vocalsOut);
+      addDefaultFallback(bandOut);
+      return 0;
+    }
+  }
+
+  initBtn?.addEventListener('click', async () => {
+    if (!supportSink) {
+      setDeviceMsg('Output selection not supported here. Use Chrome/Edge desktop.');
+      return;
+    }
+    if (location.protocol !== 'https:') {
+      setDeviceMsg('Needs HTTPS to access device list.');
+      return;
+    }
+    setDeviceMsg('');
+    if (!await ensurePermission()) return;
+    const count = await listOutputs();
+    initBtn.textContent = count ? 'Device list ready' : 'Device list (default only)';
+    try { navigator.mediaDevices.addEventListener('devicechange', listOutputs); } catch {}
+    // hand off selected sinks to playback engine
+    PB.applySinks?.(vocalsOut?.value || 'default', bandOut?.value || 'default');
+    vocalsOut?.addEventListener('change', () => PB.applySinks?.(vocalsOut.value, bandOut?.value || 'default'));
+    bandOut  ?.addEventListener('change', () => PB.applySinks?.(vocalsOut?.value || 'default', bandOut.value));
+  });
+
+  // ---------- Song list ----------
   function extractJobIdFromUrl(u){
     try{
       const p = new URL(u).pathname.split('/');
@@ -39,7 +129,7 @@
 
       if (pick) pick.innerHTML = '';
       if (!items.length) {
-        if (pick) pick.innerHTML = '<option value="">No completed songs yet</option>';
+        pick.innerHTML = '<option value="">No completed songs yet</option>';
         setListStatus('');
         return;
       }
@@ -85,16 +175,17 @@
     }catch(e){ console.warn('Invalid selection', e); }
   });
 
-  // Load lyrics for the currently selected/loaded job
+  // ---------- Lyrics load ----------
   lyricsBtn?.addEventListener('click', async () => {
     const title = (K.$('trackTitle')?.textContent || '').trim();
     const durs  = PB.getDurations();
     await K.loadLyrics({
-      jobId: K.getJobId(),            // <-- use the getter that now exists
+      jobId: K.currentJobId,                                   // <- comes from K.setJobId above
       title: title && title !== '—' ? title : '',
       artist: (K.$('lyrArtist')?.value || '').trim(),
       duration: Math.round(durs.band || durs.vocals || 0),
-      lyricsBoxId: 'lyricsBox'        // msgId is optional in player
+      lyricsBoxId: 'lyricsBox',
+      msgId: 'lyricsMsg'
     });
   });
 
