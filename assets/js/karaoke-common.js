@@ -57,18 +57,6 @@
       if (syncTimer){ clearInterval(syncTimer); syncTimer = null; }
     }
 
-    function driftCorrect(biasMs){
-      clearSync();
-      syncTimer = setInterval(() => {
-        if (!isPlaying) return;
-        const d = (vEl.currentTime - bEl.currentTime) * 1000 - biasMs;
-        if (Math.abs(d) > 60) {
-          if (d > 0) { const r=vEl.playbackRate; vEl.playbackRate=Math.max(0.9, r-0.05); setTimeout(()=>{vEl.playbackRate=r}, 280); }
-          else       { const r=bEl.playbackRate; bEl.playbackRate=Math.max(0.9, r-0.05); setTimeout(()=>{bEl.playbackRate=r}, 280); }
-        }
-      }, 1800);
-    }
-
     function stopAll(){
       clearSync();
       try{ vEl.pause(); }catch{}
@@ -125,23 +113,74 @@
       isLoaded = true;
     }
 
-    async function startFromZeroWithOffset(offsetMs){
-      await applySinksIfAny();     // set sinks right before play
-      vEl.currentTime = 0;
-      bEl.currentTime = 0;
-      if (offsetMs >= 0){
-        await bEl.play().catch(()=>{});
-        await new Promise(r => setTimeout(r, offsetMs));
-        await vEl.play();
-      } else {
-        await vEl.play().catch(()=>{});
-        await new Promise(r => setTimeout(r, -offsetMs));
-        await bEl.play();
+    function driftCorrect(biasMs){
+  clearSync();
+
+  const FAST_WINDOW_MS = 20000;  // tighten checks early
+  const START = performance.now();
+  const SOFT_THRESH = 90;        // ms: apply gentle rate nudge
+  const HARD_THRESH = 180;       // ms: immediate re-seek
+  const NUDGE = 0.02;            // 2% speed nudge
+
+  function loop(){
+    if (!isPlaying) return;
+
+    const now = performance.now();
+    const period = (now - START) < FAST_WINDOW_MS ? 500 : 1500;
+
+    const driftMs = (vEl.currentTime - bEl.currentTime) * 1000 - biasMs;
+
+    if (Math.abs(driftMs) >= HARD_THRESH) {
+      // Hard re-sync: align band to vocals, preserving bias
+      try {
+        bEl.currentTime = Math.max(0, vEl.currentTime - biasMs / 1000);
+      } catch {}
+      // reset rates
+      vEl.playbackRate = 1;
+      bEl.playbackRate = 1;
+    } else if (Math.abs(driftMs) >= SOFT_THRESH) {
+      // Gentle nudge for 250ms
+      if (driftMs > 0) { // vocals ahead
+        vEl.playbackRate = 1 - NUDGE;
+        setTimeout(() => { vEl.playbackRate = 1; }, 250);
+      } else {            // band ahead
+        bEl.playbackRate = 1 - NUDGE;
+        setTimeout(() => { bEl.playbackRate = 1; }, 250);
       }
-      isPlaying = true;
-      driftCorrect(offsetMs);
     }
 
+    syncTimer = setTimeout(loop, period);
+  }
+
+  loop();
+}
+
+async function startFromZeroWithOffset(offsetMs){
+  await applySinksIfAny();     // set sinks right before play
+  vEl.currentTime = 0;
+  bEl.currentTime = 0;
+
+  // Staggered start for initial BT latency
+  if (offsetMs >= 0){
+    await bEl.play().catch(()=>{});
+    await new Promise(r => setTimeout(r, offsetMs));
+    await vEl.play();
+  } else {
+    await vEl.play().catch(()=>{});
+    await new Promise(r => setTimeout(r, -offsetMs));
+    await bEl.play();
+  }
+
+  isPlaying = true;
+
+  // One-time settle re-sync after Bluetooth buffers fill
+  setTimeout(() => {
+    if (!isPlaying) return;
+    try { bEl.currentTime = Math.max(0, vEl.currentTime - offsetMs / 1000); } catch {}
+  }, 1000);
+
+  driftCorrect(offsetMs);
+}
     async function resumePlay(){
       await applySinksIfAny();
       await Promise.all([
