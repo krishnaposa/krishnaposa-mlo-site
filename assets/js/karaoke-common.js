@@ -3,11 +3,11 @@
    - Endpoint config
    - DOM helpers
    - Playback wiring
-   - Lyrics load/save (robust error surfacing + editor fill)
+   - Lyrics load/save
 */
 (function (w) {
   const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net';
-  const FUNCTION_CODE = ''; // e.g. '?code=...' if not anonymous
+  const FUNCTION_CODE = ''; // add ?code=... if needed
 
   const endpoints = {
     submitUrl: `${API_BASE}/api/submit${FUNCTION_CODE ? `?code=${FUNCTION_CODE}` : ''}`,
@@ -18,26 +18,21 @@
 
   // ---- Tiny DOM helpers ----
   const $ = (id) => document.getElementById(id);
-  const setTxt = (idOrEl, t) => {
-    const el = typeof idOrEl === 'string' ? $(idOrEl) : idOrEl;
-    if (el) el.textContent = t ?? '';
-  };
-  const setVal = (idOrEl, v) => {
-    const el = typeof idOrEl === 'string' ? $(idOrEl) : idOrEl;
-    if (el) el.value = v ?? '';
-  };
+  const setTxt = (idOrEl, t) => { const el = typeof idOrEl === 'string' ? $(idOrEl) : idOrEl; if (el) el.textContent = t ?? ''; };
+  const setVal = (idOrEl, v) => { const el = typeof idOrEl === 'string' ? $(idOrEl) : idOrEl; if (el) el.value = v ?? ''; };
 
-  // Public state: current job id (set by index/player)
+  // ---- Public state: Job ID ----
   let currentJobId = null;
   function setJobId(j) { currentJobId = (j || '').trim() || null; }
+  function getJobId()   { return currentJobId; }   // <-- added so player can call K.getJobId()
 
-  // Build direct or SAS URL into clickable
+  // ---- URL helper ----
   function asUrl(valueOrKey) {
     if (/^https?:\/\//i.test(valueOrKey)) return valueOrKey;
     return '#';
   }
 
-  // ---- Playback controls wrapper ----
+  // ---- Playback controls ----
   function initPlaybackControls() {
     const vocalsEl = $('vocalsEl');
     const bandEl   = $('bandEl');
@@ -48,7 +43,6 @@
     function setSources(vocals, band) {
       if (vocalsEl) vocalsEl.src = vocals || '';
       if (bandEl)   bandEl.src   = band   || '';
-      // force reload so durations are fresh
       try { vocalsEl?.load(); bandEl?.load(); } catch {}
     }
 
@@ -62,7 +56,7 @@
     return { setSources, showTitle, getDurations };
   }
 
-  // ---- LRC parsing (for preview scrolling) ----
+  // ---- LRC parsing ----
   function parseLRC(lrcText){
     const lines=[], re=/\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\](.*)/g; let m;
     while((m=re.exec(lrcText))!==null){
@@ -75,12 +69,6 @@
   }
 
   // ---- Lyrics: LOAD ----
-  /**
-   * opts: {
-   *   jobId?: string, title?: string, artist?: string, duration?: number,
-   *   lyricsBoxId?: string, textId?: string, msgId?: string
-   * }
-   */
   async function loadLyrics(opts = {}){
     const jobId   = (opts.jobId || currentJobId || '').trim();
     const title   = (opts.title || '').trim();
@@ -89,10 +77,10 @@
 
     const msgEl   = opts.msgId ? $(opts.msgId) : null;
     const boxEl   = opts.lyricsBoxId ? $(opts.lyricsBoxId) : null;
-    const editEl  = opts.textId ? $(opts.textId) : null;
+    const editEl  = opts.textId ? $(opts.textId) : $('lyrText'); // also try default editor
 
-    if (msgEl)   msgEl.textContent = 'Fetching lyrics…';
-    if (boxEl)   boxEl.textContent = '…';
+    if (msgEl) msgEl.textContent = 'Fetching lyrics…';
+    if (boxEl) boxEl.textContent = '…';
 
     try{
       const url = new URL(endpoints.lyricsUrl);
@@ -101,14 +89,13 @@
       if (artist) url.searchParams.set('artist', artist);
       if (dur)    url.searchParams.set('duration', String(dur));
 
-      // DEBUG: show exactly what we’re calling
       console.debug('[lyrics] GET', url.toString());
 
       const r = await fetch(url.toString(), { mode:'cors' });
       const isJson = (r.headers.get('content-type')||'').includes('application/json');
       if (!r.ok) {
-        const bodyText = isJson ? JSON.stringify(await r.json()).slice(0,300) : (await r.text()).slice(0,300);
-        throw new Error(`HTTP ${r.status} ${r.statusText} – ${bodyText}`);
+        const body = isJson ? JSON.stringify(await r.json()).slice(0,300) : (await r.text()).slice(0,300);
+        throw new Error(`HTTP ${r.status} ${r.statusText} – ${body}`);
       }
       const data = isJson ? await r.json() : {};
       console.debug('[lyrics] response', data);
@@ -120,7 +107,6 @@
         return;
       }
 
-      // Prefer synced LRC
       if (data.synced && data.lrc) {
         if (boxEl) boxEl.textContent = 'Synced lyrics loaded.';
         if (editEl) editEl.value = data.lrc;
@@ -137,11 +123,7 @@
     }
   }
 
-  // ---- Lyrics: SAVE (upsert) ----
-  /**
-   * opts: { jobId: string, text: string, msgId?: string }
-   * Saves as plain text (backend will store under by-job/{jobId}.json).
-   */
+  // ---- Lyrics: SAVE ----
   async function saveLyrics(opts = {}){
     const jobId = (opts.jobId || currentJobId || '').trim();
     const text  = (opts.text || '').trim();
@@ -151,9 +133,8 @@
     if (!text){  if (msgEl) msgEl.textContent = 'Paste lyrics before saving.';   return; }
 
     if (msgEl) msgEl.textContent = 'Saving…';
-
     try{
-      console.debug('[lyrics] POST', endpoints.lyricsUrl, {job_id: jobId, text: text.slice(0,60)+'…'});
+      console.debug('[lyrics] POST', endpoints.lyricsUrl, {job_id: jobId});
       const r = await fetch(endpoints.lyricsUrl, {
         method:'POST',
         mode:'cors',
@@ -173,7 +154,7 @@
   // Expose
   w.KARAOKE = Object.assign(w.KARAOKE || {}, {
     endpoints, $, setTxt, setVal, asUrl,
-    currentJobId, setJobId,
+    currentJobId, setJobId, getJobId,  // <-- exported getJobId
     initPlaybackControls,
     parseLRC,
     loadLyrics,
