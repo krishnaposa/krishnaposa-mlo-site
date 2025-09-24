@@ -1,5 +1,5 @@
 /* ===== karaoke-index.js =====
-   Handles upload + polling. Uses shared playback + lyrics helpers.
+   Handles upload + polling. Uses shared playback + lyrics helpers (karaoke-common.js).
 */
 (function (w) {
   const K = w.KARAOKE;
@@ -16,6 +16,9 @@
     prog: K.$('prog'),
     bar: K.$('bar'),
     playerCard: K.$('playerCard'),
+
+    // lyrics bits (optional on the page)
+    lyrJobId: K.$('lyrJobId'),
     lyricsBox: K.$('lyricsBox'),
     lyrText: K.$('lyrText'),
     lyricsMsg: K.$('lyricsMsg'),
@@ -41,9 +44,11 @@
     els.playerCard?.classList.add('hide');
     K.setJobId(null);
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+
     if (els.lyricsBox) els.lyricsBox.textContent = '';
     if (els.lyrText)   els.lyrText.value = '';
     if (els.lyricsMsg) els.lyricsMsg.textContent = '';
+    if (els.lyrJobId)  els.lyrJobId.value = '';
   }
 
   els.clear?.addEventListener('click', () => {
@@ -51,6 +56,7 @@
     resetUI();
   });
 
+  // ---- Polling for job status ----
   async function doPoll(jobId) {
     try {
       const r = await fetch(K.endpoints.statusUrl(jobId), { mode:'cors' });
@@ -83,8 +89,11 @@
         setTimeout(() => { els.prog && (els.prog.hidden=true); els.bar && (els.bar.style.width='0%'); }, 800);
         setStatus('Done!');
 
-        K.setJobId(jobId); // also writes to #lyrJobId if present
+        // Persist job id so lyrics load/save work without typing
+        K.setJobId(jobId);
+        if (els.lyrJobId && !els.lyrJobId.value) els.lyrJobId.value = jobId;
 
+        // Links
         els.done?.classList.remove('hide');
         if (els.links) els.links.innerHTML = '';
         for (const [name, val] of Object.entries(s.outputs || {})) {
@@ -120,7 +129,7 @@
     pollTimer = setInterval(() => doPoll(jobId), 1500);
   }
 
-  // Submit upload
+  // ---- Submit upload ----
   els.go?.addEventListener('click', async () => {
     try{
       hideError(); els.done?.classList.add('hide'); if (els.links) els.links.innerHTML = '';
@@ -140,6 +149,7 @@
       if (!jobId) throw new Error('No job id returned.');
 
       K.setJobId(jobId);
+      if (els.lyrJobId) els.lyrJobId.value = jobId; // mirror in the input for transparency
       (w.dataLayer = w.dataLayer || []).push({ event: 'karaoke_submit' });
       setStatus('Queued. Processing…');
       startPolling(jobId);
@@ -149,22 +159,40 @@
     }
   });
 
-  // Lyrics load/save (use job id from memory OR typed input)
+  // ---- Lyrics: Load & Save (always pass a job id) ----
   els.loadLyricsBtn?.addEventListener('click', async () => {
+    // Prefer the in-memory job id; else, take what user typed
+    let jobId = K.currentJobId || (els.lyrJobId?.value || '').trim();
+    if (!jobId) {
+      els.lyricsMsg && (els.lyricsMsg.textContent = 'Please enter a Job ID first.');
+      return;
+    }
+
     const title = (K.$('trackTitle')?.textContent || '').trim();
     const durs = PB.getDurations();
+
     await K.loadLyrics({
-      jobId: K.getJobId(), // <- resolves memory or typed box
+      jobId: jobId,
       title: title && title !== '—' ? title : '',
       artist: (K.$('lyrArtist')?.value || '').trim(),
       duration: Math.round(durs.band || durs.vocals || 0),
       lyricsBoxId: 'lyricsBox',
-      msgId: 'lyricsMsg'
+      msgId: 'lyricsMsg',
+      textId: 'lyrText'     // also populate the editor
     });
   });
 
   els.saveLyricsBtn?.addEventListener('click', async () => {
-    await K.saveLyrics({ jobId: K.getJobId(), text: els.lyrText?.value || '', msgId: 'lyricsMsg' });
+    let jobId = K.currentJobId || (els.lyrJobId?.value || '').trim();
+    if (!jobId) {
+      els.lyricsMsg && (els.lyricsMsg.textContent = 'Please enter a Job ID first.');
+      return;
+    }
+    await K.saveLyrics({
+      jobId: jobId,
+      text: els.lyrText?.value || '',
+      msgId: 'lyricsMsg'
+    });
   });
 
 })(window);
