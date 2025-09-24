@@ -83,7 +83,7 @@
         setTimeout(() => { els.prog && (els.prog.hidden=true); els.bar && (els.bar.style.width='0%'); }, 800);
         setStatus('Done!');
 
-        K.setJobId(jobId);
+        K.setJobId(jobId); // also writes to #lyrJobId if present
 
         els.done?.classList.remove('hide');
         if (els.links) els.links.innerHTML = '';
@@ -149,12 +149,12 @@
     }
   });
 
-  // Optional: lyrics load/save (only if the page has those controls)
+  // Lyrics load/save (use job id from memory OR typed input)
   els.loadLyricsBtn?.addEventListener('click', async () => {
     const title = (K.$('trackTitle')?.textContent || '').trim();
     const durs = PB.getDurations();
     await K.loadLyrics({
-      jobId: K.currentJobId,
+      jobId: K.getJobId(), // <- resolves memory or typed box
       title: title && title !== '—' ? title : '',
       artist: (K.$('lyrArtist')?.value || '').trim(),
       duration: Math.round(durs.band || durs.vocals || 0),
@@ -164,7 +164,7 @@
   });
 
   els.saveLyricsBtn?.addEventListener('click', async () => {
-    await K.saveLyrics({ jobId: K.currentJobId, text: els.lyrText?.value || '', msgId: 'lyricsMsg' });
+    await K.saveLyrics({ jobId: K.getJobId(), text: els.lyrText?.value || '', msgId: 'lyricsMsg' });
   });
 
 })(window);
