@@ -247,6 +247,61 @@ def _auto_header_excel(data: bytes) -> pd.DataFrame:
             logging.info("Fallback header row at index %d with columns: %s", hdr, cols)
             return
             
+def read_holdings_bytes(data: bytes, fmt: str) -> pd.DataFrame:
+    if fmt == "csv":
+        df = pd.read_csv(io.BytesIO(data))
+    else:
+        # read with no header first, then scan for header row
+        df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl", header=None)
+
+    # Auto-detect header row
+    header_row = None
+    for i in range(min(25, len(df))):
+        row = df.iloc[i].astype(str).str.lower().tolist()
+        if any("ticker" in c or "symbol" in c or "cusip" in c for c in row) and \
+           any("weight" in c or "%" in c for c in row):
+            header_row = i
+            break
+
+    if header_row is not None:
+        if fmt == "csv":
+            df = pd.read_csv(io.BytesIO(data), header=header_row)
+        else:
+            df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl", header=header_row)
+
+    # Build a lookup of cleaned column names
+    dfc = {str(c).strip(): c for c in df.columns}
+    def _pick(cands):
+        lower = {k.lower(): k for k in dfc}
+        for cand in cands:
+            if cand in lower: return dfc[lower[cand]]
+        for cand in cands:
+            for k in dfc:
+                if cand in k.lower(): return dfc[k]
+        return None
+
+    tcol = _pick(["ticker","symbol","cusip","holding ticker","asset","security","name","identifier"])
+    wcol = _pick(["weight","weight %","% weight","portfolio weight","percent","% of fund","%","weighting"])
+
+    if not tcol or not wcol:
+        raise ValueError(f"Could not detect Ticker/Weight columns. Columns: {list(df.columns)}")
+
+    # Normalize weights
+    s = pd.to_numeric(
+        pd.Series(df[wcol].astype(str).str.replace("%","", regex=False).str.replace(",","")),
+        errors="coerce"
+    )
+    med = s.median(skipna=True)
+    if pd.notna(med) and med <= 1.5:  # convert 0–1 to percent
+        s = s * 100.0
+
+    out = pd.DataFrame({
+        "Ticker": df[tcol].astype(str).str.upper().str.strip().str.replace(r"[^A-Z0-9\.\-]", "", regex=True),
+        "WeightPct": s
+    }).dropna(subset=["Ticker","WeightPct"])
+
+    logging.info("Parsed holdings: %d rows (ticker col=%s, weight col=%s)", len(out), tcol, wcol)
+    return out
 # =========================
 # 6) Compute adds/diffs
 # =========================
