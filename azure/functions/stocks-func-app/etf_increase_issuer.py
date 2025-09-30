@@ -342,9 +342,10 @@ def run_for_filters(filters_list: List[List[str]], order: str = "price",
 if __name__ == "__main__":
     # Add the Finviz ETF filters you care about:
     finviz_filters_list = [
-        ["ind_exchangetradedfund","geo_usa","ta_highlow52w_nh"],          # new highs
-        ["ind_exchangetradedfund","geo_usa","ta_perf_1wup"],              # 1-week up
-        ["ind_exchangetradedfund","geo_usa","ta_sma20_pa","ta_sma50_pa"]  # uptrends
+        ['geo_usa','ind_exchangetradedfund','ta_rsi_nob60','ta_sma20_cross50a','ta_sma200_pa','ta_sma50_pa','sh_avgvol_o200000','sh_price_o10'],          # new highs
+        ['ind_exchangetradedfund','ta_highlow20d_nh','ta_perf2_4wup','ta_sma20_pa','ta_sma200_pa','ta_sma50_pa','geo_usa','sh_avgvol_o200000','sh_price_o10'],              # 1-week up
+        ['geo_usa','ind_exchangetradedfund','ta_highlow52w_nh','sh_avgvol_o200000','ta_rsi_nob70'],  
+        ['ind_exchangetradedfund','sh_avgvol_o2000','ta_change_u1','ta_highlow20d_nh']
     ]
     run_for_filters(
         filters_list=finviz_filters_list,
