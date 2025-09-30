@@ -123,3 +123,11 @@ python etf_top_adds.py \
   --min-price 5 \
   --min-avgvol 400000
 
+
+pip install pandas requests openpyxl
+
+# “last month” comparison, outputs to ./out_etf_adds/
+python auto_etf_adds.py
+
+# or specify a custom window
+python auto_etf_adds.py --since 2025-08-30 --until 2025-09-30 --top-k 3 --min-delta 0.02 --out out_sep
