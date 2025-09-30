@@ -64,6 +64,7 @@ def finviz_top_etfs(finviz_filters: List[str], top_n: int = 2, order: str = "pri
     out = []
     try:
         rows = Screener(filters=finviz_filters, table="Valuation", order=order)
+        time.sleep(3 + random.random()*3)
         for r in rows:
             t = str(r.get("Ticker", "")).upper().strip()
             if t and t not in out:
