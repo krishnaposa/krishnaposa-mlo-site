@@ -153,3 +153,9 @@ def top_adds_for_etfs(filters: List[str], since: date, top_k=3, min_delta=0.0, o
         logging.info("Wrote %s", out_dir / "summary_top_adds.csv")
     else:
         logging.info("No results. Check registry coverage or since-date snapshots.")
+
+
+from datetime import date, timedelta
+filters = ["ind_exchangetradedfund","geo_usa","ta_highlow52w_nh"]  # your usual Finviz ETF filters
+since = date.today() - timedelta(days=30)
+top_adds_for_etfs(filters, since, top_k=3, min_delta=0.02, out_dir=Path("out_etf_adds"))
