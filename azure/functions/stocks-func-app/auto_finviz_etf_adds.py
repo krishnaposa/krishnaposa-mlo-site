@@ -188,15 +188,29 @@ def wayback_timestamp(url: str, target: date, session: requests.Session) -> Opti
 # 5) Read holdings (CSV/XLSX) and compare weights
 # =========================
 def read_holdings_bytes(data: bytes, fmt: str) -> pd.DataFrame:
+    # Try reading normally first
     if fmt == "csv":
         df = pd.read_csv(io.BytesIO(data))
     else:
-        df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl")
+        # For SPDR Excel files, the actual table usually starts later (skiprows helps)
+        try:
+            df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl")
+        except Exception:
+            df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl", skiprows=3)
+
+    # If everything came back as "Unnamed", try to re-read with skiprows
+    if all(str(c).startswith("Unnamed") for c in df.columns):
+        logging.info("Re-reading file with skiprows=3 to bypass header text")
+        if fmt == "csv":
+            df = pd.read_csv(io.BytesIO(data), skiprows=3)
+        else:
+            df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl", skiprows=3)
+
     if df.empty:
         raise ValueError("Holdings file is empty")
 
-    # locate Ticker + Weight columns (tolerant)
-    dfc = {c.strip(): c for c in df.columns}
+    # map columns
+    dfc = {str(c).strip(): c for c in df.columns}
     def _pick(cands):
         lower = {k.lower(): k for k in dfc}
         for cand in cands:
@@ -206,13 +220,13 @@ def read_holdings_bytes(data: bytes, fmt: str) -> pd.DataFrame:
                 if cand in k.lower(): return dfc[k]
         return None
 
-    tcol = _pick(["ticker","symbol","holding ticker","asset","security","name"])
+    tcol = _pick(["ticker","symbol","holding ticker","asset","security","name","identifier"])
     wcol = _pick(["weight","weight %","% weight","portfolio weight","percent","% of fund","%","weighting"])
 
     if not tcol or not wcol:
         raise ValueError(f"Could not detect Ticker/Weight columns. Columns: {list(df.columns)}")
 
-    # normalize weight to percent (0–100)
+    # normalize weights
     s = pd.to_numeric(
         pd.Series(df[wcol].astype(str).str.replace("%","", regex=False).str.replace(",","")),
         errors="coerce"
@@ -226,7 +240,7 @@ def read_holdings_bytes(data: bytes, fmt: str) -> pd.DataFrame:
         "WeightPct": s
     }).dropna(subset=["Ticker","WeightPct"])
 
-    logging.info("Parsed holdings: %d rows", len(out))
+    logging.info("Parsed holdings: %d rows (ticker col=%s, weight col=%s)", len(out), tcol, wcol)
     return out
 
 def compute_adds(prev_df: pd.DataFrame, curr_df: pd.DataFrame) -> pd.DataFrame:
