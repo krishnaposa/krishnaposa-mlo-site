@@ -113,5 +113,13 @@ special_situations_master = [
  'sh_relvol_o1.5','ta_perf_1wup','ta_rsi_nob70','targetprice_above'
 ]
 
-
+python etf_top_adds.py \
+  --prev ./prev_holdings \
+  --curr ./curr_holdings \
+  --out ./out \
+  --top-k 3 \
+  --min-delta 0.02 \
+  --instrument-master ./instrument_master.csv \
+  --min-price 5 \
+  --min-avgvol 400000
 
