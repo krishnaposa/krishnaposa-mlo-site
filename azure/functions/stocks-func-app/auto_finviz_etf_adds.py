@@ -156,10 +156,10 @@ def save_cache(cache: Dict[str, HoldingSource]) -> None:
     CACHE_PATH.write_text(json.dumps({k: vars(v) for k, v in cache.items()}, indent=2))
 
 # =========================
-# 4) Wayback helper (fixed: always pass params once)
+# 4) Wayback helper (fixed: always pass params once; with earliest fallback)
 # =========================
 def wayback_timestamp(url: str, target: date, session: requests.Session) -> Optional[str]:
-    for flex in (7, 30, 90, 180):
+    for flex in (7, 30, 90, 180, 365):
         params = {
             "url": url,
             "from": yyyymmdd(target - timedelta(days=flex)),
@@ -180,7 +180,21 @@ def wayback_timestamp(url: str, target: date, session: requests.Session) -> Opti
         except Exception as e:
             logging.warning("Wayback error for %s: %s", url, e)
         time.sleep(1.0 + random.random())
-    logging.warning("No Wayback snapshot found for %s near %s", url, target)
+
+    # fallback to earliest available snapshot (so we don't skip entirely)
+    try:
+        params = {"url": url, "output": "json", "filter": "statuscode:200", "limit": "1", "from": "20000101"}
+        r = session.get(CDX_ENDPOINT, params=params, timeout=30)
+        r.raise_for_status()
+        js = r.json()
+        if len(js) >= 2:
+            ts = js[1][1]
+            logging.info("Fallback to earliest Wayback snapshot for %s @ %s", url, ts)
+            return ts
+    except Exception as e:
+        logging.warning("Wayback earliest fallback failed for %s: %s", url, e)
+
+    logging.warning("No Wayback snapshot found for %s near %s (and no earliest fallback).", url, target)
     return None
 
 # =========================
@@ -198,11 +212,9 @@ def _guess_ticker_col(df: pd.DataFrame) -> Optional[str]:
     return best_col if best_score >= 3 else None  # need at least a few matches
 
 def _guess_weight_col(df: pd.DataFrame) -> Optional[str]:
-    # prefer names containing 'weight'
     for c in df.columns:
         if "weight" in str(c).lower():
             return c
-    # else pick numeric 0..100 with many non-nulls
     best_col, best_score = None, -1
     for c in df.columns:
         s = pd.to_numeric(df[c], errors="coerce")
@@ -212,17 +224,13 @@ def _guess_weight_col(df: pd.DataFrame) -> Optional[str]:
     return best_col if best_score >= 3 else None
 
 def _auto_header_excel(data: bytes) -> pd.DataFrame:
-    """Read Excel with header=None, then detect the header row and return df with proper columns."""
     raw = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl", header=None)
-    # drop completely empty columns
     raw = raw.dropna(axis=1, how="all")
-
-    # scan first 25 rows for a header row that mentions weight and ticker-ish label
     for hdr in range(min(25, len(raw))):
         vals = [str(x).strip() for x in list(raw.iloc[hdr].values)]
         low = [v.lower() for v in vals]
-        has_weight = any("weight" in v or "%" == v for v in low)
-        has_id = any(any(k in v for k in ("ticker","symbol","identifier","security","name")) for v in low)
+        has_weight = any("weight" in v or v == "%" for v in low)
+        has_id = any(any(k in v for k in ("ticker","symbol","identifier","security","name","cusip")) for v in low)
         if has_weight and has_id:
             cols = [str(x).strip() for x in raw.iloc[hdr].values]
             df = raw.iloc[hdr+1:].copy()
@@ -230,8 +238,6 @@ def _auto_header_excel(data: bytes) -> pd.DataFrame:
             df = df.dropna(how="all")
             logging.info("Detected header row at index %d with columns: %s", hdr, cols)
             return df
-
-    # fallback: use first non-empty row as header
     for hdr in range(min(25, len(raw))):
         if raw.iloc[hdr].notna().sum() >= 2:
             cols = [str(x).strip() for x in raw.iloc[hdr].values]
@@ -239,70 +245,10 @@ def _auto_header_excel(data: bytes) -> pd.DataFrame:
             df.columns = cols
             df = df.dropna(how="all")
             logging.info("Fallback header row at index %d with columns: %s", hdr, cols)
-            return df
-
-    # if all else fails, return as-is (will trigger content guessing)
-    logging.info("Could not detect header; returning raw frame")
-    return raw
-
-def read_holdings_bytes(data: bytes, fmt: str) -> pd.DataFrame:
-    if fmt == "csv":
-        df = pd.read_csv(io.BytesIO(data))
-    else:
-        df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl", header=None)
-
-    # Auto-detect header row by scanning first 20 rows
-    header_row = None
-    for i in range(min(20, len(df))):
-        row = df.iloc[i].astype(str).str.lower().tolist()
-        if any("ticker" in c or "symbol" in c or "cusip" in c for c in row) and any("weight" in c or "%" in c for c in row):
-            header_row = i
-            break
-
-    if header_row is None:
-        raise ValueError(f"Could not detect header row. Columns seen: {list(df.head(5).values)}")
-
-    # Re-read with correct header row
-    if fmt == "csv":
-        df = pd.read_csv(io.BytesIO(data), header=header_row)
-    else:
-        df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl", header=header_row)
-
-    # Map possible columns
-    dfc = {str(c).strip(): c for c in df.columns}
-    def _pick(cands):
-        lower = {k.lower(): k for k in dfc}
-        for cand in cands:
-            if cand in lower: return dfc[lower[cand]]
-        for cand in cands:
-            for k in dfc:
-                if cand in k.lower(): return dfc[k]
-        return None
-
-    tcol = _pick(["ticker","symbol","cusip","holding ticker","asset","security","name","identifier"])
-    wcol = _pick(["weight","weight %","% weight","portfolio weight","percent","% of fund","%","weighting"])
-
-    if not tcol or not wcol:
-        raise ValueError(f"Could not detect Ticker/Weight columns. Columns: {list(df.columns)}")
-
-    # Normalize weights
-    s = pd.to_numeric(
-        pd.Series(df[wcol].astype(str).str.replace("%","", regex=False).str.replace(",","")),
-        errors="coerce"
-    )
-    med = s.median(skipna=True)
-    if pd.notna(med) and med <= 1.5:  # if in 0–1 scale, convert
-        s = s * 100.0
-
-    out = pd.DataFrame({
-        "Ticker": df[tcol].astype(str).str.upper().str.strip().str.replace(r"[^A-Z0-9\.\-]", "", regex=True),
-        "WeightPct": s
-    }).dropna(subset=["Ticker","WeightPct"])
-
-    logging.info("Parsed holdings: %d rows (ticker col=%s, weight col=%s, header_row=%s)", len(out), tcol, wcol, header_row)
-    return out
+            return
+            
 # =========================
-# 6) Compare weights
+# 6) Compute adds/diffs
 # =========================
 def compute_adds(prev_df: pd.DataFrame, curr_df: pd.DataFrame) -> pd.DataFrame:
     prev = prev_df.groupby("Ticker", as_index=False)["WeightPct"].sum().rename(columns={"WeightPct": "PrevWeightPct"})
@@ -311,11 +257,10 @@ def compute_adds(prev_df: pd.DataFrame, curr_df: pd.DataFrame) -> pd.DataFrame:
     merged["PrevWeightPct"] = merged["PrevWeightPct"].fillna(0.0)
     merged["DeltaWeightPct"] = merged["CurrWeightPct"] - merged["PrevWeightPct"]
     adds = merged[merged["DeltaWeightPct"] > 0].copy().sort_values("DeltaWeightPct", ascending=False)
-    logging.info("Computed adds: %d tickers with positive delta", len(adds))
     return adds[["Ticker","PrevWeightPct","CurrWeightPct","DeltaWeightPct"]]
 
 # =========================
-# 7) Orchestrate
+# 7) Orchestrator
 # =========================
 def top_adds_for_etfs(
     filters: List[str],
@@ -323,88 +268,88 @@ def top_adds_for_etfs(
     top_k: int = 3,
     min_delta: float = 0.0,
     out_dir: Path = Path("out_etf_adds"),
-    max_count: int = 50
+    max_count: int = 50,
+    top_holdings: int = 2   # NEW: only process top N current holdings
 ):
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "details").mkdir(parents=True, exist_ok=True)
     session = _session()
 
-    # 1) discover ETFs
-    etfs = discover_etfs_via_finviz(filters, order="price", max_count=max_count)
-
-    # 2) merge registry with cache and try to discover missing endpoints
+    # Load + merge registry + cache
     cache = load_cache()
-    merged_registry: Dict[str, HoldingSource] = dict(ISSUER_REGISTRY)
-    merged_registry.update(cache)
+    registry = {**ISSUER_REGISTRY, **cache}
 
-    missing = [t for t in etfs if t not in merged_registry]
-    if missing:
-        logging.info("Attempting programmatic endpoint discovery for %d tickers ...", len(missing))
-        found_now = {}
-        for t in missing:
-            src = discover_issuer_endpoint_for_ticker(t, session)
-            if src:
-                merged_registry[t] = src
-                found_now[t] = src
-        if found_now:
-            cache.update(found_now)
-            save_cache(cache)
-            logging.info("Discovered and cached %d new endpoints.", len(found_now))
-        else:
-            logging.info("No new endpoints discovered programmatically.")
-
-    # 3) iterate ETFs with endpoints
+    etfs = discover_etfs_via_finviz(filters, order="price", max_count=max_count)
     summary = []
+
     for etf in etfs:
-        if etf not in merged_registry:
-            logging.info("Skipping %s (no issuer holdings endpoint in registry/cache).", etf)
-            continue
-        src = merged_registry[etf]
+        src = registry.get(etf)
+        if not src:
+            # try programmatic discovery
+            src = discover_issuer_endpoint_for_ticker(etf, session)
+            if src:
+                registry[etf] = src
+                save_cache(registry)
+            else:
+                logging.info("Skipping %s (no issuer holdings endpoint in registry/cache).", etf)
+                continue
 
-        # current holdings
         logging.info("Fetching current holdings for %s from %s", etf, src.url)
-        r = session.get(src.url, timeout=30); r.raise_for_status()
-        curr_df = read_holdings_bytes(r.content, src.fmt)
+        try:
+            r = session.get(src.url, timeout=30); r.raise_for_status()
+            curr_df = read_holdings_bytes(r.content, src.fmt)
+        except Exception as e:
+            logging.warning("Failed to read current holdings for %s: %s", etf, e)
+            continue
 
-        # historical holdings via Wayback near 'since'
+        # keep only top N holdings
+        curr_df = curr_df.sort_values("WeightPct", ascending=False)
+        top_tickers = curr_df["Ticker"].head(top_holdings).tolist()
+        curr_df = curr_df[curr_df["Ticker"].isin(top_tickers)].copy()
+        logging.info("Restricting %s to top %d holdings: %s", etf, top_holdings, ", ".join(top_tickers))
+
         ts = wayback_timestamp(src.url, since, session)
         if not ts:
             logging.info("No prior snapshot for %s; skipping.", etf)
             continue
         snap_url = WAYBACK_FETCH.format(timestamp=ts, url=src.url)
-        logging.info("Fetching prior snapshot for %s: %s", etf, snap_url)
-        rp = session.get(snap_url, timeout=30); rp.raise_for_status()
-        prev_df = read_holdings_bytes(rp.content, src.fmt)
 
-        # diff
+        try:
+            rp = session.get(snap_url, timeout=30); rp.raise_for_status()
+            prev_df = read_holdings_bytes(rp.content, src.fmt)
+            prev_df = prev_df[prev_df["Ticker"].isin(top_tickers)].copy()
+        except Exception as e:
+            logging.warning("Failed to read prior holdings for %s: %s", etf, e)
+            continue
+
         adds = compute_adds(prev_df, curr_df)
         if min_delta > 0:
-            before = len(adds)
             adds = adds[adds["DeltaWeightPct"] >= min_delta]
-            logging.info("Applied min_delta %.4f pp: %d -> %d rows", min_delta, before, len(adds))
-
-        # save
         adds.to_csv(out_dir / "details" / f"{etf}_adds.csv", index=False)
         for _, row in adds.head(top_k).iterrows():
             summary.append({"ETF": etf, **row.to_dict()})
+
         logging.info("Completed %s: %d adds (top %d saved).", etf, len(adds), min(top_k, len(adds)))
 
-        # light politeness so we don't hammer issuers/Wayback
-        time.sleep(0.6 + random.random()*0.6)
-
-    # 4) summary
     if summary:
-        pd.DataFrame(summary).sort_values(
-            ["ETF","DeltaWeightPct"], ascending=[True, False]
-        ).to_csv(out_dir / "summary_top_adds.csv", index=False)
+        pd.DataFrame(summary).sort_values(["ETF","DeltaWeightPct"], ascending=[True, False]) \
+            .to_csv(out_dir / "summary_top_adds.csv", index=False)
         logging.info("Wrote %s", out_dir / "summary_top_adds.csv")
     else:
         logging.info("No results. Check registry coverage or since-date snapshots.")
 
 # =========================
-# 8) Simple driver (runs when you execute this file)
+# Main
 # =========================
 if __name__ == "__main__":
-    filters = ["ind_exchangetradedfund","geo_usa","ta_highlow52w_nh"]  # Finviz ETF filters
+    filters = ["ind_exchangetradedfund","geo_usa","ta_highlow52w_nh"]
     since = date.today() - timedelta(days=30)
-    top_adds_for_etfs(filters, since, top_k=3, min_delta=0.02, out_dir=Path("out_etf_adds"), max_count=50)
+    top_adds_for_etfs(
+        filters=filters,
+        since=since,
+        top_k=3,
+        min_delta=0.02,
+        out_dir=Path("out_etf_adds"),
+        max_count=50,
+        top_holdings=2   # process only top 2 holdings of each ETF
+    )
