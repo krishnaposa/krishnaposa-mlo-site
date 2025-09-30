@@ -153,4 +153,5 @@ python auto_finviz_etf_adds.py \
   --max-etfs 25 \
   --delay 1.5 \
   --jitter 1.0 \
-  --retries 6
+  --retries 6 \
+  --log-level INFO
