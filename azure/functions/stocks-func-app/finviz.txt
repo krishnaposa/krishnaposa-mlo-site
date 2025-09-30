@@ -69,3 +69,49 @@ cashflowEPSLarge_recommended = ['an_recom_buybetter','cap_largeover','fa_epsyoy1
 eps25WeekUpDayUpLarge_recommended = ['cap_largeover','fa_epsqoq_high','ta_perf2_13wup','ta_perf2_dup','ta_sma200_pa']
 
 stock_from_insta_screener_recommended = ['cap_largeover','fa_epsyoy_o10','fa_fpe_u25','fa_peg_u2','fa_quickratio_o1.5','fa_roe_o5','geo_usa','fa_debteq_u1','sh_avgvol_o400','ta_sma200_pa']
+
+Intent: High-quality companies with strong earnings and sales growth, good ROE, and in long-term uptrends.
+Use case: Buy-and-hold compounders and large-cap growth trades.
+growth_leaders_master = [
+ 'cap_largeover','fa_eps5years_o15','fa_epsqoq_o5','fa_epsyoy1_o10',
+ 'fa_estltgrowth_o10','fa_roe_o10','fa_debteq_u1',
+ 'fa_sales5years_o10','fa_salesqoq_o5',
+ 'sh_avgvol_o1000','sh_price_o10',
+ 'ta_sma200_pa','ta_perf_4wup','geo_usa'
+]
+
+Intent: Cheap but high-quality stocks that can beat the market.
+Use case: Value investing with a margin of safety.
+value_quality_master = [
+ 'fa_eps5years_high','fa_ltdebteq_u0.5','fa_roe_o12','fa_roi_o10',
+ 'fa_pb_u10','fa_pe_low','fa_pfcf_u25','fa_ps_u10',
+ 'geo_usa','sh_price_o5','sh_avgvol_o400','ta_sma200_pa'
+]
+
+Intent: Strong performers near highs with liquidity and not yet overbought.
+Use case: Swing trades, trend following.
+momentum_breakouts_master = [
+ 'cap_midover','fa_sales5years_pos','fa_salesqoq_o5',
+ 'geo_usa','sh_avgvol_o800',
+ 'ta_highlow52w_b0to5h','ta_perf2_1wup',
+ 'ta_sma20_pa','ta_rsi_nob70'
+]
+
+Intent: Dividend payers with low debt, decent ROE, and fair valuations.
+Use case: Defensive, long-term income portfolio.
+income_stability_master = [
+ 'fa_debteq_u1','fa_div_o2','fa_estltgrowth_o5','fa_roe_o10',
+ 'fa_pe_low','fa_payoutratio_u75',
+ 'geo_usa','ind_stocksonly','sh_avgvol_o200','sh_price_o10','ta_sma200_pa'
+]
+
+Intent: High-volatility setups like short squeezes, earnings revisions, or reversal candidates.
+Use case: Tactical trades, event-driven plays.
+special_situations_master = [
+ 'geo_usa','cap_midover','fa_epsqoq_pos','fa_epsrev_bp','fa_salesqoq_pos',
+ 'sh_avgvol_o1000','sh_opt_option',
+ 'sh_relvol_o1.5','ta_perf_1wup','ta_rsi_nob70','targetprice_above'
+]
+
+
+
