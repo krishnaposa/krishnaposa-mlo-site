@@ -143,9 +143,14 @@ python auto_etf_adds.py --since 2025-08-30 --until 2025-09-30 --top-k 3 --min-de
 pip install requests beautifulsoup4 pandas
 
 # example: ETFs at 52-week highs, USA
+# Keep the request rate gentle and limit to first 25 ETFs
 python auto_finviz_etf_adds.py \
   --filters "ind_exchangetradedfund,geo_usa,ta_highlow52w_nh" \
   --since 2025-08-30 \
   --out out_finviz_adds \
   --top-k 3 \
-  --min-delta 0.02
+  --min-delta 0.02 \
+  --max-etfs 25 \
+  --delay 1.5 \
+  --jitter 1.0 \
+  --retries 6
