@@ -1,4 +1,4 @@
-import logging, io, time, random, json
+import logging, io, time, random, json, re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Optional, Dict, List
@@ -140,8 +140,7 @@ def discover_issuer_endpoint_for_ticker(ticker: str, session: requests.Session) 
         logging.info("Discovered Invesco endpoint for %s", t)
         return HoldingSource("csv", inv)
 
-    # (Optional) You can add more heuristics here for other families if you like.
-
+    # (Optional) add more heuristics for other families here
     return None
 
 def load_cache() -> Dict[str, HoldingSource]:
@@ -185,31 +184,86 @@ def wayback_timestamp(url: str, target: date, session: requests.Session) -> Opti
     return None
 
 # =========================
-# 5) Read holdings (CSV/XLSX) and compare weights
+# 5) Read holdings (CSV/XLSX) – robust header detection
 # =========================
+TICKER_LIKE = re.compile(r"^[A-Z]{1,5}(?:\.[A-Z])?$")
+
+def _guess_ticker_col(df: pd.DataFrame) -> Optional[str]:
+    best_col, best_score = None, -1
+    for c in df.columns:
+        s = df[c].astype(str).str.strip().str.upper()
+        score = s.str.match(TICKER_LIKE).sum()
+        if score > best_score:
+            best_col, best_score = c, int(score)
+    return best_col if best_score >= 3 else None  # need at least a few matches
+
+def _guess_weight_col(df: pd.DataFrame) -> Optional[str]:
+    # prefer names containing 'weight'
+    for c in df.columns:
+        if "weight" in str(c).lower():
+            return c
+    # else pick numeric 0..100 with many non-nulls
+    best_col, best_score = None, -1
+    for c in df.columns:
+        s = pd.to_numeric(df[c], errors="coerce")
+        score = s.between(0, 100, inclusive="both").sum()
+        if score > best_score:
+            best_col, best_score = c, int(score)
+    return best_col if best_score >= 3 else None
+
+def _auto_header_excel(data: bytes) -> pd.DataFrame:
+    """Read Excel with header=None, then detect the header row and return df with proper columns."""
+    raw = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl", header=None)
+    # drop completely empty columns
+    raw = raw.dropna(axis=1, how="all")
+
+    # scan first 25 rows for a header row that mentions weight and ticker-ish label
+    for hdr in range(min(25, len(raw))):
+        vals = [str(x).strip() for x in list(raw.iloc[hdr].values)]
+        low = [v.lower() for v in vals]
+        has_weight = any("weight" in v or "%" == v for v in low)
+        has_id = any(any(k in v for k in ("ticker","symbol","identifier","security","name")) for v in low)
+        if has_weight and has_id:
+            cols = [str(x).strip() for x in raw.iloc[hdr].values]
+            df = raw.iloc[hdr+1:].copy()
+            df.columns = cols
+            df = df.dropna(how="all")
+            logging.info("Detected header row at index %d with columns: %s", hdr, cols)
+            return df
+
+    # fallback: use first non-empty row as header
+    for hdr in range(min(25, len(raw))):
+        if raw.iloc[hdr].notna().sum() >= 2:
+            cols = [str(x).strip() for x in raw.iloc[hdr].values]
+            df = raw.iloc[hdr+1:].copy()
+            df.columns = cols
+            df = df.dropna(how="all")
+            logging.info("Fallback header row at index %d with columns: %s", hdr, cols)
+            return df
+
+    # if all else fails, return as-is (will trigger content guessing)
+    logging.info("Could not detect header; returning raw frame")
+    return raw
+
 def read_holdings_bytes(data: bytes, fmt: str) -> pd.DataFrame:
-    # Try reading normally first
+    # 1) initial read
     if fmt == "csv":
         df = pd.read_csv(io.BytesIO(data))
+        if df.empty or all(str(c).startswith("Unnamed") for c in df.columns):
+            df = pd.read_csv(io.BytesIO(data), header=None)
     else:
-        # For SPDR Excel files, the actual table usually starts later (skiprows helps)
         try:
             df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl")
         except Exception:
-            df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl", skiprows=3)
-
-    # If everything came back as "Unnamed", try to re-read with skiprows
-    if all(str(c).startswith("Unnamed") for c in df.columns):
-        logging.info("Re-reading file with skiprows=3 to bypass header text")
-        if fmt == "csv":
-            df = pd.read_csv(io.BytesIO(data), skiprows=3)
-        else:
-            df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl", skiprows=3)
+            df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl", header=None)
+        # if columns are Unnamed or junky, try auto header detection
+        if df.empty or all(str(c).startswith("Unnamed") for c in df.columns):
+            df = _auto_header_excel(data)
 
     if df.empty:
         raise ValueError("Holdings file is empty")
 
-    # map columns
+    # 2) try name-based picking
     dfc = {str(c).strip(): c for c in df.columns}
     def _pick(cands):
         lower = {k.lower(): k for k in dfc}
@@ -220,29 +274,42 @@ def read_holdings_bytes(data: bytes, fmt: str) -> pd.DataFrame:
                 if cand in k.lower(): return dfc[k]
         return None
 
-    tcol = _pick(["ticker","symbol","holding ticker","asset","security","name","identifier"])
-    wcol = _pick(["weight","weight %","% weight","portfolio weight","percent","% of fund","%","weighting"])
+    tcol = _pick(["ticker","symbol","holding ticker","identifier","security","name"])
+    wcol = _pick(["weight","weight %","% weight","portfolio weight","percent","% of fund","%","weighting","weight (%)"])
+
+    # 3) if still missing, guess by content
+    if not tcol:
+        tcol = _guess_ticker_col(df)
+        if tcol:
+            logging.info("Guessed ticker column by content: %s", tcol)
+    if not wcol:
+        wcol = _guess_weight_col(df)
+        if wcol:
+            logging.info("Guessed weight column by content: %s", wcol)
 
     if not tcol or not wcol:
         raise ValueError(f"Could not detect Ticker/Weight columns. Columns: {list(df.columns)}")
 
-    # normalize weights
-    s = pd.to_numeric(
+    # 4) normalize weights to percent (0–100)
+    weights = pd.to_numeric(
         pd.Series(df[wcol].astype(str).str.replace("%","", regex=False).str.replace(",","")),
         errors="coerce"
     )
-    med = s.median(skipna=True)
+    med = weights.median(skipna=True)
     if pd.notna(med) and med <= 1.5:
-        s = s * 100.0
+        weights = weights * 100.0
 
     out = pd.DataFrame({
         "Ticker": df[tcol].astype(str).str.upper().str.strip().str.replace(r"[^A-Z0-9\.\-]", "", regex=True),
-        "WeightPct": s
+        "WeightPct": weights
     }).dropna(subset=["Ticker","WeightPct"])
 
     logging.info("Parsed holdings: %d rows (ticker col=%s, weight col=%s)", len(out), tcol, wcol)
     return out
 
+# =========================
+# 6) Compare weights
+# =========================
 def compute_adds(prev_df: pd.DataFrame, curr_df: pd.DataFrame) -> pd.DataFrame:
     prev = prev_df.groupby("Ticker", as_index=False)["WeightPct"].sum().rename(columns={"WeightPct": "PrevWeightPct"})
     curr = curr_df.groupby("Ticker", as_index=False)["WeightPct"].sum().rename(columns={"WeightPct": "CurrWeightPct"})
@@ -254,7 +321,7 @@ def compute_adds(prev_df: pd.DataFrame, curr_df: pd.DataFrame) -> pd.DataFrame:
     return adds[["Ticker","PrevWeightPct","CurrWeightPct","DeltaWeightPct"]]
 
 # =========================
-# 6) Orchestrate
+# 7) Orchestrate
 # =========================
 def top_adds_for_etfs(
     filters: List[str],
@@ -341,7 +408,7 @@ def top_adds_for_etfs(
         logging.info("No results. Check registry coverage or since-date snapshots.")
 
 # =========================
-# 7) Simple driver (runs when you execute this file)
+# 8) Simple driver (runs when you execute this file)
 # =========================
 if __name__ == "__main__":
     filters = ["ind_exchangetradedfund","geo_usa","ta_highlow52w_nh"]  # Finviz ETF filters
