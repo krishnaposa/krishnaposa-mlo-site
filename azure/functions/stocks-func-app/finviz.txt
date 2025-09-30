@@ -114,11 +114,11 @@ special_situations_master = [
 ]
 
 Consistent Gainers (Day + Week + Month + Fundamentals)
-f=ta_perf_dup,ta_perf_1wup,ta_perf_4wup,
-  an_recom_buybetter,
-  fa_eps5years_o15,fa_sales5years_o10,
-  fa_roe_o10,fa_debteq_u1,
-  geo_usa,sh_avgvol_o300
+Consistent_gainers = [ 'ta_perf_dup','ta_perf_1wup','ta_perf_4wup',
+  'an_recom_buybetter',
+  'fa_eps5years_o15','fa_sales5years_o10',
+  'fa_roe_o10','fa_debteq_u1',
+  'geo_usa','sh_avgvol_o300' ]
 
 python etf_top_adds.py \
   --prev ./prev_holdings \
