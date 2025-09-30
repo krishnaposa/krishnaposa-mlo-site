@@ -59,23 +59,25 @@ def _session() -> requests.Session:
     return s
 
 # ------------- Finviz discovery -------------
-def finviz_top_etfs(finviz_filters: List[str], top_n: int = 2, order: str = "price") -> List[str]:
+def finviz_top_etfs(finviz_filters: List[str], top_n: int = 2, order: str = "price",
+                    fallback: Optional[List[str]] = None) -> List[str]:
     logging.info("Finviz: filters=%s → top %d ETFs ...", ",".join(finviz_filters), top_n)
     out = []
     try:
         rows = Screener(filters=finviz_filters, table="Valuation", order=order)
-        time.sleep(3 + random.random()*3)
         for r in rows:
             t = str(r.get("Ticker", "")).upper().strip()
             if t and t not in out:
                 out.append(t)
             if len(out) >= top_n:
                 break
+        logging.info("Selected ETFs: %s", ", ".join(out))
+        return out
     except Exception as e:
-        logging.exception("Finviz discovery failed: %s", e)
-    logging.info("Selected ETFs: %s", ", ".join(out) if out else "<none>")
-    return out
+        logging.warning("Finviz discovery failed (%s). Using fallback: %s", e, fallback)
 
+    return fallback[:top_n] if fallback else []
+    
 # ------------- Issuer registry -------------
 @dataclass
 class HoldingSource:
