@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 For each Finviz ETF filter:
-  - take top 2 ETFs
+  - take top 2 ETFs (from Finviz; if that fails, fall back to a provided ETF list)
   - fetch current holdings (issuer)
   - fetch prior month-end from issuer (if supported) OR local snapshot cache
   - check top 5 current holdings for % weight increase vs prior
+
 Outputs:
   out_etf_increases/summary_by_filter.csv
   out_etf_increases/details/{FILTERKEY}_{ETF}.csv
@@ -15,6 +16,8 @@ import io
 import json
 import logging
 import re
+import time
+import random
 from dataclasses import dataclass
 from calendar import monthrange
 from datetime import date, timedelta
@@ -58,26 +61,54 @@ def _session() -> requests.Session:
     s.headers.update({"User-Agent": UA})
     return s
 
-# ------------- Finviz discovery -------------
-def finviz_top_etfs(finviz_filters: List[str], top_n: int = 2, order: str = "price",
-                    fallback: Optional[List[str]] = None) -> List[str]:
+# ------------- Finviz discovery (with retries, delay & fallback) -------------
+def finviz_top_etfs(
+    finviz_filters: List[str],
+    top_n: int = 2,
+    order: str = "price",
+    fallback: Optional[List[str]] = None,
+    retries: int = 2,
+    base_sleep: float = 3.0,
+) -> List[str]:
+    """
+    Try Finviz first (with polite delays). If it fails or returns empty, use fallback list.
+    """
     logging.info("Finviz: filters=%s → top %d ETFs ...", ",".join(finviz_filters), top_n)
-    out = []
-    try:
-        rows = Screener(filters=finviz_filters, table="Valuation", order=order)
-        for r in rows:
-            t = str(r.get("Ticker", "")).upper().strip()
-            if t and t not in out:
-                out.append(t)
-            if len(out) >= top_n:
-                break
-        logging.info("Selected ETFs: %s", ", ".join(out))
-        return out
-    except Exception as e:
-        logging.warning("Finviz discovery failed (%s). Using fallback: %s", e, fallback)
+    out: List[str] = []
 
-    return fallback[:top_n] if fallback else []
-    
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            rows = Screener(filters=finviz_filters, table="Valuation", order=order)
+            # polite delay to reduce 429s
+            time.sleep(base_sleep + random.random() * base_sleep)
+
+            for r in rows:
+                t = str(r.get("Ticker", "")).upper().strip()
+                if t and t not in out:
+                    out.append(t)
+                if len(out) >= top_n:
+                    break
+            if out:
+                logging.info("Selected ETFs: %s", ", ".join(out))
+                return out
+            else:
+                logging.warning("Finviz returned no tickers for filters=%s", finviz_filters)
+        except Exception as e:
+            last_err = e
+            logging.warning("Finviz discovery attempt %d/%d failed (%s).", attempt, retries, e)
+            time.sleep(base_sleep * attempt)
+
+    # Fallback if we got here
+    if fallback:
+        fb = [t.upper() for t in fallback][:top_n]
+        logging.info("Using fallback ETFs: %s", ", ".join(fb))
+        return fb
+
+    if last_err:
+        logging.warning("Finviz discovery ultimately failed: %s", last_err)
+    return []
+
 # ------------- Issuer registry -------------
 @dataclass
 class HoldingSource:
@@ -287,8 +318,12 @@ def analyze_etf(session: requests.Session, etf: str, src: HoldingSource, prior_a
     return adds
 
 # ------------- Orchestrator -------------
-def run_for_filters(filters_list: List[List[str]], order: str = "price",
+def run_for_filters(filters_list: List[Dict], order: str = "price",
                     top_etfs: int = 2, top_holdings: int = 5) -> None:
+    """
+    filters_list: list of dicts like:
+      {"filters": [<finviz filters>], "fallback": ["SPY","QQQ"], "label": "optional_key"}
+    """
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     DETAILS_DIR.mkdir(parents=True, exist_ok=True)
     SNAP_DIR.mkdir(parents=True, exist_ok=True)
@@ -297,9 +332,16 @@ def run_for_filters(filters_list: List[List[str]], order: str = "price",
 
     summary_rows: List[Dict] = []
 
-    for fset in filters_list:
-        key = "_".join(fset[:3]) if fset else "filter"
-        etfs = finviz_top_etfs(fset, top_n=top_etfs, order=order)
+    for item in filters_list:
+        filters = item.get("filters", [])
+        fallback = item.get("fallback", [])
+        label = item.get("label") or "_".join(filters[:3]) if filters else "filter"
+
+        etfs = finviz_top_etfs(filters, top_n=top_etfs, order=order, fallback=fallback)
+        if not etfs:
+            logging.info("No ETFs for %s (filters=%s). Skipping.", label, filters)
+            continue
+
         for etf in etfs:
             src = ISSUER_REGISTRY.get(etf)
             if not src:
@@ -316,14 +358,13 @@ def run_for_filters(filters_list: List[List[str]], order: str = "price",
                 continue
 
             adds["ETF"] = etf
-            adds["FilterKey"] = key
+            adds["FilterKey"] = label
             adds_sorted = adds.sort_values("DeltaWeightPct", ascending=False)
-            adds_sorted.to_csv(DETAILS_DIR / f"{key}_{etf}.csv", index=False)
+            adds_sorted.to_csv(DETAILS_DIR / f"{label}_{etf}.csv", index=False)
 
-            # keep only top 5 names in summary (already restricted)
             for _, r in adds_sorted.iterrows():
                 summary_rows.append({
-                    "FilterKey": key,
+                    "FilterKey": label,
                     "ETF": etf,
                     "Ticker": r["Ticker"],
                     "PrevWeightPct": float(r["PrevWeightPct"]),
@@ -342,13 +383,25 @@ def run_for_filters(filters_list: List[List[str]], order: str = "price",
 
 # ------------- Example run -------------
 if __name__ == "__main__":
-    # Add the Finviz ETF filters you care about:
+    # Each entry can specify a fallback ETF list used when Finviz rate-limits or returns empty.
     finviz_filters_list = [
-        ['geo_usa','ind_exchangetradedfund','ta_rsi_nob60','ta_sma20_cross50a','ta_sma200_pa','ta_sma50_pa','sh_avgvol_o200000','sh_price_o10'],          # new highs
-        ['ind_exchangetradedfund','ta_highlow20d_nh','ta_perf2_4wup','ta_sma20_pa','ta_sma200_pa','ta_sma50_pa','geo_usa','sh_avgvol_o200000','sh_price_o10'],              # 1-week up
-        ['geo_usa','ind_exchangetradedfund','ta_highlow52w_nh','sh_avgvol_o200000','ta_rsi_nob70'],  
-        ['ind_exchangetradedfund','sh_avgvol_o2000','ta_change_u1','ta_highlow20d_nh']
+        {
+            "label": "new_highs",
+            "filters": ['geo_usa','ind_exchangetradedfund','ta_highlow52w_nh','sh_avgvol_o200000','ta_rsi_nob70'],
+            "fallback": ['SPY','QQQ','XLK']
+        },
+        {
+            "label": "up_4w_uptrend",
+            "filters": ['ind_exchangetradedfund','ta_highlow20d_nh','ta_perf2_4wup','ta_sma20_pa','ta_sma200_pa','ta_sma50_pa','geo_usa','sh_avgvol_o200000','sh_price_o10'],
+            "fallback": ['VOO','IWM']
+        },
+        {
+            "label": "momentum_change",
+            "filters": ['ind_exchangetradedfund','sh_avgvol_o2000','ta_change_u1','ta_highlow20d_nh'],
+            "fallback": ['XLF','XLE']
+        }
     ]
+
     run_for_filters(
         filters_list=finviz_filters_list,
         order="price",
