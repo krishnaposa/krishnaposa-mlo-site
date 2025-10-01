@@ -106,19 +106,40 @@ def fetch_prices(tickers: List[str]) -> dict[str, pd.DataFrame]:
     return frames
 
 
-# ---------------- Scoring ----------------
+# ---------------- Trend-Follow Scoring ----------------
 def score_row(r):
-    logger.debug(f"Scoring row for {r['ticker']}")
-    momentum = (
-        r["ret_20_z"] + r["ret_60_z"]
-        + (1.0 if r["sma20"] > r["sma50"] > r["sma200"] else 0.0)
-        + (1.0 if r["macd_hist"] > 0 else 0.0)
+    """
+    Trend-following score:
+    - Heavier on 60-120d momentum & MA structure
+    - Rewards proximity to highs & breakouts
+    - Softer risk penalties so strong trends aren't over-penalized
+    """
+    logger.debug(f"Scoring row (trend-follow) for {r['ticker']}")
+
+    momentum_trend = (
+        0.50 * r.get("ret_20_z", 0.0) +
+        1.00 * r.get("ret_60_z", 0.0) +
+        1.20 * r.get("ret_120_z", 0.0) +
+        1.00 * (1.0 if (r.get("sma20", 0) > r.get("sma50", 0) > r.get("sma200", 0)) else 0.0) +
+        0.80 * r.get("close_above_sma50", 0.0) +
+        0.50 * r.get("close_above_sma200", 0.0) +
+        0.60 * (1.0 if r.get("macd_hist", 0.0) > 0 else 0.0) +
+        0.80 * (1.0 if r.get("dist_52w_high", -1.0) > -0.05 else 0.0) +  # within 5% of 52w high
+        0.50 * r.get("new_55d_high", 0.0) +
+        0.50 * max(0.0, r.get("sma50_slope", 0.0)) +
+        0.50 * max(0.0, r.get("sma200_slope", 0.0))
     )
-    risk_penalty = (r["vol20"] * 0.5) + abs(min(0.0, r["mdd_60"])) * 1.5
-    liq = 1.0 if r["adv_usd_20"] >= MIN_DOLLAR_VOL else -1.0
-    event_penalty = 1.0 if r["earnings_within_7d"] else 0.0
-    score = momentum + liq - risk_penalty - event_penalty
-    logger.debug(f"Score for {r['ticker']}: {score:.2f}")
+
+    liquidity = 1.0 if r.get("adv_usd_20", 0.0) >= MIN_DOLLAR_VOL else -1.0
+
+    vol20 = r.get("vol20", 0.0)
+    mdd_60 = r.get("mdd_60", 0.0)
+    risk_penalty = 0.30 * vol20 + 1.20 * abs(min(0.0, mdd_60))
+
+    event_penalty = 1.0 if r.get("earnings_within_7d", False) else 0.0
+
+    score = momentum_trend + liquidity - risk_penalty - event_penalty
+    logger.debug(f"TF score for {r['ticker']}: {score:.3f}")
     return score
 
 
@@ -177,8 +198,8 @@ def main():
         logger.error("No data downloaded. Exiting.")
         return
 
-    logger.info("Fetching SPY benchmark data")
-    _ = yf.download("SPY", period="400d", auto_adjust=True, progress=False)["Close"].pct_change()  # kept if needed later
+    logger.info("Fetching SPY benchmark data (kept for future beta calc)")
+    _ = yf.download("SPY", period="400d", auto_adjust=True, progress=False)["Close"].pct_change()
 
     rows = []
 
@@ -187,46 +208,72 @@ def main():
         try:
             d = df.copy()
             d["CloseAdj"] = d["Adj Close"]
+
+            # --- returns ---
             d["ret"] = d["CloseAdj"].pct_change()
             d["ret_5d"] = d["CloseAdj"].pct_change(5)
             d["ret_20"] = d["CloseAdj"].pct_change(20)
             d["ret_21d"] = d["CloseAdj"].pct_change(21)  # ~1 trading month
             d["ret_60"] = d["CloseAdj"].pct_change(60)
+            d["ret_120"] = d["CloseAdj"].pct_change(120)
 
+            # --- moving averages & structure ---
             d["sma20"] = d["CloseAdj"].rolling(20).mean()
             d["sma50"] = d["CloseAdj"].rolling(50).mean()
             d["sma200"] = d["CloseAdj"].rolling(200).mean()
 
+            # slopes (pct change over windows; avoid inf)
+            d["sma50_slope"] = (d["sma50"].diff(5) / d["sma50"].shift(5)).replace([np.inf, -np.inf], np.nan)
+            d["sma200_slope"] = (d["sma200"].diff(10) / d["sma200"].shift(10)).replace([np.inf, -np.inf], np.nan)
+
+            # position vs MAs
+            d["close_above_sma50"] = (d["CloseAdj"] > d["sma50"]).astype(float)
+            d["close_above_sma200"] = (d["CloseAdj"] > d["sma200"]).astype(float)
+
+            # --- oscillators ---
             d["rsi14"] = rsi(d["CloseAdj"])
             _, _, hist = macd(d["CloseAdj"])
             d["macd_hist"] = hist
 
+            # --- risk/vol ---
             d["tr"] = true_range(d)
             d["atr14"] = d["tr"].rolling(14).mean()
             d["vol20"] = realized_vol(d["ret"], 20)
             d["mdd_60"] = (d["CloseAdj"] / d["CloseAdj"].cummax() - 1.0).rolling(60).min()
 
+            # --- liquidity ---
             d["adv_usd_20"] = d["Volume"].rolling(20).mean() * d["CloseAdj"].rolling(20).mean()
-            d["dist_52w_high"] = d["CloseAdj"] / d["CloseAdj"].rolling(252).max() - 1.0
 
-            # z-scores for momentum windows
-            for col in ["ret_20", "ret_60"]:
-                mu = d[col].rolling(120).mean()
-                sd = d[col].rolling(120).std()
+            # --- highs/breakouts ---
+            d["hi_252"] = d["CloseAdj"].rolling(252, min_periods=60).max()
+            d["dist_52w_high"] = d["CloseAdj"] / d["hi_252"] - 1.0
+            d["hi_55"] = d["CloseAdj"].rolling(55, min_periods=30).max()
+            d["new_55d_high"] = (d["CloseAdj"] >= d["hi_55"]).astype(float)
+
+            # --- momentum z-scores (use 180d window for stability) ---
+            for col in ["ret_20", "ret_60", "ret_120"]:
+                mu = d[col].rolling(180).mean()
+                sd = d[col].rolling(180).std()
                 d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
 
             # ✅ Safety check
-            if d.dropna().empty:
+            d_valid = d.dropna(subset=["CloseAdj", "sma50", "sma200"])
+            if d_valid.empty:
                 logger.warning(f"No valid rows after calculations for {t}, skipping")
                 continue
 
             latest = d.iloc[-1].to_dict()
             latest["ticker"] = t
-            latest["earnings_within_7d"] = False  # placeholder
+            latest["earnings_within_7d"] = False  # placeholder for now
 
-            # add 5d / 21d returns to latest snapshot (raw %)
-            latest["ret_5d"] = latest.get("ret_5d", np.nan)
-            latest["ret_21d"] = latest.get("ret_21d", np.nan)
+            # carry keys that score_row expects (get() already safe, but explicit helps)
+            for k in [
+                "ret_20_z","ret_60_z","ret_120_z","sma20","sma50","sma200","macd_hist",
+                "close_above_sma50","close_above_sma200","dist_52w_high","new_55d_high",
+                "sma50_slope","sma200_slope","adv_usd_20","vol20","mdd_60","rsi14",
+                "ret_5d","ret_21d"
+            ]:
+                latest[k] = latest.get(k, np.nan)
 
             rows.append(latest)
             logger.info(f"Finished indicators for {t}")
@@ -241,29 +288,30 @@ def main():
     logger.info("Building output DataFrame")
     out = pd.DataFrame(rows)
 
-    # ---------- Momentum/Risk Top Picks ----------
+    # ---------- Trend-Following Score & Buy Filter ----------
     out["score"] = out.apply(score_row, axis=1)
-    out["buy_flag"] = (out["score"] > 1.0) & (out["rsi14"].between(40, 75))
+    out["buy_flag"] = (
+        (out["score"] > 1.5) &
+        (out["rsi14"].between(45, 80)) &
+        (out["close_above_sma50"] == 1.0) &
+        (out["close_above_sma200"] == 1.0) &
+        (out["dist_52w_high"] > -0.10) &   # within 10% of 52w high
+        (~out.get("earnings_within_7d", False))
+    )
 
-    # ---------- Relative Strength Leaders (5d & 21d) ----------
-    # Ranks (lower rank number = stronger)
-    out["rank_5d"] = out["ret_5d"].rank(ascending=False, method="min")
-    out["rank_21d"] = out["ret_21d"].rank(ascending=False, method="min")
-
-    # Z-scores so raw % returns matter (handle zero/NaN std safely)
+    # ---------- Relative Strength Leaders (5d & 21d, % matters) ----------
     def zscore(s: pd.Series) -> pd.Series:
         mu, sd = s.mean(), s.std()
         if pd.isna(sd) or sd == 0:
             return pd.Series(0.0, index=s.index)
         return (s - mu) / sd
 
-    out["z_5d"] = zscore(out["ret_5d"]).fillna(0)
-    out["z_21d"] = zscore(out["ret_21d"]).fillna(0)
+    out["z_5d"] = zscore(out["ret_5d"]).fillna(0.0)
+    out["z_21d"] = zscore(out["ret_21d"]).fillna(0.0)
 
-    # Combined strength score
-    out["strength_score"] = 0.5 * out["z_5d"] + 0.5 * out["z_21d"]
+    # Trend-follow tilt: 21d (0.7) over 5d (0.3)
+    out["strength_score"] = 0.3 * out["z_5d"] + 0.7 * out["z_21d"]
 
-    # Leaders = positive in both windows
     leaders = out[(out["ret_5d"] > 0) & (out["ret_21d"] > 0)].copy()
     leaders = leaders.sort_values("strength_score", ascending=False)
 
@@ -277,11 +325,15 @@ def main():
     _append_and_write_parquet(out, OUT_DIR)
 
     # ---------- Logs ----------
-    logger.info("Top picks today (momentum/risk):\n" + str(
-        out[out["buy_flag"]][["ticker", "score"]].sort_values("score", ascending=False).head(10).reset_index(drop=True)
+    logger.info("Top picks today (trend-follow score):\n" + str(
+        out[out["buy_flag"]][["ticker", "score"]]
+        .sort_values("score", ascending=False)
+        .head(12)
+        .reset_index(drop=True)
+        .round({"score": 4})
     ))
 
-    logger.info("Leaders by 5d & 21d performance (both positive):\n" + str(
+    logger.info("Leaders by 5d & 21d performance (both positive, 21d-weighted):\n" + str(
         leaders[["ticker", "ret_5d", "ret_21d", "strength_score"]]
         .head(15)
         .reset_index(drop=True)
