@@ -157,38 +157,43 @@ def main():
     spy = yf.download("SPY", period="400d", auto_adjust=True, progress=False)["Close"].pct_change()
     rows = []
 
-    for t, df in frames.items():
-        logger.info(f"Processing {t}")
-        try:
-            d = df.copy()
-            d["CloseAdj"] = d["Adj Close"]
-            d["ret"] = d["CloseAdj"].pct_change()
-            d["ret_20"] = d["CloseAdj"].pct_change(20)
-            d["ret_60"] = d["CloseAdj"].pct_change(60)
-            d["sma20"] = d["CloseAdj"].rolling(20).mean()
-            d["sma50"] = d["CloseAdj"].rolling(50).mean()
-            d["sma200"] = d["CloseAdj"].rolling(200).mean()
-            d["rsi14"] = rsi(d["CloseAdj"])
-            _, _, hist = macd(d["CloseAdj"])
-            d["macd_hist"] = hist
-            d["tr"] = true_range(d)
-            d["atr14"] = d["tr"].rolling(14).mean()
-            d["vol20"] = realized_vol(d["ret"], 20)
-            d["mdd_60"] = (d["CloseAdj"] / d["CloseAdj"].cummax() - 1.0).rolling(60).min()
-            d["adv_usd_20"] = d["Volume"].rolling(20).mean() * d["CloseAdj"].rolling(20).mean()
-            d["dist_52w_high"] = d["CloseAdj"] / d["CloseAdj"].rolling(252).max() - 1.0
-            d["ret_20_z"] = (d["ret_20"] - d["ret_20"].mean()) / d["ret_20"].std()
-            d["ret_60_z"] = (d["ret_60"] - d["ret_60"].mean()) / d["ret_60"].std()
+for t, df in frames.items():
+    logger.info(f"Processing {t}")
+    try:
+        d = df.copy()
+        d["CloseAdj"] = d["Adj Close"]
+        d["ret"] = d["CloseAdj"].pct_change()
+        d["ret_20"] = d["CloseAdj"].pct_change(20)
+        d["ret_60"] = d["CloseAdj"].pct_change(60)
+        d["sma20"] = d["CloseAdj"].rolling(20).mean()
+        d["sma50"] = d["CloseAdj"].rolling(50).mean()
+        d["sma200"] = d["CloseAdj"].rolling(200).mean()
+        d["rsi14"] = rsi(d["CloseAdj"])
+        _, _, hist = macd(d["CloseAdj"])
+        d["macd_hist"] = hist
+        d["tr"] = true_range(d)
+        d["atr14"] = d["tr"].rolling(14).mean()
+        d["vol20"] = realized_vol(d["ret"], 20)
+        d["mdd_60"] = (d["CloseAdj"] / d["CloseAdj"].cummax() - 1.0).rolling(60).min()
+        d["adv_usd_20"] = d["Volume"].rolling(20).mean() * d["CloseAdj"].rolling(20).mean()
+        d["dist_52w_high"] = d["CloseAdj"] / d["CloseAdj"].rolling(252).max() - 1.0
+        d["ret_20_z"] = (d["ret_20"] - d["ret_20"].mean()) / d["ret_20"].std()
+        d["ret_60_z"] = (d["ret_60"] - d["ret_60"].mean()) / d["ret_60"].std()
 
-            latest = d.iloc[-1].to_dict()
-            latest["ticker"] = t
-            latest["earnings_within_7d"] = False  # placeholder
-            rows.append(latest)
-            logger.info(f"Finished indicators for {t}")
+        # ✅ Safety check
+        if d.empty:
+            logger.warning(f"No valid rows after calculations for {t}, skipping")
+            continue
 
-        except Exception as e:
-            logger.exception(f"Error processing {t}: {e}")
+        latest = d.iloc[-1].to_dict()
+        latest["ticker"] = t
+        latest["earnings_within_7d"] = False  # placeholder
+        rows.append(latest)
+        logger.info(f"Finished indicators for {t}")
 
+    except Exception as e:
+        logger.exception(f"Error processing {t}: {e}")
+    
     if not rows:
         logger.error("No rows generated. Exiting.")
         return
