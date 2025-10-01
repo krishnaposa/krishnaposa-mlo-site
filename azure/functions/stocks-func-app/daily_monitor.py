@@ -211,7 +211,9 @@ for t, df in frames.items():
     # Write rolling parquet history in two flavors
     _append_and_write_parquet(out, OUT_DIR)
 
-    logger.info("Top picks today:\n" + str(out[out["buy_flag"]][["ticker", "score"]].head(10)))
+    logger.info("Top picks today:\n" + str(
+      out[out["buy_flag"]][["ticker", "score"]].head(10).reset_index(drop=True)
+    ))
     logger.info("=== Job finished ===")
 
 
