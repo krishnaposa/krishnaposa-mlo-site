@@ -16,7 +16,31 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------------- Config ----------------
-TICKERS: List[str] = ["META","TSM","ORCL","WMT","BABA","ABBV","PLTR","ASML","GE","UNH", "SAP", "IBM", "AMD", "AZN", "NVO", "AXP", "RTX", "APP", "MU", "UBER", "NOW", "PDD", "ANET", "SHOP", "LRCX", "BKNG", "BLK", "AMAT", "GEV", "TJX", "ARM", "ISRG", "APH", "KLAC", "SPOT", "ADBE", "ETN", "COF", "PANW", "BYDDF", "CRWD", "KKR", "MELI", "SE", "CEG", "HOOD", "VRTX", "BMY", "CDNS", "MCK", "ICE", "DELL", "MSTR", "SNPS", "RBLX", "RACE", "RCL", "MCO", "COIN", "HWM", "AJG", "SNOW", "NET", "EMR", "TDG", "MRVL", "VST", "JCI", "FI", "FTNT", "ZTS", "PYPL", "REGN", "WDAY", "PWR", "COR", "ALNY", "CRWV", "CPNG", "LHX", "STX", "DDOG", "ARES", "IDXX", "TCOM", "ZS", "VEEV", "CVNA", "PMRTY", "XYZ", "MPWR", "FANG", "TEAM", "CCL", "EBAY", "RMD", "RDDT", "HEI", "TRGP", "GFI", "FICO", "TME", "CSGP", "EQT", "MCHP", "SYM", "SOFI", "ALAB", "NRG", "SMCI", "INSM", "CRCL", "UAL", "FIX", "ROL", "PSTG", "EXPE", "NBIS", "SYF", "MDB", "VLTO", "LI", "EXE", "LPLA", "DXCM", "HUBS", "AFRM", "CYBR", "LDOS", "BNTX", "WSM", "GRAB", "FSLR", "ESLT", "RKLB", "TTD", "PINS", "XPEV", "TER", "IOT", "IONQ", "PODD", "SATS", "DG", "TYL", "TOST", "BE", "NTNX", "RPRX", "LULU", "ASTS", "DKNG", "GMAB", "GFS", "GDDY", "TRMB", "CTRA", "NIO", "COHR", "THC", "FTAI", "AVAV", "OKLO", "FTI", "TKO", "RBRK", "TWLO", "CHWY", "OKTA", "KTOS", "DOCU", "DECK", "IFF", "SMMT", "ROKU", "XPO", "TEM", "CELH", "SN", "SNAP", "DUOL", "NBIX", "DOCS", "ONON", "DOC", "VNOM", "HIMS", "CRS", "IREN", "BAH", "MANH", "LSRCY", "ASND", "GLXY", "RNR", "DRS", "PAYC", "NXT", "EXEL", "BILI", "SFM", "HAS", "BMRN", "RGTI", "MNDY", "LSCC", "ENSG", "PEGA", "PSN", "CORT", "NICE", "KVYO", "BLSH", "MKSI", "HALO", "PLNT", "BROS", "CVLT", "OLLI", "MHK", "SAIA","IESC", "PONY", "ELF", "CAVA", "ROAD", "FOUR", "MARA", "APLD", "ONTO", "US", "OPEN", "SOUN", "ACHR", "PATH", "RNA", "SANM", "LEGN", "S", "CRSP", "LEU", "EAT", "TGTX", "UPST", "BILL", "BTSG", "PI", "SMR", "ATAT", "ENPH", "PCVX", "ZETA", "STNE", "CALM", "YOU", "TDS", "TMDX", "FHI", "QUBT", "LMND", "AGX", "ADMA", "DOCN", "SLNO", "VKTX", "WRD", "ACLS", "PLMR", "DAVE", "SEZL", "SGRY", "KNTK", "AMSC", "BBAI", "IBRX", "UPWK", "AI", "TVTX", "IRON", "RXRX", "TRMD", "SRPT", "DXPE", "LQDA", "DAC", "NNE", "RVLV", "SDGR", "GBX", "JANX", "ROOT", "EH", "LUNR", "EVEX", "NKTR", "TRVI", "GCT", "LMB", "HLF", "FTRE", "FVRR", "PHAT", "EVER", "AOSL", "URGN", "SERV", "SRFM", "DPRO", "ELDN", "ATYR" ]
+TICKERS: List[str] = [
+    "META","TSM","ORCL","WMT","BABA","ABBV","PLTR","ASML","GE","UNH","SAP","IBM","AMD","AZN",
+    "NVO","AXP","RTX","APP","MU","UBER","NOW","PDD","ANET","SHOP","LRCX","BKNG","BLK","AMAT",
+    "GEV","TJX","ARM","ISRG","APH","KLAC","SPOT","ADBE","ETN","COF","PANW","BYDDF","CRWD","KKR",
+    "MELI","SE","CEG","HOOD","VRTX","BMY","CDNS","MCK","ICE","DELL","MSTR","SNPS","RBLX","RACE",
+    "RCL","MCO","COIN","HWM","AJG","SNOW","NET","EMR","TDG","MRVL","VST","JCI","FI","FTNT","ZTS",
+    "PYPL","REGN","WDAY","PWR","COR","ALNY","CRWV","CPNG","LHX","STX","DDOG","ARES","IDXX","TCOM",
+    "ZS","VEEV","CVNA","PMRTY","XYZ","MPWR","FANG","TEAM","CCL","EBAY","RMD","RDDT","HEI","TRGP",
+    "GFI","FICO","TME","CSGP","EQT","MCHP","SYM","SOFI","ALAB","NRG","SMCI","INSM","CRCL","UAL",
+    "FIX","ROL","PSTG","EXPE","NBIS","SYF","MDB","VLTO","LI","EXE","LPLA","DXCM","HUBS","AFRM",
+    "CYBR","LDOS","BNTX","WSM","GRAB","FSLR","ESLT","RKLB","TTD","PINS","XPEV","TER","IOT","IONQ",
+    "PODD","SATS","DG","TYL","TOST","BE","NTNX","RPRX","LULU","ASTS","DKNG","GMAB","GFS","GDDY",
+    "TRMB","CTRA","NIO","COHR","THC","FTAI","AVAV","OKLO","FTI","TKO","RBRK","TWLO","CHWY","OKTA",
+    "KTOS","DOCU","DECK","IFF","SMMT","ROKU","XPO","TEM","CELH","SN","SNAP","DUOL","NBIX","DOCS",
+    "ONON","DOC","VNOM","HIMS","CRS","IREN","BAH","MANH","LSRCY","ASND","GLXY","RNR","DRS","PAYC",
+    "NXT","EXEL","BILI","SFM","HAS","BMRN","RGTI","MNDY","LSCC","ENSG","PEGA","PSN","CORT","NICE",
+    "KVYO","BLSH","MKSI","HALO","PLNT","BROS","CVLT","OLLI","MHK","SAIA","IESC","PONY","ELF","CAVA",
+    "ROAD","FOUR","MARA","APLD","ONTO","US","OPEN","SOUN","ACHR","PATH","RNA","SANM","LEGN","S",
+    "CRSP","LEU","EAT","TGTX","UPST","BILL","BTSG","PI","SMR","ATAT","ENPH","PCVX","ZETA","STNE",
+    "CALM","YOU","TDS","TMDX","FHI","QUBT","LMND","AGX","ADMA","DOCN","SLNO","VKTX","WRD","ACLS",
+    "PLMR","DAVE","SEZL","SGRY","KNTK","AMSC","BBAI","IBRX","UPWK","AI","TVTX","IRON","RXRX","TRMD",
+    "SRPT","DXPE","LQDA","DAC","NNE","RVLV","SDGR","GBX","JANX","ROOT","EH","LUNR","EVEX","NKTR",
+    "TRVI","GCT","LMB","HLF","FTRE","FVRR","PHAT","EVER","AOSL","URGN","SERV","SRFM","DPRO","ELDN",
+    "ATYR"
+]
 LOOKBACK_CAL_DAYS = 400
 OUT_DIR = "daily_stock_monitor"
 MIN_DOLLAR_VOL = 1_000_000
@@ -154,55 +178,96 @@ def main():
         return
 
     logger.info("Fetching SPY benchmark data")
-    spy = yf.download("SPY", period="400d", auto_adjust=True, progress=False)["Close"].pct_change()
+    _ = yf.download("SPY", period="400d", auto_adjust=True, progress=False)["Close"].pct_change()  # kept if needed later
+
     rows = []
 
-for t, df in frames.items():
-    logger.info(f"Processing {t}")
-    try:
-        d = df.copy()
-        d["CloseAdj"] = d["Adj Close"]
-        d["ret"] = d["CloseAdj"].pct_change()
-        d["ret_20"] = d["CloseAdj"].pct_change(20)
-        d["ret_60"] = d["CloseAdj"].pct_change(60)
-        d["sma20"] = d["CloseAdj"].rolling(20).mean()
-        d["sma50"] = d["CloseAdj"].rolling(50).mean()
-        d["sma200"] = d["CloseAdj"].rolling(200).mean()
-        d["rsi14"] = rsi(d["CloseAdj"])
-        _, _, hist = macd(d["CloseAdj"])
-        d["macd_hist"] = hist
-        d["tr"] = true_range(d)
-        d["atr14"] = d["tr"].rolling(14).mean()
-        d["vol20"] = realized_vol(d["ret"], 20)
-        d["mdd_60"] = (d["CloseAdj"] / d["CloseAdj"].cummax() - 1.0).rolling(60).min()
-        d["adv_usd_20"] = d["Volume"].rolling(20).mean() * d["CloseAdj"].rolling(20).mean()
-        d["dist_52w_high"] = d["CloseAdj"] / d["CloseAdj"].rolling(252).max() - 1.0
-        d["ret_20_z"] = (d["ret_20"] - d["ret_20"].mean()) / d["ret_20"].std()
-        d["ret_60_z"] = (d["ret_60"] - d["ret_60"].mean()) / d["ret_60"].std()
+    for t, df in frames.items():
+        logger.info(f"Processing {t}")
+        try:
+            d = df.copy()
+            d["CloseAdj"] = d["Adj Close"]
+            d["ret"] = d["CloseAdj"].pct_change()
+            d["ret_5d"] = d["CloseAdj"].pct_change(5)
+            d["ret_20"] = d["CloseAdj"].pct_change(20)
+            d["ret_21d"] = d["CloseAdj"].pct_change(21)  # ~1 trading month
+            d["ret_60"] = d["CloseAdj"].pct_change(60)
 
-        # ✅ Safety check
-        if d.empty:
-            logger.warning(f"No valid rows after calculations for {t}, skipping")
-            continue
+            d["sma20"] = d["CloseAdj"].rolling(20).mean()
+            d["sma50"] = d["CloseAdj"].rolling(50).mean()
+            d["sma200"] = d["CloseAdj"].rolling(200).mean()
 
-        latest = d.iloc[-1].to_dict()
-        latest["ticker"] = t
-        latest["earnings_within_7d"] = False  # placeholder
-        rows.append(latest)
-        logger.info(f"Finished indicators for {t}")
+            d["rsi14"] = rsi(d["CloseAdj"])
+            _, _, hist = macd(d["CloseAdj"])
+            d["macd_hist"] = hist
 
-    except Exception as e:
-        logger.exception(f"Error processing {t}: {e}")
-    
+            d["tr"] = true_range(d)
+            d["atr14"] = d["tr"].rolling(14).mean()
+            d["vol20"] = realized_vol(d["ret"], 20)
+            d["mdd_60"] = (d["CloseAdj"] / d["CloseAdj"].cummax() - 1.0).rolling(60).min()
+
+            d["adv_usd_20"] = d["Volume"].rolling(20).mean() * d["CloseAdj"].rolling(20).mean()
+            d["dist_52w_high"] = d["CloseAdj"] / d["CloseAdj"].rolling(252).max() - 1.0
+
+            # z-scores for momentum windows
+            for col in ["ret_20", "ret_60"]:
+                mu = d[col].rolling(120).mean()
+                sd = d[col].rolling(120).std()
+                d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
+
+            # ✅ Safety check
+            if d.dropna().empty:
+                logger.warning(f"No valid rows after calculations for {t}, skipping")
+                continue
+
+            latest = d.iloc[-1].to_dict()
+            latest["ticker"] = t
+            latest["earnings_within_7d"] = False  # placeholder
+
+            # add 5d / 21d returns to latest snapshot (raw %)
+            latest["ret_5d"] = latest.get("ret_5d", np.nan)
+            latest["ret_21d"] = latest.get("ret_21d", np.nan)
+
+            rows.append(latest)
+            logger.info(f"Finished indicators for {t}")
+
+        except Exception as e:
+            logger.exception(f"Error processing {t}: {e}")
+
     if not rows:
         logger.error("No rows generated. Exiting.")
         return
 
     logger.info("Building output DataFrame")
     out = pd.DataFrame(rows)
+
+    # ---------- Momentum/Risk Top Picks ----------
     out["score"] = out.apply(score_row, axis=1)
     out["buy_flag"] = (out["score"] > 1.0) & (out["rsi14"].between(40, 75))
 
+    # ---------- Relative Strength Leaders (5d & 21d) ----------
+    # Ranks (lower rank number = stronger)
+    out["rank_5d"] = out["ret_5d"].rank(ascending=False, method="min")
+    out["rank_21d"] = out["ret_21d"].rank(ascending=False, method="min")
+
+    # Z-scores so raw % returns matter (handle zero/NaN std safely)
+    def zscore(s: pd.Series) -> pd.Series:
+        mu, sd = s.mean(), s.std()
+        if pd.isna(sd) or sd == 0:
+            return pd.Series(0.0, index=s.index)
+        return (s - mu) / sd
+
+    out["z_5d"] = zscore(out["ret_5d"]).fillna(0)
+    out["z_21d"] = zscore(out["ret_21d"]).fillna(0)
+
+    # Combined strength score
+    out["strength_score"] = 0.5 * out["z_5d"] + 0.5 * out["z_21d"]
+
+    # Leaders = positive in both windows
+    leaders = out[(out["ret_5d"] > 0) & (out["ret_21d"] > 0)].copy()
+    leaders = leaders.sort_values("strength_score", ascending=False)
+
+    # ---------- Save snapshot ----------
     stamp = TODAY.strftime("%Y-%m-%d")
     csv_path = os.path.join(OUT_DIR, f"daily_snapshot_{stamp}.csv")
     out.to_csv(csv_path, index=False)
@@ -211,9 +276,18 @@ for t, df in frames.items():
     # Write rolling parquet history in two flavors
     _append_and_write_parquet(out, OUT_DIR)
 
-    logger.info("Top picks today:\n" + str(
-      out[out["buy_flag"]][["ticker", "score"]].head(10).reset_index(drop=True)
+    # ---------- Logs ----------
+    logger.info("Top picks today (momentum/risk):\n" + str(
+        out[out["buy_flag"]][["ticker", "score"]].sort_values("score", ascending=False).head(10).reset_index(drop=True)
     ))
+
+    logger.info("Leaders by 5d & 21d performance (both positive):\n" + str(
+        leaders[["ticker", "ret_5d", "ret_21d", "strength_score"]]
+        .head(15)
+        .reset_index(drop=True)
+        .round({"ret_5d": 4, "ret_21d": 4, "strength_score": 4})
+    ))
+
     logger.info("=== Job finished ===")
 
 
