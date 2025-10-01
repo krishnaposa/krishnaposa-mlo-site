@@ -2,6 +2,8 @@ import os, json, sys, subprocess, logging, pathlib, importlib.util, datetime, sh
 import azure.functions as func
 from openai import AzureOpenAI
 from azure.storage.blob import BlobServiceClient, ContentSettings
+from typing import List
+import daily_monitor  # <--- our new module
 
 app = func.FunctionApp()
 
@@ -22,6 +24,10 @@ AZURE_OPENAI_ENDPOINT   = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_KEY    = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 AZURE_OPENAI_API_VER    = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
+
+SIGNALS_CONTAINER = os.getenv("SIGNALS_CONTAINER", "signals")
+TICKERS_CSV = os.getenv("TICKERS_CSV", "").strip()         # optional comma-separated override
+MIN_DOLLAR_VOL = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
 
 # Blob client (uses AzureWebJobsStorage)
 _BLOB_SVC = BlobServiceClient.from_connection_string(os.getenv("AzureWebJobsStorage"))
@@ -233,6 +239,109 @@ def _score_with_azure_openai(tickers, strategy: str, horizon_text: str) -> dict:
     )
     return json.loads(resp.choices[0].message.content)
 
+def _signals_container():
+    cont = _BLOB_SVC.get_container_client(SIGNALS_CONTAINER)
+    try:
+        cont.create_container()
+    except Exception:
+        pass
+    return cont
+
+def _upload_bytes(container_client, blob_name: str, data: bytes, content_type: str):
+    container_client.upload_blob(
+        blob_name, data=data, overwrite=True,
+        content_settings=ContentSettings(content_type=content_type)
+    )
+    logging.info(f"[upload] wrote {container_client.container_name}/{blob_name} ({len(data)} bytes)")
+
+# Your in-code default list (same one you’ve been using)
+LIST_TICKERS: List[str] = [
+    "META","TSM","ORCL","WMT","BABA","ABBV","PLTR","ASML","GE","UNH","SAP","IBM","AMD","AZN",
+    "NVO","AXP","RTX","APP","MU","UBER","NOW","PDD","ANET","SHOP","LRCX","BKNG","BLK","AMAT",
+    "GEV","TJX","ARM","ISRG","APH","KLAC","SPOT","ADBE","ETN","COF","PANW","BYDDF","CRWD","KKR",
+    "MELI","SE","CEG","HOOD","VRTX","BMY","CDNS","MCK","ICE","DELL","MSTR","SNPS","RBLX","RACE",
+    "RCL","MCO","COIN","HWM","AJG","SNOW","NET","EMR","TDG","MRVL","VST","JCI","FI","FTNT","ZTS",
+    "PYPL","REGN","WDAY","PWR","COR","ALNY","CRWV","CPNG","LHX","STX","DDOG","ARES","IDXX","TCOM",
+    "ZS","VEEV","CVNA","PMRTY","XYZ","MPWR","FANG","TEAM","CCL","EBAY","RMD","RDDT","HEI","TRGP",
+    "GFI","FICO","TME","CSGP","EQT","MCHP","SYM","SOFI","ALAB","NRG","SMCI","INSM","CRCL","UAL",
+    "FIX","ROL","PSTG","EXPE","NBIS","SYF","MDB","VLTO","LI","EXE","LPLA","DXCM","HUBS","AFRM",
+    "CYBR","LDOS","BNTX","WSM","GRAB","FSLR","ESLT","RKLB","TTD","PINS","XPEV","TER","IOT","IONQ",
+    "PODD","SATS","DG","TYL","TOST","BE","NTNX","RPRX","LULU","ASTS","DKNG","GMAB","GFS","GDDY",
+    "TRMB","CTRA","NIO","COHR","THC","FTAI","AVAV","OKLO","FTI","TKO","RBRK","TWLO","CHWY","OKTA",
+    "KTOS","DOCU","DECK","IFF","SMMT","ROKU","XPO","TEM","CELH","SN","SNAP","DUOL","NBIX","DOCS",
+    "ONON","DOC","VNOM","HIMS","CRS","IREN","BAH","MANH","LSRCY","ASND","GLXY","RNR","DRS","PAYC",
+    "NXT","EXEL","BILI","SFM","HAS","BMRN","RGTI","MNDY","LSCC","ENSG","PEGA","PSN","CORT","NICE",
+    "KVYO","BLSH","MKSI","HALO","PLNT","BROS","CVLT","OLLI","MHK","SAIA","IESC","PONY","ELF","CAVA",
+    "ROAD","FOUR","MARA","APLD","ONTO","US","OPEN","SOUN","ACHR","PATH","RNA","SANM","LEGN","S",
+    "CRSP","LEU","EAT","TGTX","UPST","BILL","BTSG","PI","SMR","ATAT","ENPH","PCVX","ZETA","STNE",
+    "CALM","YOU","TDS","TMDX","FHI","QUBT","LMND","AGX","ADMA","DOCN","SLNO","VKTX","WRD","ACLS",
+    "PLMR","DAVE","SEZL","SGRY","KNTK","AMSC","BBAI","IBRX","UPWK","AI","TVTX","IRON","RXRX","TRMD",
+    "SRPT","DXPE","LQDA","DAC","NNE","RVLV","SDGR","GBX","JANX","ROOT","EH","LUNR","EVEX","NKTR",
+    "TRVI","GCT","LMB","HLF","FTRE","FVRR","PHAT","EVER","AOSL","URGN","SERV","SRFM","DPRO","ELDN",
+    "ATYR"
+]
+
+def _get_tickers() -> List[str]:
+    if TICKERS_CSV:
+        return [t.strip().upper() for t in TICKERS_CSV.split(",") if t.strip()]
+    return LIST_TICKERS
+
+
+# --- ADD this new timer function (Mon–Fri 23:30 UTC) ---
+@app.schedule(schedule="0 30 23 * * 1-5", arg_name="timer", run_on_startup=False, use_monitor=True)
+def monitor_signals(timer: func.TimerRequest) -> None:
+    try:
+        tickers = _get_tickers()
+        logging.info(f"[monitor_signals] running for {len(tickers)} tickers")
+
+        # Call the separate module
+        df_all, df_leaders = daily_monitor.run_monitor(
+            tickers,
+            min_dollar_vol=MIN_DOLLAR_VOL
+        )
+
+        # Upload to Blob
+        cont = _signals_container()
+        stamp = datetime.date.today().strftime("%Y-%m-%d")
+
+        # CSVs
+        _upload_bytes(cont, f"daily_snapshot_{stamp}.csv",
+                      df_all.to_csv(index=False).encode("utf-8"),
+                      "text/csv")
+        _upload_bytes(cont, f"leaders_{stamp}.csv",
+                      df_leaders.to_csv(index=False).encode("utf-8"),
+                      "text/csv")
+
+        # Parquet (snappy + plain) – best-effort
+        try:
+            import pyarrow  # noqa: F401
+            engine = "pyarrow"
+            _upload_bytes(cont, f"daily_snapshot_{stamp}.snappy.parquet",
+                          df_all.to_parquet(engine=engine, compression="snappy", index=False),
+                          "application/octet-stream")
+            _upload_bytes(cont, f"leaders_{stamp}.snappy.parquet",
+                          df_leaders.to_parquet(engine=engine, compression="snappy", index=False),
+                          "application/octet-stream")
+            _upload_bytes(cont, f"daily_snapshot_{stamp}.plain.parquet",
+                          df_all.to_parquet(engine=engine, compression="none", index=False),
+                          "application/octet-stream")
+            _upload_bytes(cont, f"leaders_{stamp}.plain.parquet",
+                          df_leaders.to_parquet(engine=engine, compression="none", index=False),
+                          "application/octet-stream")
+        except Exception as e:
+            logging.warning(f"[parquet] skipped ({e})")
+
+        # Log a quick peek
+        logging.info("[top picks]\n" + str(
+            df_all[df_all["buy_flag"]][["ticker", "score"]].head(12).reset_index(drop=True)
+        ))
+        logging.info("[leaders]\n" + str(
+            df_leaders.head(15).reset_index(drop=True)
+        ))
+
+    except Exception as e:
+        logging.exception(f"[monitor_signals] failed: {e}")
+        
 # ---------- Timer: refresh cache ----------
 @app.schedule(schedule="0 9 * * 1-5", arg_name="myTimer", run_on_startup=True, use_monitor=True)
 def refresh_universe(myTimer: func.TimerRequest) -> None:
