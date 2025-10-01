@@ -8,7 +8,7 @@ document.addEventListener("DOMContentLoaded", function () {
         <img src="https://www.krishposa.com/assets/img/headshot.jpg" alt="Krish Posa">
         <span>Mortgage by <strong>Krish Posa</strong></span>
         <span>|</span>
-        <img src="https://www.krishposa.com/assets/img/realtors/sereneGARaghava.JPG" alt="Serene Georgia Realty">
+        <img src="https://www.krishposa.com/assets/img/realtors/raghava.JPG" alt="Serene Georgia Realty">
         <span>In partnership with <strong>Serene Georgia Realty</strong></span>
       </div>
     </div>`;
