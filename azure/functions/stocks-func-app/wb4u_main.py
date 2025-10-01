@@ -3,41 +3,63 @@ import wb4u_yahooquery
 import wb4u_yfinance
 import wb4u_finviz
 
-etfFilters= ['geo_usa','ind_exchangetradedfund','ta_rsi_nob60','ta_sma20_cross50a','ta_sma200_pa','ta_sma50_pa']
-etfFilterPerf=['ind_exchangetradedfund','ta_highlow20d_nh','ta_perf_1wup','ta_perf2_4wup','ta_sma20_pa','ta_sma200_pa','ta_sma50_pa','geo_usa']
-etfNewHigh=['geo_usa','ind_exchangetradedfund','ta_highlow52w_nh']
-etfTodayChange=['ind_exchangetradedfund','sh_avgvol_o2000','ta_change_u1']
-stocks_highGrowthFilter = ['an_recom_buybetter','fa_eps5years_o15','fa_epsqoq_o20','fa_epsyoy_o20','fa_epsyoy1_o20','fa_sales5years_o15','fa_salesqoq_o20','sh_instown_o30','sh_price_o15','geo_usa']
-stocks_smallCapFilter = ['cap_small','fa_eps5years_o20','fa_epsyoy_o20','fa_epsyoy1_o20','fa_estltgrowth_o20','sh_avgvol_o200','sh_curvol_o200','ta_highlow50d_nh','ta_sma200_pb','ta_sma50_cross20','geo_usa']
-stocks_longTermBuyHoldFilter = ['an_recom_buybetter','fa_debteq_u1','fa_div_o1','fa_eps5years_pos','fa_estltgrowth_o10','fa_roe_o15','fa_sales5years_o10','fa_salesqoq_pos','geo_usa','ipodate_more5','sh_short_u10']
-stocks_longTermBuyHoldFilter_2= ['an_recom_buybetter','fa_debteq_u1','fa_div_o1','fa_eps5years_pos','fa_estltgrowth_o5','fa_roe_o15','fa_sales5years_o5','fa_salesqoq_pos','geo_usa','ipodate_more5','sh_short_u10']
-stocks_lowPEDividend1=['fa_debteq_u1','fa_div_o2','fa_estltgrowth_o5','fa_roe_o10','ind_stocksonly','sh_avgvol_o100','geo_usa']
-stocks_lowPEDividend2=['cap_midover,fa_div_o3','fa_estltgrowth_pos','fa_payoutratio_u100','fa_pb_low','geo_usa','sh_avgvol_o100']
-stocks_valueBeatsMarket=['fa_eps5years_high','fa_ltdebteq_u0.5','fa_pb_u10','fa_pe_low','fa_pfcf_u25','fa_ps_u10','geo_usa','sh_price_o5']
-stocks_valueBeatsMarketAbove30ProfitMargin=['fa_netmargin_o30','fa_eps5years_high','fa_ltdebteq_u0.5','fa_pb_u10','fa_pe_low','fa_pfcf_u25','fa_ps_u10','geo_usa','sh_price_o5']
-stocks_posNextYear=['fa_epsqoq_o15','fa_epsyoy_neg','fa_epsyoy1_pos','fa_sales5years_o30','fa_salesqoq_o15','geo_usa','sh_instown_o10','ta_sma20_pa','ta_sma200_pa','ta_sma50_pa']
-stocks_competitiveAdvantage=['an_recom_buybetter','cap_midover','fa_peg_low','fa_roe_o20','geo_usa','sh_avgvol_o1000','sh_price_o10','ta_perf_4wup','ta_perf2_dup','ta_sma20_pa','targetprice_above']
-stocks_bestPenny=['an_recom_strongbuy','cap_microover','fa_debteq_low','sh_avgvol_o500','sh_price_u10','ta_beta_o0.5','geo_usa']
-stocks_largeCapHighGrowth=['cap_largeover','fa_eps5years_o15','fa_epsqoq_o5','fa_epsyoy1_o10','fa_estltgrowth_o10','fa_roe_o10','fa_sales5years_o10','fa_salesqoq_o5','geo_usa','sh_avgvol_o300','sh_price_o10','ta_perf_4wup']
-stocks_HighPerfNearHigh=['cap_midover','fa_epsqoq_o5','fa_epsyoy1_o10','fa_estltgrowth_pos','fa_sales5years_pos','fa_salesqoq_o5','geo_usa','sh_avgvol_o1000','sh_curvol_o2000','ta_highlow52w_b0to5h','ta_perf_52w30o','ta_perf2_1wup','ta_sma20_pa']
-stocks_wedgeup=['an_recom_buybetter','cap_large','fa_epsyoy1_high','geo_usa','sh_avgvol_o1000','ta_pattern_wedgeup2']
-stocks_largeNewHighs=['an_recom_buybetter','cap_largeover','fa_estltgrowth_pos','fa_sales5years_pos','sh_avgvol_o2000','sh_price_o5','ta_change_u','ta_highlow20d_nh','ta_highlow50d_nh','ta_highlow52w_nh','ta_perf_dup']
-stocks_highEarningsGrowth=['cap_largeover','fa_epsqoq_o25','fa_epsyoy_o25','fa_epsyoy1_o25','fa_salesqoq_o25','sh_avgvol_o400','ta_rsi_nos50','ta_sma200_pa']
-stocks_bestROE=['an_recom_buybetter','cap_largeover','fa_epsyoy_o20','fa_epsyoy1_o20','fa_roe_o20','geo_usa','sh_avgvol_o1000','ta_perf_4wup','ta_perf2_1wup']
-stocks_bestROEAndLarge=['an_recom_buybetter','cap_largeover','fa_epsrev_bp','fa_epsyoy_pos','fa_epsyoy1_pos','fa_roe_o20','geo_usa','sh_avgvol_o1000','ta_highlow52w_b0to5h','ta_perf_dup','ta_perf2_1wup','ta_sma20_pa']
-bestROEMid=['an_recom_buybetter','cap_midover','fa_epsrev_bp','fa_epsyoy_o10','fa_epsyoy1_o10','fa_roe_o20','geo_usa','sh_avgvol_o1000','ta_highlow52w_b0to5h','ta_perf_dup','ta_perf2_1wup','ta_sma20_pa']
-stocks_hightSalesGrowth=['cap_largeover','fa_debteq_u0.5','fa_roe_o15','fa_sales5years_o20','fa_salesqoq_o20','sh_avgvol_o200','sh_instown_o60','sh_price_o5','sh_short_u5']
-stocks_highRelativeVol=['cap_largeover','fa_curratio_o1','fa_epsqoq_o15','fa_quickratio_o1','fa_salesqoq_o15','sh_avgvol_o400','sh_price_o5','sh_relvol_o1.5','ta_sma20_pa','ta_sma200_sb50','ta_sma50_sa200']
-stocks_consistentGrowthBullingTrendAboveMid=['cap_midover','fa_eps5years_pos','fa_epsqoq_o20','fa_epsyoy_o25','fa_epsyoy1_o15','fa_estltgrowth_pos','fa_roe_o15','sh_avgvol_o1000','sh_instown_o10','sh_price_o15','ta_highlow52w_a90h','ta_rsi_nos50']
-###stocks_sell=['geo_usa','ta_sma50_cross200b','ta_sma20_cross50b']
-stocks_sell=['geo_usa','ta_sma20_cross50b']
-short_squeeze=['geo_usa','sh_price_u10','sh_relvol_o2','sh_short_o30','ta_change_u','ta_gap_u2']
-largeNotOverboughtEarnRevbeatEPS5yrsPositive=['an_recom_buybetter','cap_largeover','fa_epsrev_bp','fa_estltgrowth_pos','geo_usa','sh_avgvol_o1000','sh_opt_option','ta_highlow52w_b30h','ta_perf_dup','ta_perf2_1wup','ta_rsi_nob50','targetprice_above']
-NotOverboughtRisingGood=['an_recom_buybetter','cap_midover','fa_epsqoq_pos','fa_epsrev_bp','fa_salesqoq_pos','geo_usa','sh_avgvol_o1000','sh_opt_option','sh_relvol_o1.5','ta_gap_u','ta_perf_1wup','ta_rsi_nob50','targetprice_above']
-cashflowEPSLarge=['an_recom_buybetter','cap_largeover','fa_epsyoy1_o20','fa_netmargin_o20','fa_pfcf_o20','fa_roi_o10','sh_avgvol_o1000','ta_perf_dup','ta_perf2_1wup']
-### YAHOO FINANCE PRE SCREENERS:  solid_large_growth_funds, top_mutual_funds,solid_midcap_growth_funds, conservative_foreign_funds
-eps25WeekUpDayUpLarge=['cap_largeover','fa_epsqoq_high','ta_perf_1w10o','ta_perf2_dup']
-stock_from_insta_screener=['cap_largeover','fa_epsyoy_o10','fa_fpe_u25','fa_peg_u2','fa_quickratio_o1.5','fa_roe_o5']
+etfFilters = ['geo_usa','ind_exchangetradedfund','ta_rsi_nob60','ta_sma20_cross50a','ta_sma200_pa','ta_sma50_pa','sh_avgvol_o200000','sh_price_o10']
+
+etfFilterPerf = ['ind_exchangetradedfund','ta_highlow20d_nh','ta_perf2_4wup','ta_sma20_pa','ta_sma200_pa','ta_sma50_pa','geo_usa','sh_avgvol_o200000','sh_price_o10']
+
+etfNewHigh = ['geo_usa','ind_exchangetradedfund','ta_highlow52w_nh','sh_avgvol_o200000','ta_rsi_nob70']
+
+etfTodayChange = ['ind_exchangetradedfund','sh_avgvol_o2000','ta_change_u1','ta_highlow20d_nh']
+stocks_highGrowthFilter = ['an_recom_buybetter','fa_eps5years_o15','fa_epsqoq_o20','fa_epsyoy_o20','fa_epsyoy1_o20','fa_sales5years_o15','fa_salesqoq_o20','sh_instown_o30','sh_price_o15','geo_usa','fa_debteq_u1','ta_sma200_pa','sh_avgvol_o400']
+
+stocks_smallCapFilter = ['cap_small','fa_eps5years_o20','fa_epsyoy_o20','fa_epsyoy1_o20','fa_estltgrowth_o20','sh_avgvol_o200','sh_curvol_o200','ta_sma200_pb','sh_price_o5','geo_usa']
+
+stocks_longTermBuyHoldFilter = ['an_recom_buybetter','fa_debteq_u1','fa_div_o1','fa_eps5years_pos','fa_estltgrowth_o10','fa_roe_o15','fa_sales5years_o10','fa_salesqoq_pos','geo_usa','ipodate_more5','sh_short_u10','fa_pfcf_u25','fa_pe_low','ta_sma200_pa']
+
+stocks_longTermBuyHoldFilter_2 = ['an_recom_buybetter','fa_debteq_u1','fa_div_o1','fa_eps5years_pos','fa_estltgrowth_o5','fa_roe_o15','fa_sales5years_o5','fa_salesqoq_pos','geo_usa','ipodate_more5','sh_short_u10','fa_pfcf_u25','fa_pe_low','ta_sma200_pa']
+stocks_lowPEDividend1 = ['fa_debteq_u1','fa_div_o2','fa_estltgrowth_o5','fa_roe_o10','ind_stocksonly','sh_avgvol_o100','geo_usa','fa_pe_low','fa_payoutratio_u75']
+
+stocks_lowPEDividend2 = ['cap_midover','fa_div_o3','fa_estltgrowth_pos','fa_payoutratio_u100','fa_pb_low','geo_usa','sh_avgvol_o100','fa_debteq_u1','fa_fpe_u20','ta_sma200_pa']
+
+stocks_valueBeatsMarket = ['fa_eps5years_high','fa_ltdebteq_u0.5','fa_roe_o12','fa_roi_o10','fa_pb_u10','fa_pe_low','fa_pfcf_u25','fa_ps_u10','geo_usa','sh_price_o5','sh_avgvol_o400','ta_sma200_pa']
+
+stocks_valueBeatsMarketAbove30ProfitMargin = ['fa_netmargin_o15','fa_eps5years_high','fa_ltdebteq_u0.5','fa_pb_u10','fa_pe_low','fa_pfcf_u25','fa_ps_u10','geo_usa','sh_price_o5','sh_avgvol_o400','ta_sma200_pa']
+stocks_posNextYear = ['fa_epsqoq_o15','fa_epsyoy_neg','fa_epsyoy1_pos','fa_sales5years_o30','fa_salesqoq_o15','geo_usa','sh_instown_o10','ta_sma20_pa','ta_sma200_pa','ta_sma50_pa','fa_debteq_u1.5','sh_avgvol_o400','ta_rsi_nob70']
+
+stocks_competitiveAdvantage = ['an_recom_buybetter','cap_midover','fa_peg_low','fa_roe_o20','geo_usa','sh_avgvol_o1000','sh_price_o10','ta_perf_4wup','ta_sma20_pa','targetprice_above','fa_grossmargin_o40']
+
+stocks_bestPenny = ['an_recom_strongbuy','cap_microover','fa_debteq_low','sh_avgvol_o500','sh_price_u10','ta_beta_o0.5','geo_usa','sh_relvol_o1.5','ta_sma200_pa','sh_price_o2']
+
+stocks_largeCapHighGrowth = ['cap_largeover','fa_eps5years_o15','fa_epsqoq_o5','fa_epsyoy1_o10','fa_estltgrowth_o10','fa_roe_o10','fa_sales5years_o10','fa_salesqoq_o5','geo_usa','sh_avgvol_o1000','sh_price_o10','ta_perf_4wup','ta_sma200_pa','fa_debteq_u1']
+
+stocks_HighPerfNearHigh = ['cap_midover','fa_sales5years_pos','fa_salesqoq_o5','geo_usa','sh_avgvol_o800','ta_highlow52w_b0to5h','ta_perf_52w30o','ta_perf2_1wup','ta_sma20_pa','ta_rsi_nob70']
+
+stocks_wedgeup = ['an_recom_buybetter','cap_large','fa_epsyoy1_high','geo_usa','sh_avgvol_o1000','ta_pattern_wedgeup2']
+
+stocks_largeNewHighs = ['an_recom_buybetter','cap_largeover','fa_estltgrowth_pos','fa_sales5years_pos','sh_avgvol_o2000','sh_price_o5','ta_change_u','ta_highlow52w_nh','ta_perf_dup','targetprice_above','sh_relvol_o1.2']
+
+stocks_highEarningsGrowth = ['cap_largeover','fa_epsqoq_o25','fa_epsyoy_o25','fa_epsyoy1_o25','fa_salesqoq_o25','sh_avgvol_o400','ta_rsi_nob70','ta_sma200_pa']
+
+stocks_bestROE = ['an_recom_buybetter','cap_largeover','fa_epsyoy_o20','fa_epsyoy1_o20','fa_roe_o20','geo_usa','sh_avgvol_o1000','ta_perf_4wup','ta_perf2_1wup','fa_debteq_u1']
+
+stocks_bestROEAndLarge = ['an_recom_buybetter','cap_largeover','fa_epsrev_bp','fa_epsyoy_pos','fa_epsyoy1_pos','fa_roe_o20','geo_usa','sh_avgvol_o1000','ta_highlow52w_b0to5h','ta_perf_dup','ta_perf2_1wup','ta_sma20_pa','fa_debteq_u1']
+
+bestROEMid = ['an_recom_buybetter','cap_midover','fa_epsrev_bp','fa_epsyoy_o10','fa_epsyoy1_o10','fa_roe_o20','geo_usa','sh_avgvol_o1000','ta_highlow52w_b0to5h','ta_perf_dup','ta_perf2_1wup','ta_sma20_pa','fa_debteq_u1']
+
+stocks_hightSalesGrowth = ['cap_largeover','fa_debteq_u0.5','fa_roe_o15','fa_sales5years_o20','fa_salesqoq_o20','sh_avgvol_o200','sh_instown_o60','sh_price_o5','sh_short_u5','ta_sma200_pa','fa_netmargin_o10']
+
+stocks_highRelativeVol = ['cap_largeover','fa_curratio_o1','fa_epsqoq_o15','fa_quickratio_o1','fa_salesqoq_o15','sh_avgvol_o400','sh_price_o5','sh_relvol_o1.5','ta_sma20_pa','ta_sma50_sa200','ta_highlow20d_nh']
+
+stocks_consistentGrowthBullingTrendAboveMid = ['cap_midover','fa_eps5years_pos','fa_epsqoq_o20','fa_epsyoy_o25','fa_epsyoy1_o15','fa_estltgrowth_pos','fa_roe_o15','sh_avgvol_o1000','sh_instown_o10','sh_price_o15','ta_highlow52w_a90h','ta_rsi_nob70']
+largeNotOverboughtEarnRevbeatEPS5yrsPositive = ['an_recom_buybetter','cap_largeover','fa_epsrev_bp','fa_estltgrowth_pos','geo_usa','sh_avgvol_o1000','sh_opt_option','ta_highlow52w_b30h','ta_perf_dup','ta_perf2_1wup','ta_rsi_nob70','targetprice_above','ta_sma200_pa']
+
+NotOverboughtRisingGood = ['an_recom_buybetter','cap_midover','fa_epsqoq_pos','fa_epsrev_bp','fa_salesqoq_pos','geo_usa','sh_avgvol_o1000','sh_opt_option','sh_relvol_o1.5','ta_perf_1wup','ta_rsi_nob70','targetprice_above']
+
+cashflowEPSLarge = ['an_recom_buybetter','cap_largeover','fa_epsyoy1_o20','fa_netmargin_o20','fa_pfcf_u20','fa_roi_o10','sh_avgvol_o1000','ta_perf_dup','ta_perf2_1wup']
+
+eps25WeekUpDayUpLarge = ['cap_largeover','fa_epsqoq_high','ta_perf2_13wup','ta_perf2_dup','ta_sma200_pa']
+
+stock_from_insta_screener = ['cap_largeover','fa_epsyoy_o10','fa_fpe_u25','fa_peg_u2','fa_quickratio_o1.5','fa_roe_o5','geo_usa','fa_debteq_u1','sh_avgvol_o400','ta_sma200_pa']
 
 
 goodFilter = {
