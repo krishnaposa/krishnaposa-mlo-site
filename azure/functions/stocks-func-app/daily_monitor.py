@@ -98,6 +98,53 @@ def score_row(r):
     return score
 
 
+def _append_and_write_parquet(out_today: pd.DataFrame, out_dir: str) -> None:
+    """
+    Appends today's rows to rolling parquet history and writes
+    both compressed and plain variants for compatibility.
+    """
+    logger.info("Updating rolling parquet history")
+    out_today = out_today.copy()
+    out_today["asof_date"] = pd.to_datetime(TODAY)
+
+    pq_path = os.path.join(out_dir, "rolling_store.parquet")
+    pq_plain_path = os.path.join(out_dir, "rolling_store_plain.parquet")
+
+    try:
+        import pyarrow  # noqa: F401
+        engine = "pyarrow"
+    except Exception:
+        logger.warning("pyarrow not installed. Skipping parquet writes.")
+        return
+
+    # Load previous history if it exists
+    if os.path.exists(pq_path):
+        try:
+            prev = pd.read_parquet(pq_path, engine=engine)
+            hist = pd.concat([prev, out_today], ignore_index=True)
+            logger.info(f"Loaded existing history with {len(prev)} rows; new total {len(hist)}")
+        except Exception as e:
+            logger.exception(f"Failed reading existing parquet history, recreating from today only: {e}")
+            hist = out_today
+    else:
+        hist = out_today
+        logger.info("No existing history found. Creating new parquet store")
+
+    # Write compressed (fast) version
+    try:
+        hist.to_parquet(pq_path, engine=engine, compression="snappy", index=False)
+        logger.info(f"Wrote compressed parquet to {pq_path}")
+    except Exception as e:
+        logger.exception(f"Failed writing compressed parquet: {e}")
+
+    # Write plain (viewer-friendly) version
+    try:
+        hist.to_parquet(pq_plain_path, engine=engine, compression="none", index=False)
+        logger.info(f"Wrote plain parquet to {pq_plain_path}")
+    except Exception as e:
+        logger.exception(f"Failed writing plain parquet: {e}")
+
+
 # ---------------- Main ----------------
 def main():
     logger.info("=== Starting daily stock monitor ===")
@@ -155,6 +202,10 @@ def main():
     csv_path = os.path.join(OUT_DIR, f"daily_snapshot_{stamp}.csv")
     out.to_csv(csv_path, index=False)
     logger.info(f"Saved daily snapshot to {csv_path}")
+
+    # Write rolling parquet history in two flavors
+    _append_and_write_parquet(out, OUT_DIR)
+
     logger.info("Top picks today:\n" + str(out[out["buy_flag"]][["ticker", "score"]].head(10)))
     logger.info("=== Job finished ===")
 
