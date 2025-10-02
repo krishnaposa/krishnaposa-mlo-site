@@ -14,7 +14,8 @@ from email.message import EmailMessage
 
 # shared cache reader (avoid circular imports by keeping in a separate module)
 from universe_utils import read_universe_blob
-
+logging.getLogger("yfinance").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
 # ---------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------
