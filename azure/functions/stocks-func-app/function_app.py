@@ -28,8 +28,7 @@ AZURE_OPENAI_API_VER    = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
 SIGNALS_CONTAINER = os.getenv("SIGNALS_CONTAINER", "signals")
 MIN_DOLLAR_VOL = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
 
-# Blob client (uses AzureWebJobsStorage)
-_BLOB_SVC = BlobServiceClient.from_connection_string(os.getenv("AzureWebJobsStorage"))
+_BLOB_SVC = BlobServiceClient.from_connection_string(os.getenv("MONITOR_STORAGE"))
 
 # ---------- Small utils ----------
 def _parse_json_body(req: func.HttpRequest) -> dict:

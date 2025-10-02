@@ -4,7 +4,7 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 
 # Blob client (uses AzureWebJobsStorage connection string)
 _BLOB_SVC = BlobServiceClient.from_connection_string(
-    os.getenv("AzureWebJobsStorage")
+    os.getenv("MONITOR_STORAGE")
 )
 
 UNIVERSE_CONTAINER = os.getenv("UNIVERSE_CONTAINER", "cache")
