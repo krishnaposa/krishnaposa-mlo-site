@@ -4,19 +4,31 @@ from typing import List, Tuple, Dict, Optional
 
 try:
     from azure.storage.blob import BlobServiceClient, ContentSettings
-except Exception:
+except Exception:  # pragma: no cover
     BlobServiceClient = None  # type: ignore
+    ContentSettings = None    # type: ignore
 
 logger = logging.getLogger(__name__)
 
-# Config via env
-LOCAL_LIST_CONTAINER   = os.getenv("LOCAL_LIST_CONTAINER", os.getenv("SIGNALS_CONTAINER", "signals"))
-LOCAL_LIST_BLOB_NAME   = os.getenv("LOCAL_LIST_BLOB_NAME", "local_list.json")
-AZ_CONN                = os.getenv("MONITOR_STORAGE")
+# --------------------------- Config ---------------------------
+# Container/blob name (defaults to the same container your signals/parquets use)
+LOCAL_LIST_CONTAINER = os.getenv("LOCAL_LIST_CONTAINER", os.getenv("SIGNALS_CONTAINER", "signals"))
+LOCAL_LIST_BLOB_NAME = os.getenv("LOCAL_LIST_BLOB_NAME", "local_list.json")
 
+# Connection string:
+# Prefer MONITOR_STORAGE (new storage account), fall back to AzureWebJobsStorage for local/test.
+AZ_CONN = os.getenv("MONITOR_STORAGE") or os.getenv("AzureWebJobsStorage")
+
+# If the blob is missing and you passed initial_fallback to load_local_list(),
+# set this to "1" to seed the blob on first run.
+LOCAL_LIST_SEED_ON_MISSING = os.getenv("LOCAL_LIST_SEED_ON_MISSING", "0") == "1"
+
+# --------------------------- Blob helpers ---------------------------
 def _blob_container():
-    if BlobServiceClient is None or not AZ_CONN:
-        raise RuntimeError("azure.storage.blob not available or MONITOR_STORAGE missing")
+    if BlobServiceClient is None:
+        raise RuntimeError("azure.storage.blob not available. Install azure-storage-blob.")
+    if not AZ_CONN:
+        raise RuntimeError("Storage connection not found. Set MONITOR_STORAGE or AzureWebJobsStorage.")
     svc = BlobServiceClient.from_connection_string(AZ_CONN)
     cont = svc.get_container_client(LOCAL_LIST_CONTAINER)
     try:
@@ -25,22 +37,36 @@ def _blob_container():
         pass
     return cont
 
+def _get_blob_client():
+    cont = _blob_container()
+    return cont.get_blob_client(LOCAL_LIST_BLOB_NAME)
+
+# --------------------------- Public API ---------------------------
 def load_local_list(initial_fallback: Optional[List[str]] = None) -> List[str]:
     """
     Load local_list.json from Blob. If missing, return initial_fallback (or empty list).
+    If LOCAL_LIST_SEED_ON_MISSING=1 and initial_fallback is provided, it will also seed the blob.
     """
     try:
-        cont = _blob_container()
-        blob = cont.get_blob_client(LOCAL_LIST_BLOB_NAME)
+        blob = _get_blob_client()
         data = blob.download_blob().readall()
-        js = json.loads(data.decode("utf-8"))
+        js = json.loads(data.decode("utf-8", errors="ignore"))
         tickers = [str(t).upper().strip() for t in (js.get("tickers") or []) if str(t).strip()]
-        logger.info(f"[local_list] loaded {len(tickers)} symbols from blob")
+        tickers = sorted(set(tickers))
+        logger.info(f"[local_list] loaded {len(tickers)} symbols from {LOCAL_LIST_CONTAINER}/{LOCAL_LIST_BLOB_NAME}")
         return tickers
     except Exception as e:
         fb = [str(t).upper().strip() for t in (initial_fallback or []) if str(t).strip()]
+        fb = sorted(set(fb))
         if fb:
-            logger.warning(f"[local_list] not found; using fallback ({len(fb)} symbols)")
+            logger.warning(f"[local_list] not found; using fallback ({len(fb)} symbols) — {e}")
+            # Optionally seed the blob on first run
+            if LOCAL_LIST_SEED_ON_MISSING:
+                try:
+                    save_local_list(fb, meta={"seeded_from_fallback": True})
+                    logger.info(f"[local_list] seeded blob with {len(fb)} fallback symbols")
+                except Exception as se:
+                    logger.warning(f"[local_list] failed to seed blob: {se}")
             return fb
         logger.warning(f"[local_list] not found; returning empty list ({e})")
         return []
@@ -49,51 +75,51 @@ def save_local_list(tickers: List[str], meta: Optional[Dict] = None) -> None:
     """
     Save local list to Blob as JSON.
     """
-    cont = _blob_container()
-    payload = {"tickers": sorted({str(t).upper().strip() for t in tickers if str(t).strip()})}
+    if BlobServiceClient is None:
+        raise RuntimeError("azure.storage.blob not available. Install azure-storage-blob.")
+    if ContentSettings is None:
+        raise RuntimeError("ContentSettings import failed; ensure azure-storage-blob is installed.")
+
+    tickers_norm = sorted({str(t).upper().strip() for t in tickers if str(t).strip()})
+    payload = {"tickers": tickers_norm}
     if meta:
         payload.update(meta)
+
+    cont = _blob_container()
     cont.upload_blob(
         LOCAL_LIST_BLOB_NAME,
         data=json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
         overwrite=True,
-        content_settings=ContentSettings(content_type="application/json")
+        content_settings=ContentSettings(content_type="application/json"),
     )
-    logger.info(f"[local_list] saved {len(payload['tickers'])} symbols -> {LOCAL_LIST_CONTAINER}/{LOCAL_LIST_BLOB_NAME}")
+    logger.info(
+        f"[local_list] saved {len(tickers_norm)} symbols -> {LOCAL_LIST_CONTAINER}/{LOCAL_LIST_BLOB_NAME}"
+    )
 
-# ---------- Dynamic update policy ----------
-
+# ---------- Dynamic update policy (optional; kept for flexibility) ----------
 def update_local_list(
     df_all,                       # DataFrame from daily_monitor (after scoring)
     local_list: List[str],
     universe_list: List[str],
     *,
-    add_top_quantile: float = 0.90,    # add if final_rank in top 10% of *universe*
+    add_top_quantile: float = 0.90,    # add if final_rank in top 10% of *today's* distribution
     min_strength_z: float = 0.0,       # require strength_score >= 0-z
     min_price: float = 5.0,            # skip < $5
-    remove_days_fail: int = 5,         # remove if failed 'keep mask' for N consecutive days (requires persistence; here we use one-day heuristic)
-    max_local_size: int | None = None  # optional cap on list size
+    remove_days_fail: int = 5,         # placeholder for stateful logic
+    max_local_size: Optional[int] = None
 ) -> Tuple[List[str], Dict[str, List[str]]]:
     """
-    Stateless one-day heuristic:
-      ADD: universe names with strong ranks today.
-      REMOVE: local names that look weak today (below thresholds).
-    Practical and simple to start — you can later make this stateful by tracking streaks in a side blob.
-
+    Stateless one-day heuristic (kept for optional usage):
+      ADD: names with strong ranks today.
+      REMOVE: weak names by simple filters.
     Returns (new_list, changes_dict).
     """
-    # Normalize inputs
     S_local = {t.upper().strip() for t in local_list}
     S_univ  = {t.upper().strip() for t in universe_list}
-    union   = sorted(S_local | S_univ)
 
-    # Rank threshold in universe context
-    # (if a symbol isn't in today's df, we ignore)
     df = df_all.copy()
     df = df.dropna(subset=["final_rank", "last_price"])
 
-    # Compute universe percentile for final_rank
-    # We’ll treat missing as not-eligible for add.
     fr = df["final_rank"]
     thr = fr.quantile(add_top_quantile)
     eligible_add = df[
@@ -102,8 +128,6 @@ def update_local_list(
         (df["last_price"] >= min_price)
     ]["ticker"].astype(str).str.upper().tolist()
 
-    # Removal heuristic:
-    # drop from local if price < $5 or final_rank in bottom 20% or strength_score < -0.5
     rm_thr = fr.quantile(0.20)
     eligible_remove = df[
         (df["ticker"].isin(S_local)) & (
@@ -113,13 +137,11 @@ def update_local_list(
         )
     ]["ticker"].astype(str).str.upper().tolist()
 
-    # New set:
     S_new = (S_local | set(eligible_add)) - set(eligible_remove)
 
-    # Optional cap (keep top by final_rank)
     if max_local_size and len(S_new) > max_local_size:
         top = df.sort_values("final_rank", ascending=False)["ticker"].astype(str).str.upper().tolist()
-        pruned = []
+        pruned: List[str] = []
         for t in top:
             if t in S_new:
                 pruned.append(t)
