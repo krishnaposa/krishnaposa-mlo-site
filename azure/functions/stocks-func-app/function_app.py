@@ -288,31 +288,23 @@ def _get_tickers() -> List[str]:
 
 
 # --- ADD this new timer function (Mon–Fri 23:30 UTC) ---
+# --- Timer function: run daily monitor (Mon–Fri 23:30 UTC) ---
 @app.schedule(schedule="0 30 23 * * 1-5", arg_name="timer", run_on_startup=False, use_monitor=True)
 def monitor_signals(timer: func.TimerRequest) -> None:
     try:
         tickers = _get_tickers()
         logging.info(f"[monitor_signals] running for {len(tickers)} tickers")
 
-        # Call the separate module
+        # Run monitor (daily_monitor handles scoring + email internally)
         df_all, df_leaders = daily_monitor.run_monitor(
             tickers,
             min_dollar_vol=MIN_DOLLAR_VOL
         )
 
-        # Upload to Blob
-        cont = _signals_container()
         stamp = datetime.date.today().strftime("%Y-%m-%d")
+        cont = _signals_container()
 
-        # CSVs
-        _upload_bytes(cont, f"daily_snapshot_{stamp}.csv",
-                      df_all.to_csv(index=False).encode("utf-8"),
-                      "text/csv")
-        _upload_bytes(cont, f"leaders_{stamp}.csv",
-                      df_leaders.to_csv(index=False).encode("utf-8"),
-                      "text/csv")
-
-        # Parquet (snappy + plain) – best-effort
+        # ✅ Parquet uploads only
         try:
             import pyarrow  # noqa: F401
             engine = "pyarrow"
@@ -328,20 +320,26 @@ def monitor_signals(timer: func.TimerRequest) -> None:
             _upload_bytes(cont, f"leaders_{stamp}.plain.parquet",
                           df_leaders.to_parquet(engine=engine, compression="none", index=False),
                           "application/octet-stream")
+            logging.info("[parquet] wrote daily + leaders to blob")
         except Exception as e:
             logging.warning(f"[parquet] skipped ({e})")
 
-        # Log a quick peek
+        # Log quick summary
         logging.info("[top picks]\n" + str(
-            df_all[df_all["buy_flag"]][["ticker", "score"]].head(12).reset_index(drop=True)
+            df_all[df_all["buy_flag"]][["ticker", "score"]]
+            .sort_values("score", ascending=False)
+            .head(12)
+            .reset_index(drop=True)
         ))
         logging.info("[leaders]\n" + str(
             df_leaders.head(15).reset_index(drop=True)
         ))
 
+        # ✅ Email already sent inside daily_monitor.run_monitor()
+
     except Exception as e:
         logging.exception(f"[monitor_signals] failed: {e}")
-        
+                
 # ---------- Timer: refresh cache ----------
 @app.schedule(schedule="0 9 * * 1-5", arg_name="myTimer", run_on_startup=True, use_monitor=True)
 def refresh_universe(myTimer: func.TimerRequest) -> None:
