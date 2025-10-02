@@ -2,7 +2,7 @@
 import os, json, datetime, logging
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
-# Blob client (uses AzureWebJobsStorage connection string)
+# Blob client (uses MONITOR_STORAGE connection string)
 _BLOB_SVC = BlobServiceClient.from_connection_string(
     os.getenv("MONITOR_STORAGE")
 )

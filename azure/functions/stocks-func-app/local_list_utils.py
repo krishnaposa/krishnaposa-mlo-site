@@ -12,11 +12,11 @@ logger = logging.getLogger(__name__)
 # Config via env
 LOCAL_LIST_CONTAINER   = os.getenv("LOCAL_LIST_CONTAINER", os.getenv("SIGNALS_CONTAINER", "signals"))
 LOCAL_LIST_BLOB_NAME   = os.getenv("LOCAL_LIST_BLOB_NAME", "local_list.json")
-AZ_CONN                = os.getenv("AzureWebJobsStorage")
+AZ_CONN                = os.getenv("MONITOR_STORAGE")
 
 def _blob_container():
     if BlobServiceClient is None or not AZ_CONN:
-        raise RuntimeError("azure.storage.blob not available or AzureWebJobsStorage missing")
+        raise RuntimeError("azure.storage.blob not available or MONITOR_STORAGE missing")
     svc = BlobServiceClient.from_connection_string(AZ_CONN)
     cont = svc.get_container_client(LOCAL_LIST_CONTAINER)
     try:
