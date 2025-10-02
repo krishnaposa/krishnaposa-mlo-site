@@ -129,6 +129,84 @@ def score_row(r: pd.Series, min_dollar_vol: int) -> float:
 
     return float(momentum_trend + liquidity - risk_penalty - price_penalty)
 
+# ----------------- Fundamentals for LEAPs (last 4 quarters) ----------
+def _growth_rate(series: pd.Series) -> pd.Series:
+    try:
+        return series.pct_change().replace([np.inf, -np.inf], np.nan)
+    except Exception:
+        return pd.Series(dtype=float)
+
+def _compute_quarterly_trends(ticker: str) -> Dict[str, float]:
+    """
+    Returns dict with:
+      rev_q_yoy, earn_q_yoy  -> avg YoY growth for last 4 matching quarters (if >=8 qtrs)
+      rev_q_qoq, earn_q_qoq  -> avg QoQ growth (fallback if YoY unavailable)
+      growth_streak          -> 1.0 if last 4 (YoY) or last 3 (QoQ) growth readings are all positive, else 0.0
+      fundamentals_quality   -> 1.0 if YoY used, 0.5 if QoQ fallback, 0.0 if missing
+    """
+    out = {
+        "rev_q_yoy": 0.0, "earn_q_yoy": 0.0,
+        "rev_q_qoq": 0.0, "earn_q_qoq": 0.0,
+        "growth_streak": 0.0,
+        "fundamentals_quality": 0.0,
+    }
+    try:
+        te = yf.Ticker(ticker).quarterly_earnings  # columns: Revenue, Earnings
+        if te is None or te.empty:
+            return out
+
+        te = te.sort_index()  # oldest -> newest
+
+        # Prefer YoY (need 8+ quarters to compare last 4 vs t-4)
+        if len(te) >= 8:
+            rev = te["Revenue"].astype(float)
+            ern = te["Earnings"].astype(float)
+
+            yoy_rev = (rev / rev.shift(4) - 1.0)
+            yoy_ern = (ern / ern.shift(4) - 1.0)
+
+            last4_rev = yoy_rev.tail(4).dropna()
+            last4_ern = yoy_ern.tail(4).dropna()
+
+            if len(last4_rev) >= 3:
+                out["rev_q_yoy"] = float(np.nanmean(last4_rev.values))
+            if len(last4_ern) >= 3:
+                out["earn_q_yoy"] = float(np.nanmean(last4_ern.values))
+
+            positives = []
+            # Align to last four quarters; treat NaNs as not positive
+            for r, e in zip(yoy_rev.tail(4).values, yoy_ern.tail(4).values):
+                positives.append((pd.notna(r) and r > 0) and (pd.notna(e) and e > 0))
+            out["growth_streak"] = 1.0 if len(positives) == 4 and all(positives) else 0.0
+            out["fundamentals_quality"] = 1.0
+            return out
+
+        # Fallback: QoQ (if only ~4 quarters available)
+        rev = te["Revenue"].astype(float)
+        ern = te["Earnings"].astype(float)
+        qoq_rev = _growth_rate(rev)
+        qoq_ern = _growth_rate(ern)
+
+        last3_rev = qoq_rev.tail(3).dropna()
+        last3_ern = qoq_ern.tail(3).dropna()
+
+        if len(last3_rev) >= 2:
+            out["rev_q_qoq"] = float(np.nanmean(last3_rev.values))
+        if len(last3_ern) >= 2:
+            out["earn_q_qoq"] = float(np.nanmean(last3_ern.values))
+
+        readings = []
+        pairs = list(zip(qoq_rev.dropna().tail(3).values, qoq_ern.dropna().tail(3).values))
+        for r, e in pairs:
+            readings.append((r > 0) and (e > 0))
+        out["growth_streak"] = 1.0 if len(readings) == 3 and all(readings) else 0.0
+        out["fundamentals_quality"] = 0.5
+        return out
+
+    except Exception as e:
+        logger.debug(f"[fundamentals] {ticker} failed: {e}")
+        return out
+
 # --------------------------- Yahoo fetch ------------------------------
 def _clean_tickers(raw: List[str]) -> List[str]:
     return [t.strip().upper() for t in raw if t and t.strip() and t.strip().upper() not in {"US"}]
@@ -319,6 +397,9 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         except Exception:
             pass
 
+    # fundamentals cache (avoid per-ticker re-fetch of quarterly_earnings inside apply)
+    fundamentals_map: Dict[str, Dict[str, float]] = {}
+
     for t, df in frames.items():
         d = df.copy()
         d["CloseAdj"] = d["Adj Close"]
@@ -377,6 +458,28 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         latest["ticker"] = t
         latest["last_price"] = float(d["CloseAdj"].iloc[-1])
         latest["market_cap"] = fast_caps.get(t, np.nan)
+
+        # -------- fundamentals (4-quarter trend) ----------
+        if t not in fundamentals_map:
+            fundamentals_map[t] = _compute_quarterly_trends(t)
+        latest.update(fundamentals_map[t])
+
+        # cap bonus for LEAPs (reused later)
+        try:
+            mc = float(latest["market_cap"]) if latest.get("market_cap") is not None else np.nan
+        except Exception:
+            mc = np.nan
+        if np.isnan(mc):
+            latest["cap_bonus"] = 0.0
+        elif mc < 2e9:
+            latest["cap_bonus"] = -0.3
+        elif mc < 10e9:
+            latest["cap_bonus"] = 0.1
+        elif mc < 200e9:
+            latest["cap_bonus"] = 0.2
+        else:
+            latest["cap_bonus"] = 0.25
+
         rows.append(latest)
 
     if not rows:
@@ -385,7 +488,7 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
     out = pd.DataFrame(rows)
 
     # x-sectional ADV z
-    out["adv_usd_20_z"] = zscore(out["adv_usd_20"]).fillna(0.0)
+    out["adv_usd_20_z"] = zscore(out.get("adv_usd_20", pd.Series(dtype=float))).fillna(0.0)
 
     # composite score & buy flag
     out["score"] = out.apply(lambda r: score_row(r, min_dollar_vol), axis=1)
@@ -399,8 +502,8 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
     )
 
     # strength & final rank (60/40 + cap bias)
-    out["z_5d"] = zscore(out["ret_5d"]).fillna(0.0)
-    out["z_21d"] = zscore(out["ret_21d"]).fillna(0.0)
+    out["z_5d"] = zscore(out.get("ret_5d", pd.Series(dtype=float))).fillna(0.0)
+    out["z_21d"] = zscore(out.get("ret_21d", pd.Series(dtype=float))).fillna(0.0)
     out["strength_score"] = 0.3 * out["z_5d"] + 0.7 * out["z_21d"]
 
     def _pctl0_10(s: pd.Series) -> pd.Series:
@@ -412,26 +515,32 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
     out["cap_mult"]           = out["market_cap"].apply(cap_multiplier)
     out["final_rank"]         = out["final_60_40"] * out["cap_mult"]
 
-    # LEAP scoring
-    out["z_ret_63"]  = zscore(out["ret_63"]).fillna(0.0)
-    out["z_ret_252"] = zscore(out["ret_252"]).fillna(0.0)
+    # ----------------- LEAP scoring (with fundamentals) ----------------
+    out["z_ret_63"]  = zscore(out.get("ret_63", pd.Series(dtype=float))).fillna(0.0)
+    out["z_ret_252"] = zscore(out.get("ret_252", pd.Series(dtype=float))).fillna(0.0)
 
-    def _cap_bonus(m):
-        try:
-            m = float(m)
-        except Exception:
-            return 0.0
-        if m < 2e9:    return -0.3
-        if m < 10e9:   return 0.1
-        if m < 200e9:  return 0.2
-        return 0.25
+    # Use YoY when quality==1.0, otherwise QoQ fallback
+    rev_growth = np.where(out["fundamentals_quality"] >= 1.0, out["rev_q_yoy"], out["rev_q_qoq"])
+    ern_growth = np.where(out["fundamentals_quality"] >= 1.0, out["earn_q_yoy"], out["earn_q_qoq"])
 
-    out["cap_bonus"] = out["market_cap"].apply(_cap_bonus)
-    out["leap_score"] = 0.4 * out["z_ret_63"] + 0.5 * out["z_ret_252"] + 0.1 * out["cap_bonus"] - 0.2 * out["vol60"]
+    # Clip extremes
+    rev_growth = pd.Series(rev_growth, index=out.index).clip(lower=-1.0, upper=1.0).fillna(0.0)
+    ern_growth = pd.Series(ern_growth, index=out.index).clip(lower=-1.0, upper=1.0).fillna(0.0)
+    streak     = out.get("growth_streak", pd.Series(0.0, index=out.index)).fillna(0.0)
+
+    out["leap_score"] = (
+        0.30 * out["z_ret_63"] +
+        0.35 * out["z_ret_252"] +
+        0.10 * out["cap_bonus"] -
+        0.15 * out.get("vol60", pd.Series(0.0, index=out.index)).fillna(0.0) +
+        0.10 * rev_growth +
+        0.10 * ern_growth +
+        0.05 * streak
+    )
     out["leap_rank"]  = _pctl0_10(out["leap_score"])
 
-    # leaders & leaps
-    leaders = out[(out["ret_5d"] > 0) & (out["ret_21d"] > 0)].copy().sort_values("strength_score", ascending=False)
+    # leaders & leaps tables
+    leaders = out[(out.get("ret_5d", 0) > 0) & (out.get("ret_21d", 0) > 0)].copy().sort_values("strength_score", ascending=False)
     leaps   = out.sort_values("leap_rank", ascending=False)
 
     # --------- prune & replenish local list, then persist ------------
@@ -445,7 +554,6 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
             min_strength_z=LOCAL_ADD_MIN_STRENGTH_Z,
             max_size=LOCAL_MAX_SIZE
         )
-        # Save updated local list back to Blob (signals/local_list.json)
         save_local_list(new_local_list, meta={"updated_utc": datetime.datetime.utcnow().isoformat()+"Z"})
         logger.info(f"[local_list] removed={len(changes.get('removed',[]))} added={len(changes.get('added',[]))} size={len(new_local_list)}")
     except Exception as e:
@@ -471,7 +579,10 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         "score", "strength_score", "ret_5d", "ret_21d",
         "last_price", "market_cap",
         "adv_usd_20", "adv_usd_20_z", "vol_surge",
-        "rsi14", "close_above_sma50", "close_above_sma200", "dist_52w_high", "buy_flag"
+        "rsi14", "close_above_sma50", "close_above_sma200", "dist_52w_high", "buy_flag",
+        # LEAP fundamentals we now compute
+        "rev_q_yoy", "earn_q_yoy", "rev_q_qoq", "earn_q_qoq", "growth_streak", "fundamentals_quality",
+        "z_ret_63", "z_ret_252", "cap_bonus", "leap_score", "leap_rank"
     ]
     for c in cols_order:
         if c not in out.columns:
