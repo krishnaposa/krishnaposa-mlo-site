@@ -1,6 +1,10 @@
 # daily_monitor.py
+import os
+import time
+import math
+import logging
 import datetime
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 import numpy as np
 import pandas as pd
@@ -8,66 +12,30 @@ import yfinance as yf
 import smtplib, ssl
 from email.message import EmailMessage
 
-def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str):
-    """
-    Send email with top picks + leaders as HTML, with CSV attachments.
-    Requires environment vars:
-      EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO (comma separated),
-      SMTP_SERVER, SMTP_PORT (default 465).
-    """
+# ---------------------------------------------------------------------
+# Logging (inherits level/handlers from Function App or local script)
+# ---------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
-    if os.getenv("SEND_EMAIL","0") != "1":
-        return
+# ---------------------------------------------------------------------
+# Tunables (can be overridden via env)
+# ---------------------------------------------------------------------
+BATCH_SIZE      = int(os.getenv("YF_BATCH_SIZE", "50"))    # tickers per download call
+MAX_RETRIES     = int(os.getenv("YF_MAX_RETRIES", "2"))    # per-batch retries
+RETRY_BACKOFF_S = float(os.getenv("YF_RETRY_BACKOFF_S", "3.0"))
+MIN_DOLLAR_VOL_DEFAULT = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
 
-    server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    port   = int(os.getenv("SMTP_PORT","465"))
-    email_from = os.getenv("EMAIL_FROM")
-    pwd    = os.getenv("EMAIL_PASSWORD")
-    tos    = [t.strip() for t in os.getenv("EMAIL_TO","").split(",") if t.strip()]
-    subject_prefix = os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks")
-    max_rows  = int(os.getenv("MAX_EMAIL_ROWS","15"))
-
-    if not (server and email_from and pwd and tos):
-        logging.warning("[email] missing SMTP config; skipping email")
-        return
-
-    # Build HTML tables
-    def html_table(df, max_rows=15):
-        return df.head(max_rows).to_html(index=False, border=0, justify="left")
-
-    top_picks = df_all[df_all["buy_flag"]][["ticker","score"]].sort_values("score", ascending=False)
-    html_top  = html_table(top_picks, max_rows)
-    html_lead = html_table(df_leaders, max_rows)
-
-    html_body = f"""<html><body>
-      <h2>Daily Stock Picks — {stamp}</h2>
-      <h3>Top Picks</h3>{html_top}
-      <h3>Leaders (5d &amp; 21d up)</h3>{html_lead}
-    </body></html>"""
-
-    msg = EmailMessage()
-    msg["From"] = email_from
-    msg["To"] = ", ".join(tos)
-    msg["Subject"] = f"{subject_prefix} — {stamp}"
-    msg.set_content("See HTML version")
-    msg.add_alternative(html_body, subtype="html")
-
-    # Attach CSVs
-    msg.add_attachment(df_all.to_csv(index=False).encode("utf-8"),
-                       maintype="text", subtype="csv",
-                       filename=f"daily_snapshot_{stamp}.csv")
-    msg.add_attachment(df_leaders.to_csv(index=False).encode("utf-8"),
-                       maintype="text", subtype="csv",
-                       filename=f"leaders_{stamp}.csv")
-
-    context = ssl.create_default_context()
-    with smtplib.SMTP_SSL(server, port, context=context) as s:
-        s.login(email_from, pwd)
-        s.send_message(msg)
-        logging.info(f"[email] sent to {len(tos)} recipient(s)")
-
-# ---------------- Indicators & helpers ----------------
+# ---------------------------------------------------------------------
+# Indicators & helpers
+# ---------------------------------------------------------------------
 def rsi(series: pd.Series, n: int = 14) -> pd.Series:
+    logger.debug(f"Computing RSI n={n}")
     delta = series.diff()
     up = np.where(delta > 0, delta, 0.0)
     down = np.where(delta < 0, -delta, 0.0)
@@ -77,6 +45,7 @@ def rsi(series: pd.Series, n: int = 14) -> pd.Series:
     return (100 - (100 / (1 + rs))).fillna(50)
 
 def macd(series: pd.Series, fast=12, slow=26, signal=9):
+    logger.debug(f"Computing MACD fast={fast} slow={slow} signal={signal}")
     ema_fast = series.ewm(span=fast, adjust=False).mean()
     ema_slow = series.ewm(span=slow, adjust=False).mean()
     macd_line = ema_fast - ema_slow
@@ -85,6 +54,7 @@ def macd(series: pd.Series, fast=12, slow=26, signal=9):
     return macd_line, signal_line, hist
 
 def true_range(df: pd.DataFrame) -> pd.Series:
+    logger.debug("Computing True Range")
     prev_close = df["Adj Close"].shift(1)
     tr = pd.concat([
         df["High"] - df["Low"],
@@ -94,6 +64,7 @@ def true_range(df: pd.DataFrame) -> pd.Series:
     return tr
 
 def realized_vol(returns: pd.Series, n=20):
+    logger.debug(f"Computing realized volatility n={n}")
     return returns.rolling(n).std() * np.sqrt(252)
 
 def zscore(s: pd.Series) -> pd.Series:
@@ -102,8 +73,9 @@ def zscore(s: pd.Series) -> pd.Series:
         return pd.Series(0.0, index=s.index)
     return (s - mu) / sd
 
-
-# ---------------- Trend-follow scoring ----------------
+# ---------------------------------------------------------------------
+# Trend-follow scoring
+# ---------------------------------------------------------------------
 def score_row(r: pd.Series, min_dollar_vol: int) -> float:
     momentum_trend = (
         0.50 * r.get("ret_20_z", 0.0) +
@@ -122,98 +94,249 @@ def score_row(r: pd.Series, min_dollar_vol: int) -> float:
     vol20 = r.get("vol20", 0.0)
     mdd_60 = r.get("mdd_60", 0.0)
     risk_penalty = 0.30 * vol20 + 1.20 * abs(min(0.0, mdd_60))
-    event_penalty = 0.0  # earnings check omitted here
+    event_penalty = 0.0  # no earnings calendar here
     return float(momentum_trend + liquidity - risk_penalty - event_penalty)
 
+# ---------------------------------------------------------------------
+# Yahoo fetch (BATCHED + RETRIES + LOGGING)
+# ---------------------------------------------------------------------
+def _clean_tickers(raw: List[str]) -> List[str]:
+    cleaned = []
+    for t in raw:
+        ts = (t or "").strip().upper()
+        # Filter known-bad: empty, single-character market tags, or explicit invalids
+        if not ts or ts in {"US"}:
+            logger.warning(f"[tickers] skipping invalid: '{t}'")
+            continue
+        cleaned.append(ts)
+    return cleaned
 
-# ---------------- Public API ----------------
+def _fetch_batch(batch: List[str], start: datetime.date, end: datetime.date) -> Dict[str, pd.DataFrame]:
+    out: Dict[str, pd.DataFrame] = {}
+    if not batch:
+        return out
+
+    attempt = 0
+    while attempt <= MAX_RETRIES:
+        try:
+            logger.info(f"[yf] downloading batch size={len(batch)} attempt={attempt+1}/{MAX_RETRIES+1}")
+            data = yf.download(
+                tickers=batch,
+                start=start, end=end,
+                auto_adjust=False,
+                group_by="ticker",
+                progress=False,
+                threads=True
+            )
+            # yfinance returns a Panel-like DataFrame keyed by ticker columns
+            for t in batch:
+                if t in data:
+                    df = data[t]
+                else:
+                    # With a single ticker, yfinance returns flat columns
+                    if len(batch) == 1 and isinstance(data, pd.DataFrame) and set(["Adj Close","Close","High","Low","Open","Volume"]).issubset(set(data.columns)):
+                        df = data
+                    else:
+                        logger.warning(f"[yf] no data key for {t}")
+                        continue
+
+                df = df.dropna(subset=["Adj Close"]).copy()
+                if df.empty:
+                    logger.warning(f"[yf] empty frame for {t}")
+                    continue
+                out[t] = df
+            return out
+
+        except Exception as e:
+            attempt += 1
+            logger.error(f"[yf] batch download failed (attempt {attempt}): {e}")
+            if attempt <= MAX_RETRIES:
+                sleep_s = RETRY_BACKOFF_S * attempt
+                logger.info(f"[yf] retrying in {sleep_s:.1f}s …")
+                time.sleep(sleep_s)
+            else:
+                logger.error("[yf] max retries reached; skipping this batch")
+
+    return out
+
+def fetch_prices_batched(tickers: List[str], start: datetime.date, end: datetime.date) -> Dict[str, pd.DataFrame]:
+    tickers = _clean_tickers(tickers)
+    frames: Dict[str, pd.DataFrame] = {}
+    n = len(tickers)
+    if n == 0:
+        logger.error("[yf] no valid tickers to download")
+        return frames
+
+    logger.info(f"[yf] fetching prices for {n} tickers in batches of {BATCH_SIZE}")
+    for i in range(0, n, BATCH_SIZE):
+        batch = tickers[i:i+BATCH_SIZE]
+        got = _fetch_batch(batch, start, end)
+        frames.update(got)
+        # Log per-batch summary
+        logger.info(f"[yf] batch {i//BATCH_SIZE+1}/{math.ceil(n/BATCH_SIZE)}: downloaded {len(got)}/{len(batch)} symbols")
+
+    missing = [t for t in tickers if t not in frames]
+    if missing:
+        logger.warning(f"[yf] missing/failed symbols: {len(missing)} e.g. {missing[:10]}{'...' if len(missing)>10 else ''}")
+    logger.info(f"[yf] total downloaded symbols: {len(frames)}")
+    return frames
+
+# ---------------------------------------------------------------------
+# SMTP Email
+# ---------------------------------------------------------------------
+def _render_html_table(df: pd.DataFrame, max_rows=15) -> str:
+    dfv = df.head(max_rows).copy()
+    for col in ("score","ret_5d","ret_21d","strength_score"):
+        if col in dfv.columns:
+            dfv[col] = pd.to_numeric(dfv[col], errors="coerce").round(4)
+    return dfv.to_html(index=False, border=0, justify="left")
+
+def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str):
+    """
+    Send email with top picks + leaders as HTML, attach CSVs.
+    Env vars:
+      SEND_EMAIL=1
+      SMTP_SERVER, SMTP_PORT (default 465)
+      EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO (comma-separated)
+      EMAIL_SUBJECT_PREFIX (optional), MAX_EMAIL_ROWS (optional)
+    """
+    if os.getenv("SEND_EMAIL","0") != "1":
+        logger.info("[email] SEND_EMAIL!=1; skipping email")
+        return
+
+    server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    port   = int(os.getenv("SMTP_PORT","465"))
+    email_from = os.getenv("EMAIL_FROM")
+    pwd    = os.getenv("EMAIL_PASSWORD")
+    tos    = [t.strip() for t in os.getenv("EMAIL_TO","").split(",") if t.strip()]
+    subject_prefix = os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks")
+    max_rows  = int(os.getenv("MAX_EMAIL_ROWS","15"))
+
+    if not (server and email_from and pwd and tos):
+        logger.warning("[email] missing SMTP config; skipping email")
+        return
+
+    top_picks = df_all[df_all.get("buy_flag", False) == True][["ticker","score"]].sort_values("score", ascending=False)  # noqa: E712
+    html_top  = _render_html_table(top_picks, max_rows)
+    html_lead = _render_html_table(df_leaders, max_rows)
+
+    html_body = f"""<html><body>
+      <h2>Daily Stock Picks — {stamp}</h2>
+      <h3>Top Picks (trend-follow score)</h3>{html_top}
+      <h3>Leaders (5d &amp; 21d positive, 21d-weighted)</h3>{html_lead}
+    </body></html>"""
+
+    msg = EmailMessage()
+    msg["From"] = email_from
+    msg["To"] = ", ".join(tos)
+    msg["Subject"] = f"{subject_prefix} — {stamp}"
+    msg.set_content("See HTML version")
+    msg.add_alternative(html_body, subtype="html")
+
+    # Attach CSVs (as a convenience; Blob parquet handled by Function App)
+    msg.add_attachment(df_all.to_csv(index=False).encode("utf-8"),
+                       maintype="text", subtype="csv",
+                       filename=f"daily_snapshot_{stamp}.csv")
+    msg.add_attachment(df_leaders.to_csv(index=False).encode("utf-8"),
+                       maintype="text", subtype="csv",
+                       filename=f"leaders_{stamp}.csv")
+
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL(server, port, context=context) as s:
+        s.login(email_from, pwd)
+        s.send_message(msg)
+        logger.info(f"[email] sent to {len(tos)} recipient(s)")
+
+# ---------------------------------------------------------------------
+# Public entry
+# ---------------------------------------------------------------------
 def run_monitor(
     tickers: List[str],
     *,
     today: datetime.date | None = None,
-    min_dollar_vol: int = 1_000_000
+    min_dollar_vol: int = MIN_DOLLAR_VOL_DEFAULT
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Fetches data, computes indicators, builds:
+    Computes:
       - df_all (sorted by trend-follow score)
-      - df_leaders (5d & 21d positive, strength weighted to 21d)
-    Returns (df_all, df_leaders)
+      - df_leaders (5d & 21d positive, 21d-weighted)
+    Also triggers email (if SEND_EMAIL=1).
     """
     if today is None:
         today = datetime.date.today()
 
     end = today + datetime.timedelta(days=1)
     start = today - datetime.timedelta(days=420)
-    data = yf.download(tickers=tickers, start=start, end=end,
-                       auto_adjust=False, group_by="ticker", progress=False)
 
-    rows = []
-    for t in tickers:
-        if t not in data:
-            continue
-        df = data[t].dropna(subset=["Adj Close"]).copy()
-        if df.empty:
-            continue
+    logger.info(f"[monitor] start={start} end={end} tickers={len(tickers)}")
+    frames = fetch_prices_batched(tickers, start, end)
+    rows: List[Dict] = []
 
-        d = df.copy()
-        d["CloseAdj"] = d["Adj Close"]
+    for t, df in frames.items():
+        try:
+            d = df.copy()
+            d["CloseAdj"] = d["Adj Close"]
 
-        # returns
-        d["ret"] = d["CloseAdj"].pct_change()
-        d["ret_5d"] = d["CloseAdj"].pct_change(5)
-        d["ret_20"] = d["CloseAdj"].pct_change(20)
-        d["ret_21d"] = d["CloseAdj"].pct_change(21)
-        d["ret_60"] = d["CloseAdj"].pct_change(60)
-        d["ret_120"] = d["CloseAdj"].pct_change(120)
+            # returns
+            d["ret"] = d["CloseAdj"].pct_change()
+            d["ret_5d"] = d["CloseAdj"].pct_change(5)
+            d["ret_20"] = d["CloseAdj"].pct_change(20)
+            d["ret_21d"] = d["CloseAdj"].pct_change(21)
+            d["ret_60"] = d["CloseAdj"].pct_change(60)
+            d["ret_120"] = d["CloseAdj"].pct_change(120)
 
-        # MAs, slopes, positions
-        d["sma20"] = d["CloseAdj"].rolling(20).mean()
-        d["sma50"] = d["CloseAdj"].rolling(50).mean()
-        d["sma200"] = d["CloseAdj"].rolling(200).mean()
-        d["sma50_slope"] = (d["sma50"].diff(5) / d["sma50"].shift(5)).replace([np.inf, -np.inf], np.nan)
-        d["sma200_slope"] = (d["sma200"].diff(10) / d["sma200"].shift(10)).replace([np.inf, -np.inf], np.nan)
-        d["close_above_sma50"] = (d["CloseAdj"] > d["sma50"]).astype(float)
-        d["close_above_sma200"] = (d["CloseAdj"] > d["sma200"]).astype(float)
+            # MAs, slopes, positions
+            d["sma20"] = d["CloseAdj"].rolling(20).mean()
+            d["sma50"] = d["CloseAdj"].rolling(50).mean()
+            d["sma200"] = d["CloseAdj"].rolling(200).mean()
+            d["sma50_slope"] = (d["sma50"].diff(5) / d["sma50"].shift(5)).replace([np.inf, -np.inf], np.nan)
+            d["sma200_slope"] = (d["sma200"].diff(10) / d["sma200"].shift(10)).replace([np.inf, -np.inf], np.nan)
+            d["close_above_sma50"] = (d["CloseAdj"] > d["sma50"]).astype(float)
+            d["close_above_sma200"] = (d["CloseAdj"] > d["sma200"]).astype(float)
 
-        # oscillators
-        d["rsi14"] = rsi(d["CloseAdj"])
-        _, _, hist = macd(d["CloseAdj"])
-        d["macd_hist"] = hist
+            # oscillators
+            d["rsi14"] = rsi(d["CloseAdj"])
+            _, _, hist = macd(d["CloseAdj"])
+            d["macd_hist"] = hist
 
-        # risk/vol
-        d["tr"] = true_range(d)
-        d["atr14"] = d["tr"].rolling(14).mean()
-        d["vol20"] = realized_vol(d["ret"], 20)
-        d["mdd_60"] = (d["CloseAdj"] / d["CloseAdj"].cummax() - 1.0).rolling(60).min()
+            # risk/vol
+            d["tr"] = true_range(d)
+            d["atr14"] = d["tr"].rolling(14).mean()
+            d["vol20"] = realized_vol(d["ret"], 20)
+            d["mdd_60"] = (d["CloseAdj"] / d["CloseAdj"].cummax() - 1.0).rolling(60).min()
 
-        # liquidity
-        d["adv_usd_20"] = d["Volume"].rolling(20).mean() * d["CloseAdj"].rolling(20).mean()
+            # liquidity
+            d["adv_usd_20"] = d["Volume"].rolling(20).mean() * d["CloseAdj"].rolling(20).mean()
 
-        # highs / breakouts
-        d["hi_252"] = d["CloseAdj"].rolling(252, min_periods=60).max()
-        d["dist_52w_high"] = d["CloseAdj"] / d["hi_252"] - 1.0
-        d["hi_55"] = d["CloseAdj"].rolling(55, min_periods=30).max()
-        d["new_55d_high"] = (d["CloseAdj"] >= d["hi_55"]).astype(float)
+            # highs / breakouts
+            d["hi_252"] = d["CloseAdj"].rolling(252, min_periods=60).max()
+            d["dist_52w_high"] = d["CloseAdj"] / d["hi_252"] - 1.0
+            d["hi_55"] = d["CloseAdj"].rolling(55, min_periods=30).max()
+            d["new_55d_high"] = (d["CloseAdj"] >= d["hi_55"]).astype(float)
 
-        # momentum z-scores
-        for col in ["ret_20", "ret_60", "ret_120"]:
-            mu = d[col].rolling(180).mean()
-            sd = d[col].rolling(180).std()
-            d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
+            # momentum z-scores
+            for col in ["ret_20", "ret_60", "ret_120"]:
+                mu = d[col].rolling(180).mean()
+                sd = d[col].rolling(180).std()
+                d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
 
-        if d.dropna(subset=["CloseAdj", "sma50", "sma200"]).empty:
-            continue
+            d_valid = d.dropna(subset=["CloseAdj", "sma50", "sma200"])
+            if d_valid.empty:
+                logger.warning(f"[monitor] no valid last row for {t}; skipping")
+                continue
 
-        latest = d.iloc[-1].to_dict()
-        latest["ticker"] = t
-        rows.append(latest)
+            latest = d.iloc[-1].to_dict()
+            latest["ticker"] = t
+            rows.append(latest)
+        except Exception as e:
+            logger.exception(f"[monitor] error processing {t}: {e}")
 
     if not rows:
         raise RuntimeError("No rows produced—check data availability or ticker list.")
 
     out = pd.DataFrame(rows)
 
-    # Trend-follow score and buy flag
+    # Trend-follow score & buy flag
     out["score"] = out.apply(lambda r: score_row(r, min_dollar_vol), axis=1)
     out["buy_flag"] = (
         (out["score"] > 1.5) &
@@ -230,8 +353,12 @@ def run_monitor(
     leaders = out[(out["ret_5d"] > 0) & (out["ret_21d"] > 0)].copy()
     leaders = leaders.sort_values("strength_score", ascending=False)
 
-    # Ordered views
-    out_sorted = out.sort_values("score", ascending=False)
-    leaders_view = leaders[["ticker", "ret_5d", "ret_21d", "strength_score"]].copy()
+    # Email report if enabled
+    stamp = today.strftime("%Y-%m-%d")
+    try:
+        send_email_report(out, leaders, stamp)
+    except Exception as e:
+        logger.exception(f"[email] failed to send report: {e}")
 
-    return out_sorted, leaders_view
+    logger.info("[monitor] completed")
+    return out.sort_values("score", ascending=False), leaders[["ticker","ret_5d","ret_21d","strength_score"]]
