@@ -20,10 +20,11 @@ from universe_utils import read_universe_blob
 # ---------------------------------------------------------------------
 logger = logging.getLogger(__name__)
 if not logger.handlers:
+    LOG_LEVEL = os.getenv("DAILY_MONITOR_LOG_LEVEL", "INFO").upper()
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+       level=getattr(logging, LOG_LEVEL, logging.INFO),
+       format="%(asctime)s [%(levelname)s] %(message)s",
+       datefmt="%Y-%m-%d %H:%M:%S",
     )
 
 # ---------------------------------------------------------------------
