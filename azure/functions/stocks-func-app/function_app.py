@@ -2,10 +2,9 @@ import os, json, sys, subprocess, logging, pathlib, importlib.util, datetime, sh
 import azure.functions as func
 from openai import AzureOpenAI
 from azure.storage.blob import BlobServiceClient, ContentSettings
-from typing import List
 import daily_monitor  # <--- our new module
-# replace old _read_universe_blob definition
-from universe_utils import read_universe_blob as _read_universe_blob
+from universe_utils import read_universe_blob as _read_universe_blob  # use shared cache reader
+
 app = func.FunctionApp()
 
 # ---------- Settings ----------
@@ -27,7 +26,6 @@ AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 AZURE_OPENAI_API_VER    = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
 
 SIGNALS_CONTAINER = os.getenv("SIGNALS_CONTAINER", "signals")
-TICKERS_CSV = os.getenv("TICKERS_CSV", "").strip()         # optional comma-separated override
 MIN_DOLLAR_VOL = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
 
 # Blob client (uses AzureWebJobsStorage)
@@ -64,15 +62,6 @@ def _write_universe_blob(tickers: list[str], meta: dict | None = None) -> None:
         content_settings=ContentSettings(content_type="application/json")
     )
 
-def _read_universe_blob() -> dict | None:
-    cont = _blob_container()
-    try:
-        blob = cont.get_blob_client(UNIVERSE_BLOB_NAME)
-        data = blob.download_blob().readall()
-        return json.loads(data)
-    except Exception:
-        return None
-
 # ---------- Universe computation (budgeted) ----------
 def _load_module_from_path(module_name: str, file_path: str):
     spec = importlib.util.spec_from_file_location(module_name, file_path)
@@ -97,7 +86,6 @@ def _compute_universe_budgeted(max_seconds: int) -> list[str]:
         mod = _load_module_from_path("wb4u_main_dynamic", str(script_path))
         fn = getattr(mod, "get_universe", None)
         if callable(fn):
-            # Soft budget via function arg; still enforce a hard cap with subprocess if desired.
             tickers = fn(max_seconds=max_seconds)
             if not isinstance(tickers, (list, tuple)):
                 raise TypeError("get_universe() must return a list/tuple")
@@ -128,17 +116,12 @@ def _compute_universe_budgeted(max_seconds: int) -> list[str]:
 
 # ---------- OpenAI ranking ----------
 def _make_prompt(tickers, strategy: str, horizon_text: str | None = None):
-    """
-    Builds the system+user messages for Azure OpenAI.
-    Horizon is optional. If omitted, prompt/schema won’t include it.
-    """
     system = (
         "You are an equity analyst. Return ONLY JSON.\n"
         "Rank the provided tickers for the chosen strategy with concise reasoning.\n"
         "Scores should be on a 0–10 scale (higher is better)."
     )
 
-    # --- Strategy-specific instructions ---
     STRAT_INSTRUCTIONS = {
         "long_term":        "Emphasize durable moats, compounding, FCF quality, and drawdown resilience.",
         "medium_term":      "Focus on 6–24 month setup quality: earnings trend, margin trajectory, valuation re-rate potential.",
@@ -168,13 +151,8 @@ def _make_prompt(tickers, strategy: str, horizon_text: str | None = None):
         f"Evaluate the '{strategy}' approach with clear, investable reasoning."
     )
 
-    # Append horizon only if provided
-    if horizon_text:
-        instruction = f"{base_instruction} Horizon: {horizon_text}."
-    else:
-        instruction = base_instruction
+    instruction = f"{base_instruction} Horizon: {horizon_text}." if horizon_text else base_instruction
 
-    # --- Output schema ---
     schema_props = {
         "strategy": {"type": "string"},
         "ranked": {
@@ -194,8 +172,7 @@ def _make_prompt(tickers, strategy: str, horizon_text: str | None = None):
         "notes": {"type": "string"}
     }
     required_fields = ["strategy", "ranked"]
-
-    if horizon_text:  # only include horizon if present
+    if horizon_text:
         schema_props["horizon"] = {"type": "string"}
         required_fields.append("horizon")
 
@@ -214,10 +191,8 @@ def _make_prompt(tickers, strategy: str, horizon_text: str | None = None):
         },
         "format_expectations": "Return valid JSON that matches the schema. Keep theses/risks concise (1-3 lines)."
     }
-
     if horizon_text:
-        user["horizon"] = horizon_text  # provide context to the model
-
+        user["horizon"] = horizon_text
     return system, user
 
 def _score_with_azure_openai(tickers, strategy: str, horizon_text: str) -> dict:
@@ -255,16 +230,11 @@ def _upload_bytes(container_client, blob_name: str, data: bytes, content_type: s
     )
     logging.info(f"[upload] wrote {container_client.container_name}/{blob_name} ({len(data)} bytes)")
 
-
-
-
-# --- ADD this new timer function (Mon–Fri 23:30 UTC) ---
 # --- Timer function: run daily monitor (Mon–Fri 23:30 UTC) ---
 @app.schedule(schedule="0 30 23 * * 1-5", arg_name="timer", run_on_startup=False, use_monitor=True)
 def monitor_signals(timer: func.TimerRequest) -> None:
     try:
-        tickers = []
-        # Run monitor (daily_monitor handles scoring + email internally)
+        tickers = []  # dynamic list handled in daily_monitor
         df_all, df_leaders = daily_monitor.run_monitor(
             tickers,
             min_dollar_vol=MIN_DOLLAR_VOL
@@ -308,7 +278,7 @@ def monitor_signals(timer: func.TimerRequest) -> None:
 
     except Exception as e:
         logging.exception(f"[monitor_signals] failed: {e}")
-                
+
 # ---------- Timer: refresh cache ----------
 @app.schedule(schedule="0 9 * * 1-5", arg_name="myTimer", run_on_startup=True, use_monitor=True)
 def refresh_universe(myTimer: func.TimerRequest) -> None:
