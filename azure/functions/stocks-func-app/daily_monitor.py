@@ -196,7 +196,7 @@ def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str
     Send email with top picks + leaders as HTML, attach CSVs.
     Env vars:
       SEND_EMAIL=1
-      SMTP_SERVER, SMTP_PORT (default 465)
+      SMTP_SERVER, SMTP_PORT (465=SSL, 587=STARTTLS; fallback enabled)
       EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO (comma-separated)
       EMAIL_SUBJECT_PREFIX (optional), MAX_EMAIL_ROWS (optional)
     """
@@ -205,20 +205,29 @@ def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str
         return
 
     server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    port   = int(os.getenv("SMTP_PORT","465"))
+    # If a specific port is set we'll respect it; otherwise we'll try SSL->STARTTLS
+    port_env = os.getenv("SMTP_PORT", "").strip()
     email_from = os.getenv("EMAIL_FROM")
-    pwd    = os.getenv("EMAIL_PASSWORD")
-    tos    = [t.strip() for t in os.getenv("EMAIL_TO","").split(",") if t.strip()]
+    pwd        = os.getenv("EMAIL_PASSWORD")
+    tos        = [t.strip() for t in os.getenv("EMAIL_TO","").split(",") if t.strip()]
     subject_prefix = os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks")
     max_rows  = int(os.getenv("MAX_EMAIL_ROWS","15"))
 
     if not (server and email_from and pwd and tos):
-        logger.warning("[email] missing SMTP config; skipping email")
+        logger.warning("[email] missing SMTP config; need SMTP_SERVER, EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO")
         return
 
+    # Build HTML tables
+    def html_table(df, k=max_rows):
+        dfv = df.head(k).copy()
+        for col in ("score","ret_5d","ret_21d","strength_score"):
+            if col in dfv.columns:
+                dfv[col] = pd.to_numeric(dfv[col], errors="coerce").round(4)
+        return dfv.to_html(index=False, border=0, justify="left")
+
     top_picks = df_all[df_all.get("buy_flag", False) == True][["ticker","score"]].sort_values("score", ascending=False)  # noqa: E712
-    html_top  = _render_html_table(top_picks, max_rows)
-    html_lead = _render_html_table(df_leaders, max_rows)
+    html_top  = html_table(top_picks)
+    html_lead = html_table(df_leaders)
 
     html_body = f"""<html><body>
       <h2>Daily Stock Picks — {stamp}</h2>
@@ -233,7 +242,7 @@ def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str
     msg.set_content("See HTML version")
     msg.add_alternative(html_body, subtype="html")
 
-    # Attach CSVs (as a convenience; Blob parquet handled by Function App)
+    # Attach CSVs (convenience)
     msg.add_attachment(df_all.to_csv(index=False).encode("utf-8"),
                        maintype="text", subtype="csv",
                        filename=f"daily_snapshot_{stamp}.csv")
@@ -241,12 +250,40 @@ def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str
                        maintype="text", subtype="csv",
                        filename=f"leaders_{stamp}.csv")
 
-    context = ssl.create_default_context()
-    with smtplib.SMTP_SSL(server, port, context=context) as s:
-        s.login(email_from, pwd)
-        s.send_message(msg)
-        logger.info(f"[email] sent to {len(tos)} recipient(s)")
+    def _try_ssl():
+        port = int(port_env or "465")
+        logger.info(f"[email] attempting SSL SMTP: host={server} port={port} from={email_from} to={len(tos)}")
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP_SSL(server, port, context=ctx, timeout=30) as s:
+            s.login(email_from, pwd)
+            s.send_message(msg)
 
+    def _try_starttls():
+        port = int(port_env or "587")
+        logger.info(f"[email] attempting STARTTLS SMTP: host={server} port={port} from={email_from} to={len(tos)}")
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP(server, port, timeout=30) as s:
+            s.ehlo()
+            s.starttls(context=ctx)
+            s.ehlo()
+            s.login(email_from, pwd)
+            s.send_message(msg)
+
+    # Try SSL first, then STARTTLS
+    try:
+        _try_ssl()
+        logger.info("[email] sent via SSL")
+        return
+    except Exception as e1:
+        logger.warning(f"[email] SSL path failed: {e1}")
+
+    try:
+        _try_starttls()
+        logger.info("[email] sent via STARTTLS")
+    except Exception as e2:
+        logger.exception(f"[email] both SSL and STARTTLS failed: {e2}")
+        raise
+        
 # ---------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------
