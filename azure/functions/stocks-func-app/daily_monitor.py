@@ -5,6 +5,9 @@ import math
 import logging
 import datetime
 from typing import List, Tuple, Dict
+import json
+from urllib.request import urlopen, Request
+from urllib.error import URLError, HTTPError
 
 import numpy as np
 import pandas as pd
@@ -30,6 +33,10 @@ BATCH_SIZE      = int(os.getenv("YF_BATCH_SIZE", "50"))    # tickers per downloa
 MAX_RETRIES     = int(os.getenv("YF_MAX_RETRIES", "2"))    # per-batch retries
 RETRY_BACKOFF_S = float(os.getenv("YF_RETRY_BACKOFF_S", "3.0"))
 MIN_DOLLAR_VOL_DEFAULT = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
+
+# Universe fetch
+UNIVERSE_URL        = os.getenv("UNIVERSE_URL", "http://localhost:7071/api/universe")
+UNIVERSE_TIMEOUT_S  = float(os.getenv("UNIVERSE_TIMEOUT_S", "8.0"))
 
 # ---------------------------------------------------------------------
 # Indicators & helpers
@@ -179,6 +186,38 @@ def fetch_prices_batched(tickers: List[str], start: datetime.date, end: datetime
     return frames
 
 # ---------------------------------------------------------------------
+# Universe fetch (HTTP GET to your Function App)
+# ---------------------------------------------------------------------
+def _fetch_universe_tickers() -> List[str]:
+    url = UNIVERSE_URL
+    if not url:
+        logger.info("[universe] UNIVERSE_URL not set; skipping")
+        return []
+    try:
+        logger.info(f"[universe] GET {url}")
+        req = Request(url, headers={"User-Agent":"daily-monitor/1.0"})
+        with urlopen(req, timeout=UNIVERSE_TIMEOUT_S) as resp:
+            data = resp.read()
+        js = json.loads(data.decode("utf-8"))
+        if not isinstance(js, dict):
+            logger.warning("[universe] unexpected response type")
+            return []
+        if not js.get("ok"):
+            logger.warning(f"[universe] ok=false: {js}")
+            return []
+        raw = js.get("tickers") or []
+        out = [str(t).upper().strip() for t in raw if str(t).strip()]
+        logger.info(f"[universe] received {len(out)} tickers (stale={js.get('stale')})")
+        return out
+    except HTTPError as e:
+        logger.warning(f"[universe] HTTP error {e.code}: {e.reason}")
+    except URLError as e:
+        logger.warning(f"[universe] URL error: {e.reason}")
+    except Exception as e:
+        logger.exception(f"[universe] failed: {e}")
+    return []
+
+# ---------------------------------------------------------------------
 # SMTP Email
 # ---------------------------------------------------------------------
 def _render_html_table(df: pd.DataFrame, max_rows=15) -> str:
@@ -188,9 +227,24 @@ def _render_html_table(df: pd.DataFrame, max_rows=15) -> str:
             dfv[col] = pd.to_numeric(dfv[col], errors="coerce").round(4)
     return dfv.to_html(index=False, border=0, justify="left")
 
-def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str):
+def _render_list_html(items: List[str], max_items=50) -> str:
+    if not items:
+        return "<i>None</i>"
+    clip = items[:max_items]
+    more = "" if len(items) <= max_items else f" … (+{len(items)-max_items} more)"
+    return "<div style='font-family:monospace'>" + ", ".join(clip) + more + "</div>"
+
+def send_email_report(
+    df_all: pd.DataFrame,
+    df_leaders: pd.DataFrame,
+    stamp: str,
+    *,
+    only_in_universe: List[str] | None = None,
+    only_in_local: List[str] | None = None
+):
     """
     Send email with picks as HTML, attach CSVs.
+    Shows diff between universe vs local list.
     Env vars:
       SEND_EMAIL=1
       SMTP_SERVER, SMTP_PORT (465=SSL, 587=STARTTLS; fallback enabled)
@@ -213,7 +267,7 @@ def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str
         logger.warning("[email] missing SMTP config; need SMTP_SERVER, EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO")
         return
 
-    # Tables for email
+    # Tables for email (by merged final rank)
     top_picks = df_all[df_all.get("buy_flag", False) == True][
         ["ticker","final_rank","score","strength_score"]
     ].sort_values("final_rank", ascending=False)
@@ -224,8 +278,17 @@ def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str
     html_top  = _render_html_table(top_picks, max_rows)
     html_over = _render_html_table(overall, max_rows)
 
+    # Diff sections
+    html_only_universe = _render_list_html(only_in_universe or [])
+    html_only_local    = _render_list_html(only_in_local or [])
+
     html_body = f"""<html><body>
       <h2>Daily Stock Picks — {stamp}</h2>
+
+      <h3>Universe vs Local List</h3>
+      <p><b>In Universe but NOT in Local:</b><br>{html_only_universe}</p>
+      <p><b>In Local but NOT in Universe (FYI):</b><br>{html_only_local}</p>
+
       <h3>Top Picks (buy_flag) — ranked by Final (60% Score / 40% Perf)</h3>{html_top}
       <h3>Overall — ranked by Final (60% Score / 40% Perf)</h3>{html_over}
     </body></html>"""
@@ -291,16 +354,31 @@ def run_monitor(
     Builds:
       - df_all: full table sorted by FINAL rank (60% composite score, 40% return strength)
       - df_leaders: convenience table (5d & 21d positive, 21d-weighted)
-    Also triggers email (if SEND_EMAIL=1).
+    Also:
+      - Fetches 'universe' from Function App and unions with the provided list
+      - Email includes which tickers are only in universe vs only in local list
     """
     if today is None:
         today = datetime.date.today()
 
+    # ----- Pull universe & merge -----
+    local_list = [str(t).upper().strip() for t in (tickers or []) if str(t).strip()]
+    universe_list = _fetch_universe_tickers()
+    only_in_universe = sorted(list(set(universe_list) - set(local_list)))
+    only_in_local    = sorted(list(set(local_list) - set(universe_list)))
+    merged_tickers   = sorted(list(set(local_list).union(set(universe_list))))
+
+    logger.info(f"[monitor] local={len(local_list)} universe={len(universe_list)} merged={len(merged_tickers)}")
+    if only_in_universe:
+        logger.info(f"[monitor] in universe not in local: {only_in_universe[:20]}{'...' if len(only_in_universe)>20 else ''}")
+    if only_in_local:
+        logger.info(f"[monitor] in local not in universe: {only_in_local[:20]}{'...' if len(only_in_local)>20 else ''}")
+
     end = today + datetime.timedelta(days=1)
     start = today - datetime.timedelta(days=420)
 
-    logger.info(f"[monitor] start={start} end={end} tickers={len(tickers)}")
-    frames = fetch_prices_batched(tickers, start, end)
+    logger.info(f"[monitor] start={start} end={end}")
+    frames = fetch_prices_batched(merged_tickers, start, end)
     rows: List[Dict] = []
 
     for t, df in frames.items():
@@ -379,7 +457,7 @@ def run_monitor(
         (out["dist_52w_high"] > -0.10)
     )
 
-    # Leaders / performance strength (5d & 21d positive; 21d weighted heavier)
+    # Performance strength (5d & 21d positive bias to 21d)
     out["z_5d"] = zscore(out["ret_5d"]).fillna(0.0)
     out["z_21d"] = zscore(out["ret_21d"]).fillna(0.0)
     out["strength_score"] = 0.3 * out["z_5d"] + 0.7 * out["z_21d"]
@@ -392,18 +470,25 @@ def run_monitor(
     out["norm_strength_0_10"] = _pctl0_10(out["strength_score"])
     out["final_rank"] = 0.6 * out["norm_score_0_10"] + 0.4 * out["norm_strength_0_10"]
 
-    # Leaders table (unchanged view for convenience)
+    # Leaders view (unchanged)
     leaders = out[(out["ret_5d"] > 0) & (out["ret_21d"] > 0)].copy()
     leaders = leaders.sort_values("strength_score", ascending=False)
 
-    # Email report if enabled
+    # Email report (with diffs)
     stamp = today.strftime("%Y-%m-%d")
     try:
-        send_email_report(out, leaders[["ticker","ret_5d","ret_21d","strength_score"]], stamp)
+        send_email_report(
+            out,
+            leaders[["ticker","ret_5d","ret_21d","strength_score"]],
+            stamp,
+            only_in_universe=only_in_universe,
+            only_in_local=only_in_local
+        )
     except Exception as e:
         logger.exception(f"[email] failed to send report: {e}")
 
     logger.info("[monitor] completed")
+
     # Return full table sorted by FINAL rank
     cols_order = [
         "ticker", "final_rank", "norm_score_0_10", "norm_strength_0_10",
