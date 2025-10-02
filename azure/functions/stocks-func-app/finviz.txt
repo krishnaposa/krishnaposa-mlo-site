@@ -146,3 +146,11 @@ from datetime import date, timedelta
 filters = ["ind_exchangetradedfund","geo_usa","ta_highlow52w_nh"]  # your usual Finviz ETF filters
 since = date.today() - timedelta(days=30)
 top_adds_for_etfs(filters, since, top_k=3, min_delta=0.02, out_dir=Path("out_etf_adds"))
+
+SEND_EMAIL=1
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=465
+EMAIL_FROM=your_email@gmail.com
+EMAIL_PASSWORD=your_app_password   # Gmail app password or Outlook SMTP password
+EMAIL_TO=your_email@gmail.com
+EMAIL_SUBJECT_PREFIX=Daily Stock Picks
