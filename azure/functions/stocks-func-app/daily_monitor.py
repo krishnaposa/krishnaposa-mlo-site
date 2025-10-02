@@ -14,7 +14,7 @@ import pandas as pd
 import yfinance as yf
 import smtplib, ssl
 from email.message import EmailMessage
-
+from function_app import _read_universe_blob
 # ---------------------------------------------------------------------
 # Logging (inherits level/handlers from Function App or local script)
 # ---------------------------------------------------------------------
@@ -363,7 +363,10 @@ def run_monitor(
 
     # ----- Pull universe & merge -----
     local_list = [str(t).upper().strip() for t in (tickers or []) if str(t).strip()]
-    universe_list = _fetch_universe_tickers()
+    #universe_list = _fetch_universe_tickers()
+    cached = _read_universe_blob()
+    universe_tickers = cached.get("tickers", []) if cached else []
+
     only_in_universe = sorted(list(set(universe_list) - set(local_list)))
     only_in_local    = sorted(list(set(local_list) - set(universe_list)))
     merged_tickers   = sorted(list(set(local_list).union(set(universe_list))))
