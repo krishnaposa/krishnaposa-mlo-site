@@ -11,14 +11,12 @@ import pandas as pd
 import yfinance as yf
 import smtplib, ssl
 from email.message import EmailMessage
+
+# shared cache reader (avoid circular imports by keeping in a separate module)
 from universe_utils import read_universe_blob
 
-# Import the cache reader from your Function App module
-# NOTE: Make sure the module name matches your file (e.g., function_app.py)
-from function_app import _read_universe_blob
-
 # ---------------------------------------------------------------------
-# Logging (inherits level/handlers from Function App or local script)
+# Logging
 # ---------------------------------------------------------------------
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -35,6 +33,7 @@ BATCH_SIZE      = int(os.getenv("YF_BATCH_SIZE", "50"))    # tickers per downloa
 MAX_RETRIES     = int(os.getenv("YF_MAX_RETRIES", "2"))    # per-batch retries
 RETRY_BACKOFF_S = float(os.getenv("YF_RETRY_BACKOFF_S", "3.0"))
 MIN_DOLLAR_VOL_DEFAULT = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
+PENNY_PRICE     = float(os.getenv("PENNY_PRICE", "5"))     # <$5 gets penalized/excluded from buy_flag
 
 # ---------------------------------------------------------------------
 # Indicators & helpers
@@ -78,10 +77,33 @@ def zscore(s: pd.Series) -> pd.Series:
         return pd.Series(0.0, index=s.index)
     return (s - mu) / sd
 
+def clamp(x: float, lo: float, hi: float) -> float:
+    return float(max(lo, min(hi, x)))
+
 # ---------------------------------------------------------------------
-# Trend-follow scoring (composite, before 60/40 merge)
+# Market-cap preference
+# ---------------------------------------------------------------------
+def cap_multiplier(mcap: float | None) -> float:
+    """Prefer mid/large/mega over small. Returns a multiplicative factor."""
+    if mcap is None or (isinstance(mcap, float) and np.isnan(mcap)):
+        return 1.0
+    try:
+        m = float(mcap)
+    except Exception:
+        return 1.0
+    if m < 2e9:      # small
+        return 0.85
+    if m < 10e9:     # mid
+        return 1.05
+    if m < 200e9:    # large
+        return 1.10
+    return 1.12      # mega
+
+# ---------------------------------------------------------------------
+# Trend-follow scoring (now includes volume & penny penalty)
 # ---------------------------------------------------------------------
 def score_row(r: pd.Series, min_dollar_vol: int) -> float:
+    # Core trend components
     momentum_trend = (
         0.50 * r.get("ret_20_z", 0.0) +
         1.00 * r.get("ret_60_z", 0.0) +
@@ -95,12 +117,29 @@ def score_row(r: pd.Series, min_dollar_vol: int) -> float:
         0.50 * max(0.0, r.get("sma50_slope", 0.0)) +
         0.50 * max(0.0, r.get("sma200_slope", 0.0))
     )
+
+    # NEW: Volume boost (centered around 0): 20d$ vs 60d$ + ADV z-score
+    vol_surge = r.get("vol_surge", np.nan)
+    if pd.isna(vol_surge):
+        vol_centered = 0.0
+    else:
+        vol_centered = clamp(vol_surge, 0.5, 2.0) - 1.0   # -0.5 .. +1.0 (1.0 = neutral 0)
+    adv_z = r.get("adv_usd_20_z", 0.0)
+    volume_boost = 0.7 * vol_centered + 0.3 * adv_z
+    momentum_trend += 0.6 * volume_boost
+
+    # Liquidity & risk
     liquidity = 1.0 if r.get("adv_usd_20", 0.0) >= min_dollar_vol else -1.0
     vol20 = r.get("vol20", 0.0)
     mdd_60 = r.get("mdd_60", 0.0)
     risk_penalty = 0.30 * vol20 + 1.20 * abs(min(0.0, mdd_60))
-    event_penalty = 0.0  # no earnings calendar here
-    return float(momentum_trend + liquidity - risk_penalty - event_penalty)
+
+    # NEW: penny-price penalty
+    price_penalty = 0.6 if r.get("last_price", np.inf) < PENNY_PRICE else 0.0
+
+    event_penalty = 0.0  # placeholder for earnings proximity etc.
+
+    return float(momentum_trend + liquidity - risk_penalty - event_penalty - price_penalty)
 
 # ---------------------------------------------------------------------
 # Yahoo fetch (BATCHED + RETRIES + LOGGING)
@@ -208,15 +247,6 @@ def send_email_report(
     only_in_universe: List[str] | None = None,
     only_in_local: List[str] | None = None
 ):
-    """
-    Send email with picks as HTML, attach CSVs.
-    Shows diff between universe vs local list.
-    Env vars:
-      SEND_EMAIL=1
-      SMTP_SERVER, SMTP_PORT (465=SSL, 587=STARTTLS; fallback enabled)
-      EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO (comma-separated)
-      EMAIL_SUBJECT_PREFIX (optional), MAX_EMAIL_ROWS (optional)
-    """
     if os.getenv("SEND_EMAIL","0") != "1":
         logger.info("[email] SEND_EMAIL!=1; skipping email")
         return
@@ -233,18 +263,15 @@ def send_email_report(
         logger.warning("[email] missing SMTP config; need SMTP_SERVER, EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO")
         return
 
-    # Tables for email (by merged final rank)
     top_picks = df_all[df_all.get("buy_flag", False) == True][
         ["ticker","final_rank","score","strength_score"]
     ].sort_values("final_rank", ascending=False)
-
     overall = df_all[["ticker","final_rank","score","strength_score"]].copy() \
                 .sort_values("final_rank", ascending=False)
 
     html_top  = _render_html_table(top_picks, max_rows)
     html_over = _render_html_table(overall, max_rows)
 
-    # Diff sections
     html_only_universe = _render_list_html(only_in_universe or [])
     html_only_local    = _render_list_html(only_in_local or [])
 
@@ -266,7 +293,6 @@ def send_email_report(
     msg.set_content("See HTML version")
     msg.add_alternative(html_body, subtype="html")
 
-    # Attach CSVs for convenience
     msg.add_attachment(df_all.to_csv(index=False).encode("utf-8"),
                        maintype="text", subtype="csv",
                        filename=f"daily_snapshot_{stamp}.csv")
@@ -276,7 +302,7 @@ def send_email_report(
 
     def _try_ssl():
         port = int(port_env or "465")
-        logger.info(f"[email] attempting SSL SMTP: host={server} port={port} from={email_from} to={len(tos)}")
+        logger.info(f"[email] attempting SSL SMTP: host={server} port={port}")
         ctx = ssl.create_default_context()
         with smtplib.SMTP_SSL(server, port, context=ctx, timeout=30) as s:
             s.login(email_from, pwd)
@@ -284,25 +310,18 @@ def send_email_report(
 
     def _try_starttls():
         port = int(port_env or "587")
-        logger.info(f"[email] attempting STARTTLS SMTP: host={server} port={port} from={email_from} to={len(tos)}")
+        logger.info(f"[email] attempting STARTTLS SMTP: host={server} port={port}")
         ctx = ssl.create_default_context()
         with smtplib.SMTP(server, port, timeout=30) as s:
-            s.ehlo()
-            s.starttls(context=ctx)
-            s.ehlo()
-            s.login(email_from, pwd)
-            s.send_message(msg)
+            s.ehlo(); s.starttls(context=ctx); s.ehlo()
+            s.login(email_from, pwd); s.send_message(msg)
 
     try:
-        _try_ssl()
-        logger.info("[email] sent via SSL")
-        return
+        _try_ssl(); logger.info("[email] sent via SSL"); return
     except Exception as e1:
         logger.warning(f"[email] SSL path failed: {e1}")
-
     try:
-        _try_starttls()
-        logger.info("[email] sent via STARTTLS")
+        _try_starttls(); logger.info("[email] sent via STARTTLS")
     except Exception as e2:
         logger.exception(f"[email] both SSL and STARTTLS failed: {e2}")
         raise
@@ -317,17 +336,14 @@ def run_monitor(
     min_dollar_vol: int = MIN_DOLLAR_VOL_DEFAULT
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Builds:
-      - df_all: full table sorted by FINAL rank (60% composite score, 40% return strength)
-      - df_leaders: convenience table (5d & 21d positive, 21d-weighted)
-    Also:
-      - Reads 'universe' from local blob cache (_read_universe_blob) and unions with the provided list
-      - Email includes which tickers are only in universe vs only in local list
+    df_all: full table sorted by FINAL rank (60% composite score, 40% perf strength, cap multiplier)
+    df_leaders: convenience table (5d & 21d positive, 21d-weighted)
+    Email shows diff vs universe cache.
     """
     if today is None:
         today = datetime.date.today()
 
-    # ----- Pull universe & merge (cache-only) -----
+    # ----- Universe merge (cache-only) -----
     local_list = [str(t).upper().strip() for t in (tickers or []) if str(t).strip()]
     cached = read_universe_blob()
     universe_tickers = [str(t).upper().strip() for t in (cached.get("tickers", []) if cached else []) if str(t).strip()]
@@ -337,19 +353,25 @@ def run_monitor(
     merged_tickers   = sorted(list(set(local_list).union(set(universe_tickers))))
 
     if cached is None:
-        logger.warning("[monitor] universe cache is missing; proceeding with local list only")
+        logger.warning("[monitor] universe cache missing; proceeding with local list only")
     logger.info(f"[monitor] local={len(local_list)} universe={len(universe_tickers)} merged={len(merged_tickers)}")
-    if only_in_universe:
-        logger.info(f"[monitor] in universe not in local: {only_in_universe[:20]}{'...' if len(only_in_universe)>20 else ''}")
-    if only_in_local:
-        logger.info(f"[monitor] in local not in universe: {only_in_local[:20]}{'...' if len(only_in_local)>20 else ''}")
 
     end = today + datetime.timedelta(days=1)
     start = today - datetime.timedelta(days=420)
 
-    logger.info(f"[monitor] start={start} end={end}")
     frames = fetch_prices_batched(merged_tickers, start, end)
     rows: List[Dict] = []
+
+    # optional: try to pull market caps up-front (best-effort; skip failures)
+    fast_caps: Dict[str, float] = {}
+    for t in merged_tickers:
+        try:
+            fi = yf.Ticker(t).fast_info  # dict-like
+            mc = fi.get("market_cap")
+            if mc:
+                fast_caps[t] = float(mc)
+        except Exception:
+            pass
 
     for t, df in frames.items():
         try:
@@ -357,20 +379,20 @@ def run_monitor(
             d["CloseAdj"] = d["Adj Close"]
 
             # returns
-            d["ret"] = d["CloseAdj"].pct_change()
+            d["ret"]    = d["CloseAdj"].pct_change()
             d["ret_5d"] = d["CloseAdj"].pct_change(5)
             d["ret_20"] = d["CloseAdj"].pct_change(20)
-            d["ret_21d"] = d["CloseAdj"].pct_change(21)
+            d["ret_21d"]= d["CloseAdj"].pct_change(21)
             d["ret_60"] = d["CloseAdj"].pct_change(60)
-            d["ret_120"] = d["CloseAdj"].pct_change(120)
+            d["ret_120"]= d["CloseAdj"].pct_change(120)
 
             # MAs, slopes, positions
-            d["sma20"] = d["CloseAdj"].rolling(20).mean()
-            d["sma50"] = d["CloseAdj"].rolling(50).mean()
+            d["sma20"]  = d["CloseAdj"].rolling(20).mean()
+            d["sma50"]  = d["CloseAdj"].rolling(50).mean()
             d["sma200"] = d["CloseAdj"].rolling(200).mean()
-            d["sma50_slope"] = (d["sma50"].diff(5) / d["sma50"].shift(5)).replace([np.inf, -np.inf], np.nan)
+            d["sma50_slope"]  = (d["sma50"].diff(5) / d["sma50"].shift(5)).replace([np.inf, -np.inf], np.nan)
             d["sma200_slope"] = (d["sma200"].diff(10) / d["sma200"].shift(10)).replace([np.inf, -np.inf], np.nan)
-            d["close_above_sma50"] = (d["CloseAdj"] > d["sma50"]).astype(float)
+            d["close_above_sma50"]  = (d["CloseAdj"] > d["sma50"]).astype(float)
             d["close_above_sma200"] = (d["CloseAdj"] > d["sma200"]).astype(float)
 
             # oscillators
@@ -384,8 +406,12 @@ def run_monitor(
             d["vol20"] = realized_vol(d["ret"], 20)
             d["mdd_60"] = (d["CloseAdj"] / d["CloseAdj"].cummax() - 1.0).rolling(60).min()
 
-            # liquidity
-            d["adv_usd_20"] = d["Volume"].rolling(20).mean() * d["CloseAdj"].rolling(20).mean()
+            # liquidity & VOLUME SIGNALS
+            d["vol20_sh"] = d["Volume"].rolling(20).mean()
+            d["vol60_sh"] = d["Volume"].rolling(60).mean()
+            d["adv_usd_20"] = d["vol20_sh"] * d["CloseAdj"].rolling(20).mean()
+            d["adv_usd_60"] = d["vol60_sh"] * d["CloseAdj"].rolling(60).mean()
+            d["vol_surge"]  = (d["adv_usd_20"] / d["adv_usd_60"]).replace([np.inf, -np.inf], np.nan)
 
             # highs / breakouts
             d["hi_252"] = d["CloseAdj"].rolling(252, min_periods=60).max()
@@ -406,6 +432,8 @@ def run_monitor(
 
             latest = d.iloc[-1].to_dict()
             latest["ticker"] = t
+            latest["last_price"] = float(d["CloseAdj"].iloc[-1])
+            latest["market_cap"] = fast_caps.get(t, np.nan)  # best-effort
             rows.append(latest)
         except Exception as e:
             logger.exception(f"[monitor] error processing {t}: {e}")
@@ -415,16 +443,23 @@ def run_monitor(
 
     out = pd.DataFrame(rows)
 
-    # Composite trend-follow score
+    # Cross-sectional ADV z-score (for volume signal)
+    if "adv_usd_20" in out:
+        out["adv_usd_20_z"] = zscore(out["adv_usd_20"]).fillna(0.0)
+    else:
+        out["adv_usd_20_z"] = 0.0
+
+    # Composite trend-follow score (includes volume boost & penny penalty)
     out["score"] = out.apply(lambda r: score_row(r, min_dollar_vol), axis=1)
 
-    # Buy filter (kept as a sanity gate)
+    # Buy filter (sanity gate, exclude penny)
     out["buy_flag"] = (
         (out["score"] > 1.5) &
         (out["rsi14"].between(45, 80)) &
         (out["close_above_sma50"] == 1.0) &
         (out["close_above_sma200"] == 1.0) &
-        (out["dist_52w_high"] > -0.10)
+        (out["dist_52w_high"] > -0.10) &
+        (out["last_price"] >= PENNY_PRICE)
     )
 
     # Performance strength (5d & 21d positive bias to 21d)
@@ -432,13 +467,16 @@ def run_monitor(
     out["z_21d"] = zscore(out["ret_21d"]).fillna(0.0)
     out["strength_score"] = 0.3 * out["z_5d"] + 0.7 * out["z_21d"]
 
-    # ---- 60/40 MERGE: percentile-normalized to 0..10, then weighted ----
+    # ---- 60/40 merge -> then market-cap multiplier ----
     def _pctl0_10(s: pd.Series) -> pd.Series:
         return (s.rank(pct=True).fillna(0.0) * 10.0)
 
     out["norm_score_0_10"]    = _pctl0_10(out["score"])
     out["norm_strength_0_10"] = _pctl0_10(out["strength_score"])
-    out["final_rank"] = 0.6 * out["norm_score_0_10"] + 0.4 * out["norm_strength_0_10"]
+    out["final_60_40"]        = 0.6 * out["norm_score_0_10"] + 0.4 * out["norm_strength_0_10"]
+
+    out["cap_mult"]  = out["market_cap"].apply(cap_multiplier)
+    out["final_rank"] = out["final_60_40"] * out["cap_mult"]
 
     # Leaders view (unchanged)
     leaders = out[(out["ret_5d"] > 0) & (out["ret_21d"] > 0)].copy()
@@ -461,9 +499,12 @@ def run_monitor(
 
     # Return full table sorted by FINAL rank
     cols_order = [
-        "ticker", "final_rank", "norm_score_0_10", "norm_strength_0_10",
-        "score", "strength_score", "ret_5d", "ret_21d", "rsi14",
-        "close_above_sma50", "close_above_sma200", "dist_52w_high", "buy_flag"
+        "ticker", "final_rank", "final_60_40", "cap_mult",
+        "norm_score_0_10", "norm_strength_0_10",
+        "score", "strength_score", "ret_5d", "ret_21d",
+        "last_price", "market_cap",
+        "adv_usd_20", "adv_usd_20_z", "vol_surge",
+        "rsi14", "close_above_sma50", "close_above_sma200", "dist_52w_high", "buy_flag"
     ]
     for c in cols_order:
         if c not in out.columns:
