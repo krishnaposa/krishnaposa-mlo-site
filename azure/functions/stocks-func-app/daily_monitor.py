@@ -1,7 +1,6 @@
 # daily_monitor.py
 import os
 import time
-import math
 import logging
 import datetime
 from typing import List, Tuple, Dict
@@ -15,35 +14,35 @@ from email.message import EmailMessage
 # shared cache reader (avoid circular imports by keeping in a separate module)
 from universe_utils import read_universe_blob
 # dynamic local list utils (Blob-backed)
-from local_list_utils import load_local_list, save_local_list, update_local_list
+from local_list_utils import load_local_list, save_local_list
 
 logging.getLogger("yfinance").setLevel(logging.ERROR)
 logging.getLogger("urllib3").setLevel(logging.ERROR)
 
-# ---------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------
+# --------------------------- Logging ---------------------------------
 logger = logging.getLogger(__name__)
 if not logger.handlers:
     LOG_LEVEL = os.getenv("DAILY_MONITOR_LOG_LEVEL", "INFO").upper()
     logging.basicConfig(
-       level=getattr(logging, LOG_LEVEL, logging.INFO),
-       format="%(asctime)s [%(levelname)s] %(message)s",
-       datefmt="%Y-%m-%d %H:%M:%S",
+        level=getattr(logging, LOG_LEVEL, logging.INFO),
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-# ---------------------------------------------------------------------
-# Tunables
-# ---------------------------------------------------------------------
-BATCH_SIZE      = int(os.getenv("YF_BATCH_SIZE", "50"))
-MAX_RETRIES     = int(os.getenv("YF_MAX_RETRIES", "2"))
+# --------------------------- Tunables --------------------------------
+BATCH_SIZE = int(os.getenv("YF_BATCH_SIZE", "50"))
+MAX_RETRIES = int(os.getenv("YF_MAX_RETRIES", "2"))
 RETRY_BACKOFF_S = float(os.getenv("YF_RETRY_BACKOFF_S", "3.0"))
 MIN_DOLLAR_VOL_DEFAULT = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
-PENNY_PRICE     = float(os.getenv("PENNY_PRICE", "5"))
+PENNY_PRICE = float(os.getenv("PENNY_PRICE", "5"))
 
-# ---------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------
+# Prune/replenish policy (env-tunable)
+LOCAL_PRUNE_COUNT = int(os.getenv("LOCAL_PRUNE_COUNT", "5"))           # how many to drop (worst by final_rank)
+LOCAL_MAX_SIZE = int(os.getenv("LOCAL_MAX_SIZE", "0")) or None         # optional cap
+LOCAL_ADD_MIN_PRICE = float(os.getenv("LOCAL_MIN_PRICE", str(PENNY_PRICE)))
+LOCAL_ADD_MIN_STRENGTH_Z = float(os.getenv("LOCAL_MIN_STRENGTH_Z", "0.0"))
+
+# --------------------------- Helpers ---------------------------------
 def rsi(series: pd.Series, n: int = 14) -> pd.Series:
     delta = series.diff()
     up = np.where(delta > 0, delta, 0.0)
@@ -97,9 +96,7 @@ def cap_multiplier(mcap: float | None) -> float:
         return 1.10
     return 1.12      # mega
 
-# ---------------------------------------------------------------------
-# Trend-follow scoring
-# ---------------------------------------------------------------------
+# -------------------- Trend-follow scoring ---------------------------
 def score_row(r: pd.Series, min_dollar_vol: int) -> float:
     momentum_trend = (
         0.50 * r.get("ret_20_z", 0.0) +
@@ -132,9 +129,7 @@ def score_row(r: pd.Series, min_dollar_vol: int) -> float:
 
     return float(momentum_trend + liquidity - risk_penalty - price_penalty)
 
-# ---------------------------------------------------------------------
-# Yahoo fetch
-# ---------------------------------------------------------------------
+# --------------------------- Yahoo fetch ------------------------------
 def _clean_tickers(raw: List[str]) -> List[str]:
     return [t.strip().upper() for t in raw if t and t.strip() and t.strip().upper() not in {"US"}]
 
@@ -175,9 +170,7 @@ def fetch_prices_batched(tickers: List[str], start: datetime.date, end: datetime
         frames.update(_fetch_batch(tickers[i:i+BATCH_SIZE], start, end))
     return frames
 
-# ---------------------------------------------------------------------
-# SMTP Email
-# ---------------------------------------------------------------------
+# --------------------------- Email -----------------------------------
 def _render_html_table(df: pd.DataFrame, max_rows=15) -> str:
     dfv = df.head(max_rows).copy()
     for col in dfv.columns:
@@ -256,21 +249,56 @@ def send_email_report(
         s.login(email_from, pwd)
         s.send_message(msg)
 
-# ---------------------------------------------------------------------
-# Public entry
-# ---------------------------------------------------------------------
+# ----------------- Prune & replenish local list ----------------------
+def _prune_and_replenish_local_list(
+    df_all: pd.DataFrame,
+    local_list: List[str],
+    universe_list: List[str],
+    *,
+    prune_count: int,
+    min_price: float,
+    min_strength_z: float,
+    max_size: int | None
+) -> Tuple[List[str], Dict[str, List[str]]]:
+    removed, added = [], []
+
+    # prune worst N by final_rank from the current local list
+    if prune_count > 0 and len(local_list) > 0:
+        pool = df_all[df_all["ticker"].isin(local_list)].copy()
+        pool = pool.sort_values("final_rank", ascending=True)
+        to_drop = pool["ticker"].head(prune_count).tolist()
+        if to_drop:
+            removed = to_drop
+            local_list = [t for t in local_list if t not in set(to_drop)]
+
+    # replenish from universe by best final_rank not already in list
+    candidates = df_all[
+        (df_all["ticker"].isin(universe_list)) &
+        (~df_all["ticker"].isin(local_list)) &
+        (df_all["last_price"] >= min_price) &
+        (df_all["strength_score"] >= min_strength_z)
+    ].sort_values("final_rank", ascending=False)
+
+    for t in candidates["ticker"].tolist():
+        if max_size and len(local_list) >= max_size:
+            break
+        local_list.append(t)
+        added.append(t)
+
+    return local_list, {"added": added, "removed": removed}
+
+# --------------------------- Public API ------------------------------
 def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     if today is None:
         today = datetime.date.today()
 
-    # ---- Universe + dynamic local list merge ----
+    # Universe + local list
     seed_list = [t.upper().strip() for t in (tickers or []) if t]
     cached = read_universe_blob()
     universe_tickers = [t.upper().strip() for t in (cached.get("tickers", []) if cached else []) if t]
-
     local_list = load_local_list(initial_fallback=seed_list)
-    merged_tickers = sorted(set(local_list) | set(universe_tickers))
 
+    merged_tickers = sorted(set(local_list) | set(universe_tickers))
     only_in_universe = sorted(list(set(universe_tickers) - set(local_list)))
     only_in_local    = sorted(list(set(local_list) - set(universe_tickers)))
 
@@ -281,7 +309,7 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
     rows: List[Dict] = []
     fast_caps: Dict[str, float] = {}
 
-    # try to get market caps (best-effort)
+    # best-effort market caps
     for t in merged_tickers:
         try:
             fi = yf.Ticker(t).fast_info
@@ -304,7 +332,7 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         d["ret_60"]  = d["CloseAdj"].pct_change(60)
         d["ret_120"] = d["CloseAdj"].pct_change(120)
 
-        # MAs, slopes, positions
+        # MAs & states
         d["sma20"]   = d["CloseAdj"].rolling(20).mean()
         d["sma50"]   = d["CloseAdj"].rolling(50).mean()
         d["sma200"]  = d["CloseAdj"].rolling(200).mean()
@@ -325,7 +353,7 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         d["vol60"] = realized_vol(d["ret"], 60)
         d["mdd_60"] = (d["CloseAdj"] / d["CloseAdj"].cummax() - 1.0).rolling(60).min()
 
-        # liquidity & VOLUME SIGNALS
+        # liquidity & volume
         d["vol20_sh"] = d["Volume"].rolling(20).mean()
         d["vol60_sh"] = d["Volume"].rolling(60).mean()
         d["adv_usd_20"] = d["vol20_sh"] * d["CloseAdj"].rolling(20).mean()
@@ -340,12 +368,9 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
 
         # momentum z-scores
         for col in ["ret_20", "ret_60", "ret_120"]:
-            if col in d:
-                mu = d[col].rolling(180).mean()
-                sd = d[col].rolling(180).std()
-                d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
-            else:
-                d[f"{col}_z"] = np.nan
+            mu = d[col].rolling(180).mean()
+            sd = d[col].rolling(180).std()
+            d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
 
         latest = d.iloc[-1].to_dict()
         latest["ticker"] = t
@@ -358,13 +383,11 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
 
     out = pd.DataFrame(rows)
 
-    # Cross-sectional ADV z-score (for volume signal)
+    # x-sectional ADV z
     out["adv_usd_20_z"] = zscore(out["adv_usd_20"]).fillna(0.0)
 
-    # Composite trend-follow score (includes volume boost & penny penalty)
+    # composite score & buy flag
     out["score"] = out.apply(lambda r: score_row(r, min_dollar_vol), axis=1)
-
-    # Buy filter (sanity gate, exclude penny)
     out["buy_flag"] = (
         (out["score"] > 1.5) &
         (out["rsi14"].between(45, 80)) &
@@ -374,12 +397,11 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         (out["last_price"] >= PENNY_PRICE)
     )
 
-    # Performance strength (5d & 21d positive bias to 21d)
+    # strength & final rank (60/40 + cap bias)
     out["z_5d"] = zscore(out["ret_5d"]).fillna(0.0)
     out["z_21d"] = zscore(out["ret_21d"]).fillna(0.0)
     out["strength_score"] = 0.3 * out["z_5d"] + 0.7 * out["z_21d"]
 
-    # ---- 60/40 merge -> then market-cap multiplier ----
     def _pctl0_10(s: pd.Series) -> pd.Series:
         return (s.rank(pct=True).fillna(0.0) * 10.0)
 
@@ -389,7 +411,7 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
     out["cap_mult"]           = out["market_cap"].apply(cap_multiplier)
     out["final_rank"]         = out["final_60_40"] * out["cap_mult"]
 
-    # ==== LEAP scoring ====
+    # LEAP scoring
     out["z_ret_63"]  = zscore(out["ret_63"]).fillna(0.0)
     out["z_ret_252"] = zscore(out["ret_252"]).fillna(0.0)
 
@@ -407,28 +429,29 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
     out["leap_score"] = 0.4 * out["z_ret_63"] + 0.5 * out["z_ret_252"] + 0.1 * out["cap_bonus"] - 0.2 * out["vol60"]
     out["leap_rank"]  = _pctl0_10(out["leap_score"])
 
-    # Leaders & LEAP views
+    # leaders & leaps
     leaders = out[(out["ret_5d"] > 0) & (out["ret_21d"] > 0)].copy().sort_values("strength_score", ascending=False)
     leaps   = out.sort_values("leap_rank", ascending=False)
 
-    # ---- Dynamic local list rotation (stateless heuristic for now) ----
+    # --------- prune & replenish local list, then persist ------------
     try:
-        new_local_list, changes = update_local_list(
+        new_local_list, changes = _prune_and_replenish_local_list(
             df_all=out,
-            local_list=local_list,
+            local_list=list(local_list),  # copy
             universe_list=universe_tickers,
-            add_top_quantile=float(os.getenv("LOCAL_ADD_TOP_Q", "0.90")),   # top 10%
-            min_strength_z=float(os.getenv("LOCAL_MIN_STRENGTH_Z", "0.0")),
-            min_price=float(os.getenv("LOCAL_MIN_PRICE", str(PENNY_PRICE))),
-            remove_days_fail=int(os.getenv("LOCAL_REMOVE_DAYS", "5")),      # placeholder (stateless)
-            max_local_size=int(os.getenv("LOCAL_MAX_SIZE", "0")) or None
+            prune_count=LOCAL_PRUNE_COUNT,
+            min_price=LOCAL_ADD_MIN_PRICE,
+            min_strength_z=LOCAL_ADD_MIN_STRENGTH_Z,
+            max_size=LOCAL_MAX_SIZE
         )
+        # Save updated local list back to Blob (signals/local_list.json)
         save_local_list(new_local_list, meta={"updated_utc": datetime.datetime.utcnow().isoformat()+"Z"})
+        logger.info(f"[local_list] removed={len(changes.get('removed',[]))} added={len(changes.get('added',[]))} size={len(new_local_list)}")
     except Exception as e:
         logger.warning(f"[local_list] update/save failed: {e}")
         changes = {"added": [], "removed": []}
 
-    # ---- Email report ----
+    # email report
     stamp = today.strftime("%Y-%m-%d")
     send_email_report(
         out,
@@ -440,4 +463,18 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         changes=changes
     )
 
-    return out.sort_values("final_rank", ascending=False), leaders
+    # return main tables
+    cols_order = [
+        "ticker", "final_rank", "final_60_40", "cap_mult",
+        "norm_score_0_10", "norm_strength_0_10",
+        "score", "strength_score", "ret_5d", "ret_21d",
+        "last_price", "market_cap",
+        "adv_usd_20", "adv_usd_20_z", "vol_surge",
+        "rsi14", "close_above_sma50", "close_above_sma200", "dist_52w_high", "buy_flag"
+    ]
+    for c in cols_order:
+        if c not in out.columns:
+            out[c] = np.nan
+    df_all_sorted = out[cols_order].sort_values("final_rank", ascending=False)
+
+    return df_all_sorted, leaders
