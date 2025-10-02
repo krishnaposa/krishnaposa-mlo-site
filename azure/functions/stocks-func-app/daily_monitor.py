@@ -326,6 +326,7 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         # returns
         d["ret"]     = d["CloseAdj"].pct_change()
         d["ret_5d"]  = d["CloseAdj"].pct_change(5)
+        d["ret_20"]  = d["CloseAdj"].pct_change(20)
         d["ret_21d"] = d["CloseAdj"].pct_change(21)
         d["ret_63"]  = d["CloseAdj"].pct_change(63)     # 3m
         d["ret_252"] = d["CloseAdj"].pct_change(252)    # 12m
