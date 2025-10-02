@@ -14,6 +14,9 @@ from email.message import EmailMessage
 
 # shared cache reader (avoid circular imports by keeping in a separate module)
 from universe_utils import read_universe_blob
+# dynamic local list utils (Blob-backed)
+from local_list_utils import load_local_list, save_local_list, update_local_list
+
 logging.getLogger("yfinance").setLevel(logging.ERROR)
 logging.getLogger("urllib3").setLevel(logging.ERROR)
 
@@ -82,12 +85,17 @@ def clamp(x: float, lo: float, hi: float) -> float:
 def cap_multiplier(mcap: float | None) -> float:
     if mcap is None or (isinstance(mcap, float) and np.isnan(mcap)):
         return 1.0
-    try: m = float(mcap)
-    except Exception: return 1.0
-    if m < 2e9: return 0.85
-    if m < 10e9: return 1.05
-    if m < 200e9: return 1.10
-    return 1.12
+    try:
+        m = float(mcap)
+    except Exception:
+        return 1.0
+    if m < 2e9:      # small
+        return 0.85
+    if m < 10e9:     # mid
+        return 1.05
+    if m < 200e9:    # large
+        return 1.10
+    return 1.12      # mega
 
 # ---------------------------------------------------------------------
 # Trend-follow scoring
@@ -106,16 +114,22 @@ def score_row(r: pd.Series, min_dollar_vol: int) -> float:
         0.50 * max(0.0, r.get("sma50_slope", 0.0)) +
         0.50 * max(0.0, r.get("sma200_slope", 0.0))
     )
+    # volume signal
     vol_surge = r.get("vol_surge", np.nan)
     vol_centered = 0.0 if pd.isna(vol_surge) else clamp(vol_surge, 0.5, 2.0) - 1.0
     adv_z = r.get("adv_usd_20_z", 0.0)
     volume_boost = 0.7 * vol_centered + 0.3 * adv_z
     momentum_trend += 0.6 * volume_boost
 
+    # liquidity & risk
     liquidity = 1.0 if r.get("adv_usd_20", 0.0) >= min_dollar_vol else -1.0
-    vol20 = r.get("vol20", 0.0); mdd_60 = r.get("mdd_60", 0.0)
+    vol20 = r.get("vol20", 0.0)
+    mdd_60 = r.get("mdd_60", 0.0)
     risk_penalty = 0.30 * vol20 + 1.20 * abs(min(0.0, mdd_60))
+
+    # penny penalty
     price_penalty = 0.6 if r.get("last_price", np.inf) < PENNY_PRICE else 0.0
+
     return float(momentum_trend + liquidity - risk_penalty - price_penalty)
 
 # ---------------------------------------------------------------------
@@ -126,29 +140,37 @@ def _clean_tickers(raw: List[str]) -> List[str]:
 
 def _fetch_batch(batch: List[str], start: datetime.date, end: datetime.date) -> Dict[str, pd.DataFrame]:
     out: Dict[str, pd.DataFrame] = {}
-    if not batch: return out
+    if not batch:
+        return out
     attempt = 0
     while attempt <= MAX_RETRIES:
         try:
-            data = yf.download(tickers=batch, start=start, end=end,
-                               auto_adjust=False, group_by="ticker",
-                               progress=False, threads=True)
+            data = yf.download(
+                tickers=batch, start=start, end=end,
+                auto_adjust=False, group_by="ticker",
+                progress=False, threads=True
+            )
             for t in batch:
-                if t in data: df = data[t]
+                if t in data:
+                    df = data[t]
                 elif len(batch) == 1 and isinstance(data, pd.DataFrame) and \
                      set(["Adj Close","Close","High","Low","Open","Volume"]).issubset(data.columns):
                     df = data
-                else: continue
+                else:
+                    continue
                 df = df.dropna(subset=["Adj Close"]).copy()
-                if df.empty: continue
+                if df.empty:
+                    continue
                 out[t] = df
             return out
-        except Exception as e:
-            attempt += 1; time.sleep(RETRY_BACKOFF_S * attempt)
+        except Exception:
+            attempt += 1
+            time.sleep(RETRY_BACKOFF_S * attempt)
     return out
 
 def fetch_prices_batched(tickers: List[str], start: datetime.date, end: datetime.date) -> Dict[str, pd.DataFrame]:
-    tickers = _clean_tickers(tickers); frames = {}
+    tickers = _clean_tickers(tickers)
+    frames: Dict[str, pd.DataFrame] = {}
     for i in range(0, len(tickers), BATCH_SIZE):
         frames.update(_fetch_batch(tickers[i:i+BATCH_SIZE], start, end))
     return frames
@@ -158,127 +180,261 @@ def fetch_prices_batched(tickers: List[str], start: datetime.date, end: datetime
 # ---------------------------------------------------------------------
 def _render_html_table(df: pd.DataFrame, max_rows=15) -> str:
     dfv = df.head(max_rows).copy()
-    for col in dfv.columns: dfv[col] = pd.to_numeric(dfv[col], errors="ignore")
+    for col in dfv.columns:
+        dfv[col] = pd.to_numeric(dfv[col], errors="ignore")
     return dfv.to_html(index=False, border=0, justify="left")
 
-def send_email_report(df_all, df_leaders, df_leaps, stamp, *, only_in_universe=None, only_in_local=None):
-    if os.getenv("SEND_EMAIL","0") != "1": return
+def _render_list_html(items: List[str], max_items=60) -> str:
+    if not items:
+        return "<i>None</i>"
+    clip = items[:max_items]
+    more = "" if len(items) <= max_items else f" … (+{len(items)-max_items} more)"
+    return "<div style='font-family:monospace'>" + ", ".join(clip) + more + "</div>"
+
+def send_email_report(
+    df_all: pd.DataFrame,
+    df_leaders: pd.DataFrame,
+    df_leaps: pd.DataFrame,
+    stamp: str,
+    *,
+    only_in_universe: List[str] | None = None,
+    only_in_local: List[str] | None = None,
+    changes: Dict[str, List[str]] | None = None
+):
+    if os.getenv("SEND_EMAIL","0") != "1":
+        return
     email_from = os.getenv("EMAIL_FROM"); pwd = os.getenv("EMAIL_PASSWORD")
     tos = [t.strip() for t in os.getenv("EMAIL_TO","").split(",") if t.strip()]
-    if not (email_from and pwd and tos): return
+    subj_prefix = os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks")
+    if not (email_from and pwd and tos):
+        return
 
     top_picks = df_all[df_all.get("buy_flag", False) == True]
     best5 = df_all.sort_values("final_rank", ascending=False).head(5)
     leaps5 = df_leaps.head(5)
 
-    html_top = "<i>No strict picks today</i>" if top_picks.empty else _render_html_table(top_picks[["ticker","final_rank","score","strength_score","last_price"]])
-    html_best5 = _render_html_table(best5[["ticker","final_rank","score","strength_score","last_price"]])
-    html_lead = _render_html_table(df_leaders)
-    html_leaps = _render_html_table(leaps5[["ticker","leap_rank","leap_score","ret_63","ret_252","market_cap"]])
+    html_top = "<i>No strict picks today</i>" if top_picks.empty else _render_html_table(
+        top_picks[["ticker","final_rank","score","strength_score","last_price"]], max_rows=10
+    )
+    html_best5 = _render_html_table(best5[["ticker","final_rank","score","strength_score","last_price"]], max_rows=5)
+    html_lead = _render_html_table(df_leaders, max_rows=15)
+    html_leaps = _render_html_table(leaps5[["ticker","leap_rank","leap_score","ret_63","ret_252","market_cap"]], max_rows=5)
+
+    html_only_universe = _render_list_html(only_in_universe or [])
+    html_only_local    = _render_list_html(only_in_local or [])
+    added  = (changes or {}).get("added", [])
+    removed= (changes or {}).get("removed", [])
+    html_added   = _render_list_html(added)
+    html_removed = _render_list_html(removed)
 
     html_body = f"""<html><body>
       <h2>Daily Stock Picks — {stamp}</h2>
+
+      <h3>Universe vs Local List</h3>
+      <p><b>In Universe but NOT in Local:</b><br>{html_only_universe}</p>
+      <p><b>In Local but NOT in Universe:</b><br>{html_only_local}</p>
+
+      <h3>Local List Updates</h3>
+      <p><b>Added:</b><br>{html_added}</p>
+      <p><b>Removed:</b><br>{html_removed}</p>
+
       <h3>Top Picks (strict buy_flag)</h3>{html_top}
-      <h3>Best 5 Overall</h3>{html_best5}
-      <h3>Leaders (5d/21d)</h3>{html_lead}
+      <h3>Best 5 Overall (by Final Rank)</h3>{html_best5}
+      <h3>Leaders (5d &amp; 21d positive, 21d-weighted)</h3>{html_lead}
       <h3>LEAP Picks (Top 5)</h3>{html_leaps}
     </body></html>"""
 
     msg = EmailMessage()
-    msg["From"] = email_from; msg["To"] = ", ".join(tos)
-    msg["Subject"] = f"Daily Stock Picks — {stamp}"
-    msg.set_content("See HTML version"); msg.add_alternative(html_body, subtype="html")
+    msg["From"] = email_from
+    msg["To"] = ", ".join(tos)
+    msg["Subject"] = f"{subj_prefix} — {stamp}"
+    msg.set_content("See HTML version")
+    msg.add_alternative(html_body, subtype="html")
 
     ctx = ssl.create_default_context()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as s:
-        s.login(email_from, pwd); s.send_message(msg)
+        s.login(email_from, pwd)
+        s.send_message(msg)
 
 # ---------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------
 def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
-    if today is None: today = datetime.date.today()
-    local_list = [t.upper().strip() for t in (tickers or []) if t]
+    if today is None:
+        today = datetime.date.today()
+
+    # ---- Universe + dynamic local list merge ----
+    seed_list = [t.upper().strip() for t in (tickers or []) if t]
     cached = read_universe_blob()
     universe_tickers = [t.upper().strip() for t in (cached.get("tickers", []) if cached else []) if t]
+
+    local_list = load_local_list(initial_fallback=seed_list)
     merged_tickers = sorted(set(local_list) | set(universe_tickers))
 
-    end = today + datetime.timedelta(days=1); start = today - datetime.timedelta(days=420)
+    only_in_universe = sorted(list(set(universe_tickers) - set(local_list)))
+    only_in_local    = sorted(list(set(local_list) - set(universe_tickers)))
+
+    end = today + datetime.timedelta(days=1)
+    start = today - datetime.timedelta(days=420)
     frames = fetch_prices_batched(merged_tickers, start, end)
-    rows = []; fast_caps = {}
+
+    rows: List[Dict] = []
+    fast_caps: Dict[str, float] = {}
+
+    # try to get market caps (best-effort)
     for t in merged_tickers:
         try:
             fi = yf.Ticker(t).fast_info
             mc = fi.get("market_cap")
-            if mc: fast_caps[t] = float(mc)
-        except Exception: pass
+            if mc:
+                fast_caps[t] = float(mc)
+        except Exception:
+            pass
 
     for t, df in frames.items():
-        d = df.copy(); d["CloseAdj"] = d["Adj Close"]
-        d["ret"] = d["CloseAdj"].pct_change()
-        d["ret_5d"] = d["CloseAdj"].pct_change(5)
-        d["ret_21d"]= d["CloseAdj"].pct_change(21)
-        d["ret_63"]= d["CloseAdj"].pct_change(63)     # 3m
-        d["ret_252"]= d["CloseAdj"].pct_change(252)   # 12m
-        d["ret_60"]= d["CloseAdj"].pct_change(60); d["ret_120"]= d["CloseAdj"].pct_change(120)
+        d = df.copy()
+        d["CloseAdj"] = d["Adj Close"]
 
-        d["sma20"]=d["CloseAdj"].rolling(20).mean(); d["sma50"]=d["CloseAdj"].rolling(50).mean()
-        d["sma200"]=d["CloseAdj"].rolling(200).mean()
-        d["close_above_sma50"]=(d["CloseAdj"]>d["sma50"]).astype(float)
-        d["close_above_sma200"]=(d["CloseAdj"]>d["sma200"]).astype(float)
-        d["rsi14"]=rsi(d["CloseAdj"]); _,_,hist=macd(d["CloseAdj"]); d["macd_hist"]=hist
-        d["vol20"]=realized_vol(d["ret"],20); d["vol60"]=realized_vol(d["ret"],60)
-        d["mdd_60"]=(d["CloseAdj"]/d["CloseAdj"].cummax()-1.0).rolling(60).min()
-        d["vol20_sh"]=d["Volume"].rolling(20).mean(); d["vol60_sh"]=d["Volume"].rolling(60).mean()
-        d["adv_usd_20"]=d["vol20_sh"]*d["CloseAdj"].rolling(20).mean()
-        d["adv_usd_60"]=d["vol60_sh"]*d["CloseAdj"].rolling(60).mean()
-        d["vol_surge"]=(d["adv_usd_20"]/d["adv_usd_60"]).replace([np.inf,-np.inf],np.nan)
+        # returns
+        d["ret"]     = d["CloseAdj"].pct_change()
+        d["ret_5d"]  = d["CloseAdj"].pct_change(5)
+        d["ret_21d"] = d["CloseAdj"].pct_change(21)
+        d["ret_63"]  = d["CloseAdj"].pct_change(63)     # 3m
+        d["ret_252"] = d["CloseAdj"].pct_change(252)    # 12m
+        d["ret_60"]  = d["CloseAdj"].pct_change(60)
+        d["ret_120"] = d["CloseAdj"].pct_change(120)
 
-        latest=d.iloc[-1].to_dict(); latest["ticker"]=t
-        latest["last_price"]=float(d["CloseAdj"].iloc[-1])
-        latest["market_cap"]=fast_caps.get(t,np.nan)
+        # MAs, slopes, positions
+        d["sma20"]   = d["CloseAdj"].rolling(20).mean()
+        d["sma50"]   = d["CloseAdj"].rolling(50).mean()
+        d["sma200"]  = d["CloseAdj"].rolling(200).mean()
+        d["sma50_slope"]  = (d["sma50"].diff(5) / d["sma50"].shift(5)).replace([np.inf, -np.inf], np.nan)
+        d["sma200_slope"] = (d["sma200"].diff(10) / d["sma200"].shift(10)).replace([np.inf, -np.inf], np.nan)
+        d["close_above_sma50"]  = (d["CloseAdj"] > d["sma50"]).astype(float)
+        d["close_above_sma200"] = (d["CloseAdj"] > d["sma200"]).astype(float)
+
+        # oscillators
+        d["rsi14"] = rsi(d["CloseAdj"])
+        _, _, hist = macd(d["CloseAdj"])
+        d["macd_hist"] = hist
+
+        # risk/vol
+        d["tr"] = true_range(d)
+        d["atr14"] = d["tr"].rolling(14).mean()
+        d["vol20"] = realized_vol(d["ret"], 20)
+        d["vol60"] = realized_vol(d["ret"], 60)
+        d["mdd_60"] = (d["CloseAdj"] / d["CloseAdj"].cummax() - 1.0).rolling(60).min()
+
+        # liquidity & VOLUME SIGNALS
+        d["vol20_sh"] = d["Volume"].rolling(20).mean()
+        d["vol60_sh"] = d["Volume"].rolling(60).mean()
+        d["adv_usd_20"] = d["vol20_sh"] * d["CloseAdj"].rolling(20).mean()
+        d["adv_usd_60"] = d["vol60_sh"] * d["CloseAdj"].rolling(60).mean()
+        d["vol_surge"]  = (d["adv_usd_20"] / d["adv_usd_60"]).replace([np.inf, -np.inf], np.nan)
+
+        # highs / breakouts
+        d["hi_252"] = d["CloseAdj"].rolling(252, min_periods=60).max()
+        d["dist_52w_high"] = d["CloseAdj"] / d["hi_252"] - 1.0
+        d["hi_55"] = d["CloseAdj"].rolling(55, min_periods=30).max()
+        d["new_55d_high"] = (d["CloseAdj"] >= d["hi_55"]).astype(float)
+
+        # momentum z-scores
+        for col in ["ret_20", "ret_60", "ret_120"]:
+            mu = d[col].rolling(180).mean()
+            sd = d[col].rolling(180).std()
+            d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
+
+        latest = d.iloc[-1].to_dict()
+        latest["ticker"] = t
+        latest["last_price"] = float(d["CloseAdj"].iloc[-1])
+        latest["market_cap"] = fast_caps.get(t, np.nan)
         rows.append(latest)
 
-    out=pd.DataFrame(rows)
-    out["adv_usd_20_z"]=zscore(out["adv_usd_20"]).fillna(0.0)
-    out["score"]=out.apply(lambda r: score_row(r,min_dollar_vol),axis=1)
-    out["buy_flag"]=(
-        (out["score"]>1.5)&
-        (out["rsi14"].between(45,80))&
-        (out["close_above_sma50"]==1.0)&
-        (out["close_above_sma200"]==1.0)&
-        (out["dist_52w_high"]>-0.10)&
-        (out["last_price"]>=PENNY_PRICE)
-    )
-    out["z_5d"]=zscore(out["ret_5d"]).fillna(0.0)
-    out["z_21d"]=zscore(out["ret_21d"]).fillna(0.0)
-    out["strength_score"]=0.3*out["z_5d"]+0.7*out["z_21d"]
+    if not rows:
+        raise RuntimeError("No rows produced—check data availability or ticker list.")
 
-    def _pctl0_10(s): return (s.rank(pct=True).fillna(0.0)*10.0)
-    out["norm_score_0_10"]=_pctl0_10(out["score"])
-    out["norm_strength_0_10"]=_pctl0_10(out["strength_score"])
-    out["final_60_40"]=0.6*out["norm_score_0_10"]+0.4*out["norm_strength_0_10"]
-    out["cap_mult"]=out["market_cap"].apply(cap_multiplier)
-    out["final_rank"]=out["final_60_40"]*out["cap_mult"]
+    out = pd.DataFrame(rows)
+
+    # Cross-sectional ADV z-score (for volume signal)
+    out["adv_usd_20_z"] = zscore(out["adv_usd_20"]).fillna(0.0)
+
+    # Composite trend-follow score (includes volume boost & penny penalty)
+    out["score"] = out.apply(lambda r: score_row(r, min_dollar_vol), axis=1)
+
+    # Buy filter (sanity gate, exclude penny)
+    out["buy_flag"] = (
+        (out["score"] > 1.5) &
+        (out["rsi14"].between(45, 80)) &
+        (out["close_above_sma50"] == 1.0) &
+        (out["close_above_sma200"] == 1.0) &
+        (out["dist_52w_high"] > -0.10) &
+        (out["last_price"] >= PENNY_PRICE)
+    )
+
+    # Performance strength (5d & 21d positive bias to 21d)
+    out["z_5d"] = zscore(out["ret_5d"]).fillna(0.0)
+    out["z_21d"] = zscore(out["ret_21d"]).fillna(0.0)
+    out["strength_score"] = 0.3 * out["z_5d"] + 0.7 * out["z_21d"]
+
+    # ---- 60/40 merge -> then market-cap multiplier ----
+    def _pctl0_10(s: pd.Series) -> pd.Series:
+        return (s.rank(pct=True).fillna(0.0) * 10.0)
+
+    out["norm_score_0_10"]    = _pctl0_10(out["score"])
+    out["norm_strength_0_10"] = _pctl0_10(out["strength_score"])
+    out["final_60_40"]        = 0.6 * out["norm_score_0_10"] + 0.4 * out["norm_strength_0_10"]
+    out["cap_mult"]           = out["market_cap"].apply(cap_multiplier)
+    out["final_rank"]         = out["final_60_40"] * out["cap_mult"]
 
     # ==== LEAP scoring ====
-    out["z_ret_63"]=zscore(out["ret_63"]).fillna(0.0)
-    out["z_ret_252"]=zscore(out["ret_252"]).fillna(0.0)
+    out["z_ret_63"]  = zscore(out["ret_63"]).fillna(0.0)
+    out["z_ret_252"] = zscore(out["ret_252"]).fillna(0.0)
+
     def _cap_bonus(m):
-        try: m=float(m)
-        except: return 0.0
-        if m<2e9: return -0.3
-        if m<10e9: return 0.1
-        if m<200e9: return 0.2
+        try:
+            m = float(m)
+        except Exception:
+            return 0.0
+        if m < 2e9:    return -0.3
+        if m < 10e9:   return 0.1
+        if m < 200e9:  return 0.2
         return 0.25
-    out["cap_bonus"]=out["market_cap"].apply(_cap_bonus)
-    out["leap_score"]=0.4*out["z_ret_63"]+0.5*out["z_ret_252"]+0.1*out["cap_bonus"]-0.2*out["vol60"]
-    out["leap_rank"]=_pctl0_10(out["leap_score"])
 
-    leaders=out[(out["ret_5d"]>0)&(out["ret_21d"]>0)].copy().sort_values("strength_score",ascending=False)
-    leaps=out.sort_values("leap_rank",ascending=False)
+    out["cap_bonus"] = out["market_cap"].apply(_cap_bonus)
+    out["leap_score"] = 0.4 * out["z_ret_63"] + 0.5 * out["z_ret_252"] + 0.1 * out["cap_bonus"] - 0.2 * out["vol60"]
+    out["leap_rank"]  = _pctl0_10(out["leap_score"])
 
-    stamp=today.strftime("%Y-%m-%d")
-    send_email_report(out, leaders[["ticker","ret_5d","ret_21d","strength_score"]], leaps, stamp)
+    # Leaders & LEAP views
+    leaders = out[(out["ret_5d"] > 0) & (out["ret_21d"] > 0)].copy().sort_values("strength_score", ascending=False)
+    leaps   = out.sort_values("leap_rank", ascending=False)
 
-    return out.sort_values("final_rank",ascending=False), leaders
+    # ---- Dynamic local list rotation (stateless heuristic for now) ----
+    try:
+        new_local_list, changes = update_local_list(
+            df_all=out,
+            local_list=local_list,
+            universe_list=universe_tickers,
+            add_top_quantile=float(os.getenv("LOCAL_ADD_TOP_Q", "0.90")),   # top 10%
+            min_strength_z=float(os.getenv("LOCAL_MIN_STRENGTH_Z", "0.0")),
+            min_price=float(os.getenv("LOCAL_MIN_PRICE", str(PENNY_PRICE))),
+            remove_days_fail=int(os.getenv("LOCAL_REMOVE_DAYS", "5")),      # placeholder (stateless)
+            max_local_size=int(os.getenv("LOCAL_MAX_SIZE", "0")) or None
+        )
+        save_local_list(new_local_list, meta={"updated_utc": datetime.datetime.utcnow().isoformat()+"Z"})
+    except Exception as e:
+        logger.warning(f"[local_list] update/save failed: {e}")
+        changes = {"added": [], "removed": []}
+
+    # ---- Email report ----
+    stamp = today.strftime("%Y-%m-%d")
+    send_email_report(
+        out,
+        leaders[["ticker","ret_5d","ret_21d","strength_score"]],
+        leaps,
+        stamp,
+        only_in_universe=only_in_universe,
+        only_in_local=only_in_local,
+        changes=changes
+    )
+
+    return out.sort_values("final_rank", ascending=False), leaders
