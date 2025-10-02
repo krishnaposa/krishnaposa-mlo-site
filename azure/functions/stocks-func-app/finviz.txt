@@ -156,7 +156,7 @@ EMAIL_TO=your_email@gmail.com
 EMAIL_SUBJECT_PREFIX=Daily Stock Picks
 
 # Set these to your storage account name and key
-export AZURE_STORAGE_ACCOUNT="<your_account>"
+export AZURE_STORAGE_ACCOUNT="stockmonitorsg"
 export AZURE_STORAGE_KEY="<your_key>"
 
 # Create container if needed
