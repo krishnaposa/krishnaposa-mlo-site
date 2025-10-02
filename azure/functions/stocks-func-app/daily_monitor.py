@@ -5,7 +5,66 @@ from typing import List, Tuple
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import smtplib, ssl
+from email.message import EmailMessage
 
+def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str):
+    """
+    Send email with top picks + leaders as HTML, with CSV attachments.
+    Requires environment vars:
+      EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO (comma separated),
+      SMTP_SERVER, SMTP_PORT (default 465).
+    """
+
+    if os.getenv("SEND_EMAIL","0") != "1":
+        return
+
+    server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    port   = int(os.getenv("SMTP_PORT","465"))
+    email_from = os.getenv("EMAIL_FROM")
+    pwd    = os.getenv("EMAIL_PASSWORD")
+    tos    = [t.strip() for t in os.getenv("EMAIL_TO","").split(",") if t.strip()]
+    subject_prefix = os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks")
+    max_rows  = int(os.getenv("MAX_EMAIL_ROWS","15"))
+
+    if not (server and email_from and pwd and tos):
+        logging.warning("[email] missing SMTP config; skipping email")
+        return
+
+    # Build HTML tables
+    def html_table(df, max_rows=15):
+        return df.head(max_rows).to_html(index=False, border=0, justify="left")
+
+    top_picks = df_all[df_all["buy_flag"]][["ticker","score"]].sort_values("score", ascending=False)
+    html_top  = html_table(top_picks, max_rows)
+    html_lead = html_table(df_leaders, max_rows)
+
+    html_body = f"""<html><body>
+      <h2>Daily Stock Picks — {stamp}</h2>
+      <h3>Top Picks</h3>{html_top}
+      <h3>Leaders (5d &amp; 21d up)</h3>{html_lead}
+    </body></html>"""
+
+    msg = EmailMessage()
+    msg["From"] = email_from
+    msg["To"] = ", ".join(tos)
+    msg["Subject"] = f"{subject_prefix} — {stamp}"
+    msg.set_content("See HTML version")
+    msg.add_alternative(html_body, subtype="html")
+
+    # Attach CSVs
+    msg.add_attachment(df_all.to_csv(index=False).encode("utf-8"),
+                       maintype="text", subtype="csv",
+                       filename=f"daily_snapshot_{stamp}.csv")
+    msg.add_attachment(df_leaders.to_csv(index=False).encode("utf-8"),
+                       maintype="text", subtype="csv",
+                       filename=f"leaders_{stamp}.csv")
+
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL(server, port, context=context) as s:
+        s.login(email_from, pwd)
+        s.send_message(msg)
+        logging.info(f"[email] sent to {len(tos)} recipient(s)")
 
 # ---------------- Indicators & helpers ----------------
 def rsi(series: pd.Series, n: int = 14) -> pd.Series:
