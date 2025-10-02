@@ -5,16 +5,17 @@ import math
 import logging
 import datetime
 from typing import List, Tuple, Dict
-import json
-from urllib.request import urlopen, Request
-from urllib.error import URLError, HTTPError
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
 import smtplib, ssl
 from email.message import EmailMessage
+
+# Import the cache reader from your Function App module
+# NOTE: Make sure the module name matches your file (e.g., function_app.py)
 from function_app import _read_universe_blob
+
 # ---------------------------------------------------------------------
 # Logging (inherits level/handlers from Function App or local script)
 # ---------------------------------------------------------------------
@@ -33,10 +34,6 @@ BATCH_SIZE      = int(os.getenv("YF_BATCH_SIZE", "50"))    # tickers per downloa
 MAX_RETRIES     = int(os.getenv("YF_MAX_RETRIES", "2"))    # per-batch retries
 RETRY_BACKOFF_S = float(os.getenv("YF_RETRY_BACKOFF_S", "3.0"))
 MIN_DOLLAR_VOL_DEFAULT = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
-
-# Universe fetch
-UNIVERSE_URL        = os.getenv("UNIVERSE_URL", "http://localhost:7071/api/universe")
-UNIVERSE_TIMEOUT_S  = float(os.getenv("UNIVERSE_TIMEOUT_S", "8.0"))
 
 # ---------------------------------------------------------------------
 # Indicators & helpers
@@ -81,7 +78,7 @@ def zscore(s: pd.Series) -> pd.Series:
     return (s - mu) / sd
 
 # ---------------------------------------------------------------------
-# Trend-follow scoring (composite, before merge)
+# Trend-follow scoring (composite, before 60/40 merge)
 # ---------------------------------------------------------------------
 def score_row(r: pd.Series, min_dollar_vol: int) -> float:
     momentum_trend = (
@@ -184,38 +181,6 @@ def fetch_prices_batched(tickers: List[str], start: datetime.date, end: datetime
         logger.warning(f"[yf] missing/failed symbols: {len(missing)} e.g. {missing[:10]}{'...' if len(missing)>10 else ''}")
     logger.info(f"[yf] total downloaded symbols: {len(frames)}")
     return frames
-
-# ---------------------------------------------------------------------
-# Universe fetch (HTTP GET to your Function App)
-# ---------------------------------------------------------------------
-def _fetch_universe_tickers() -> List[str]:
-    url = UNIVERSE_URL
-    if not url:
-        logger.info("[universe] UNIVERSE_URL not set; skipping")
-        return []
-    try:
-        logger.info(f"[universe] GET {url}")
-        req = Request(url, headers={"User-Agent":"daily-monitor/1.0"})
-        with urlopen(req, timeout=UNIVERSE_TIMEOUT_S) as resp:
-            data = resp.read()
-        js = json.loads(data.decode("utf-8"))
-        if not isinstance(js, dict):
-            logger.warning("[universe] unexpected response type")
-            return []
-        if not js.get("ok"):
-            logger.warning(f"[universe] ok=false: {js}")
-            return []
-        raw = js.get("tickers") or []
-        out = [str(t).upper().strip() for t in raw if str(t).strip()]
-        logger.info(f"[universe] received {len(out)} tickers (stale={js.get('stale')})")
-        return out
-    except HTTPError as e:
-        logger.warning(f"[universe] HTTP error {e.code}: {e.reason}")
-    except URLError as e:
-        logger.warning(f"[universe] URL error: {e.reason}")
-    except Exception as e:
-        logger.exception(f"[universe] failed: {e}")
-    return []
 
 # ---------------------------------------------------------------------
 # SMTP Email
@@ -355,23 +320,24 @@ def run_monitor(
       - df_all: full table sorted by FINAL rank (60% composite score, 40% return strength)
       - df_leaders: convenience table (5d & 21d positive, 21d-weighted)
     Also:
-      - Fetches 'universe' from Function App and unions with the provided list
+      - Reads 'universe' from local blob cache (_read_universe_blob) and unions with the provided list
       - Email includes which tickers are only in universe vs only in local list
     """
     if today is None:
         today = datetime.date.today()
 
-    # ----- Pull universe & merge -----
+    # ----- Pull universe & merge (cache-only) -----
     local_list = [str(t).upper().strip() for t in (tickers or []) if str(t).strip()]
-    #universe_list = _fetch_universe_tickers()
     cached = _read_universe_blob()
-    universe_tickers = cached.get("tickers", []) if cached else []
+    universe_tickers = [str(t).upper().strip() for t in (cached.get("tickers", []) if cached else []) if str(t).strip()]
 
-    only_in_universe = sorted(list(set(universe_list) - set(local_list)))
-    only_in_local    = sorted(list(set(local_list) - set(universe_list)))
-    merged_tickers   = sorted(list(set(local_list).union(set(universe_list))))
+    only_in_universe = sorted(list(set(universe_tickers) - set(local_list)))
+    only_in_local    = sorted(list(set(local_list) - set(universe_tickers)))
+    merged_tickers   = sorted(list(set(local_list).union(set(universe_tickers))))
 
-    logger.info(f"[monitor] local={len(local_list)} universe={len(universe_list)} merged={len(merged_tickers)}")
+    if cached is None:
+        logger.warning("[monitor] universe cache is missing; proceeding with local list only")
+    logger.info(f"[monitor] local={len(local_list)} universe={len(universe_tickers)} merged={len(merged_tickers)}")
     if only_in_universe:
         logger.info(f"[monitor] in universe not in local: {only_in_universe[:20]}{'...' if len(only_in_universe)>20 else ''}")
     if only_in_local:
