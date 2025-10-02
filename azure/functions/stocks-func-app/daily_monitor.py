@@ -263,17 +263,52 @@ def send_email_report(
         logger.warning("[email] missing SMTP config; need SMTP_SERVER, EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO")
         return
 
-    top_picks = df_all[df_all.get("buy_flag", False) == True][
-        ["ticker","final_rank","score","strength_score"]
-    ].sort_values("final_rank", ascending=False)
-    overall = df_all[["ticker","final_rank","score","strength_score"]].copy() \
-                .sort_values("final_rank", ascending=False)
+    # --- Helpers for HTML tables ---
+    def html_table(df, k=max_rows, cols=None):
+        if cols:
+            dfv = df.loc[:, [c for c in cols if c in df.columns]].copy()
+        else:
+            dfv = df.copy()
+        dfv = dfv.head(k)
+        for col in ("final_rank","score","strength_score","ret_5d","ret_21d","last_price"):
+            if col in dfv.columns:
+                dfv[col] = pd.to_numeric(dfv[col], errors="coerce").round(4)
+        return dfv.to_html(index=False, border=0, justify="left")
 
-    html_top  = _render_html_table(top_picks, max_rows)
-    html_over = _render_html_table(overall, max_rows)
+    # --- Sections ---
+    top_picks = df_all[df_all.get("buy_flag", False) == True].copy()  # noqa: E712
+    top_picks = top_picks.sort_values("final_rank", ascending=False)
 
+    best5 = df_all.sort_values("final_rank", ascending=False).head(5).copy()
+
+    # Leaders table comes in prefiltered/sorted
+    leaders = df_leaders.copy()
+
+    # Diff sections
     html_only_universe = _render_list_html(only_in_universe or [])
     html_only_local    = _render_list_html(only_in_local or [])
+
+    # Build HTML blocks
+    if top_picks.empty:
+        html_top = "<i>No picks met strict buy conditions today.</i>"
+    else:
+        html_top = html_table(
+            top_picks,
+            k=10,
+            cols=["ticker","final_rank","score","strength_score","last_price"]
+        )
+
+    html_best5 = html_table(
+        best5,
+        k=5,
+        cols=["ticker","final_rank","score","strength_score","last_price"]
+    )
+
+    html_lead = html_table(
+        leaders,
+        k=max_rows,
+        cols=["ticker","ret_5d","ret_21d","strength_score"]
+    )
 
     html_body = f"""<html><body>
       <h2>Daily Stock Picks — {stamp}</h2>
@@ -282,10 +317,17 @@ def send_email_report(
       <p><b>In Universe but NOT in Local:</b><br>{html_only_universe}</p>
       <p><b>In Local but NOT in Universe (FYI):</b><br>{html_only_local}</p>
 
-      <h3>Top Picks (buy_flag) — ranked by Final (60% Score / 40% Perf)</h3>{html_top}
-      <h3>Overall — ranked by Final (60% Score / 40% Perf)</h3>{html_over}
+      <h3>Top Picks (strict buy_flag)</h3>
+      {html_top}
+
+      <h3>Best 5 Overall (by Final Rank)</h3>
+      {html_best5}
+
+      <h3>Leaders (5d &amp; 21d positive, 21d-weighted)</h3>
+      {html_lead}
     </body></html>"""
 
+    # --- Send email ---
     msg = EmailMessage()
     msg["From"] = email_from
     msg["To"] = ", ".join(tos)
@@ -293,6 +335,7 @@ def send_email_report(
     msg.set_content("See HTML version")
     msg.add_alternative(html_body, subtype="html")
 
+    # Attach CSVs
     msg.add_attachment(df_all.to_csv(index=False).encode("utf-8"),
                        maintype="text", subtype="csv",
                        filename=f"daily_snapshot_{stamp}.csv")
@@ -325,7 +368,6 @@ def send_email_report(
     except Exception as e2:
         logger.exception(f"[email] both SSL and STARTTLS failed: {e2}")
         raise
-
 # ---------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------
