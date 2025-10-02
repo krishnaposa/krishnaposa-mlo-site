@@ -154,3 +154,17 @@ EMAIL_FROM=your_email@gmail.com
 EMAIL_PASSWORD=your_app_password   # Gmail app password or Outlook SMTP password
 EMAIL_TO=your_email@gmail.com
 EMAIL_SUBJECT_PREFIX=Daily Stock Picks
+
+# Set these to your storage account name and key
+export AZURE_STORAGE_ACCOUNT="<your_account>"
+export AZURE_STORAGE_KEY="<your_key>"
+
+# Create container if needed
+az storage container create --name signals
+
+# Upload file
+az storage blob upload \
+  --container-name signals \
+  --name local_list.json \
+  --file ./local_list.json \
+  --overwrite
