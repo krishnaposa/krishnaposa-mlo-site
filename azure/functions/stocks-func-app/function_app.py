@@ -4,7 +4,8 @@ from openai import AzureOpenAI
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from typing import List
 import daily_monitor  # <--- our new module
-
+# replace old _read_universe_blob definition
+from universe_utils import read_universe_blob as _read_universe_blob
 app = func.FunctionApp()
 
 # ---------- Settings ----------
