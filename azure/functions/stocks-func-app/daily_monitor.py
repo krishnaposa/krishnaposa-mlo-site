@@ -11,6 +11,7 @@ import pandas as pd
 import yfinance as yf
 import smtplib, ssl
 from email.message import EmailMessage
+from universe_utils import read_universe_blob
 
 # Import the cache reader from your Function App module
 # NOTE: Make sure the module name matches your file (e.g., function_app.py)
@@ -328,7 +329,7 @@ def run_monitor(
 
     # ----- Pull universe & merge (cache-only) -----
     local_list = [str(t).upper().strip() for t in (tickers or []) if str(t).strip()]
-    cached = _read_universe_blob()
+    cached = read_universe_blob()
     universe_tickers = [str(t).upper().strip() for t in (cached.get("tickers", []) if cached else []) if str(t).strip()]
 
     only_in_universe = sorted(list(set(universe_tickers) - set(local_list)))
