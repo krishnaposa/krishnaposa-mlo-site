@@ -74,7 +74,7 @@ def zscore(s: pd.Series) -> pd.Series:
     return (s - mu) / sd
 
 # ---------------------------------------------------------------------
-# Trend-follow scoring
+# Trend-follow scoring (composite, before merge)
 # ---------------------------------------------------------------------
 def score_row(r: pd.Series, min_dollar_vol: int) -> float:
     momentum_trend = (
@@ -104,7 +104,6 @@ def _clean_tickers(raw: List[str]) -> List[str]:
     cleaned = []
     for t in raw:
         ts = (t or "").strip().upper()
-        # Filter known-bad: empty, single-character market tags, or explicit invalids
         if not ts or ts in {"US"}:
             logger.warning(f"[tickers] skipping invalid: '{t}'")
             continue
@@ -128,13 +127,12 @@ def _fetch_batch(batch: List[str], start: datetime.date, end: datetime.date) -> 
                 progress=False,
                 threads=True
             )
-            # yfinance returns a Panel-like DataFrame keyed by ticker columns
             for t in batch:
                 if t in data:
                     df = data[t]
                 else:
-                    # With a single ticker, yfinance returns flat columns
-                    if len(batch) == 1 and isinstance(data, pd.DataFrame) and set(["Adj Close","Close","High","Low","Open","Volume"]).issubset(set(data.columns)):
+                    if len(batch) == 1 and isinstance(data, pd.DataFrame) and \
+                       set(["Adj Close","Close","High","Low","Open","Volume"]).issubset(set(data.columns)):
                         df = data
                     else:
                         logger.warning(f"[yf] no data key for {t}")
@@ -172,7 +170,6 @@ def fetch_prices_batched(tickers: List[str], start: datetime.date, end: datetime
         batch = tickers[i:i+BATCH_SIZE]
         got = _fetch_batch(batch, start, end)
         frames.update(got)
-        # Log per-batch summary
         logger.info(f"[yf] batch {i//BATCH_SIZE+1}/{math.ceil(n/BATCH_SIZE)}: downloaded {len(got)}/{len(batch)} symbols")
 
     missing = [t for t in tickers if t not in frames]
@@ -186,14 +183,14 @@ def fetch_prices_batched(tickers: List[str], start: datetime.date, end: datetime
 # ---------------------------------------------------------------------
 def _render_html_table(df: pd.DataFrame, max_rows=15) -> str:
     dfv = df.head(max_rows).copy()
-    for col in ("score","ret_5d","ret_21d","strength_score"):
+    for col in ("final_rank","score","ret_5d","ret_21d","strength_score"):
         if col in dfv.columns:
             dfv[col] = pd.to_numeric(dfv[col], errors="coerce").round(4)
     return dfv.to_html(index=False, border=0, justify="left")
 
 def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str):
     """
-    Send email with top picks + leaders as HTML, attach CSVs.
+    Send email with picks as HTML, attach CSVs.
     Env vars:
       SEND_EMAIL=1
       SMTP_SERVER, SMTP_PORT (465=SSL, 587=STARTTLS; fallback enabled)
@@ -205,7 +202,6 @@ def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str
         return
 
     server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    # If a specific port is set we'll respect it; otherwise we'll try SSL->STARTTLS
     port_env = os.getenv("SMTP_PORT", "").strip()
     email_from = os.getenv("EMAIL_FROM")
     pwd        = os.getenv("EMAIL_PASSWORD")
@@ -217,22 +213,21 @@ def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str
         logger.warning("[email] missing SMTP config; need SMTP_SERVER, EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO")
         return
 
-    # Build HTML tables
-    def html_table(df, k=max_rows):
-        dfv = df.head(k).copy()
-        for col in ("score","ret_5d","ret_21d","strength_score"):
-            if col in dfv.columns:
-                dfv[col] = pd.to_numeric(dfv[col], errors="coerce").round(4)
-        return dfv.to_html(index=False, border=0, justify="left")
+    # Tables for email
+    top_picks = df_all[df_all.get("buy_flag", False) == True][
+        ["ticker","final_rank","score","strength_score"]
+    ].sort_values("final_rank", ascending=False)
 
-    top_picks = df_all[df_all.get("buy_flag", False) == True][["ticker","score"]].sort_values("score", ascending=False)  # noqa: E712
-    html_top  = html_table(top_picks)
-    html_lead = html_table(df_leaders)
+    overall = df_all[["ticker","final_rank","score","strength_score"]].copy() \
+                .sort_values("final_rank", ascending=False)
+
+    html_top  = _render_html_table(top_picks, max_rows)
+    html_over = _render_html_table(overall, max_rows)
 
     html_body = f"""<html><body>
       <h2>Daily Stock Picks — {stamp}</h2>
-      <h3>Top Picks (trend-follow score)</h3>{html_top}
-      <h3>Leaders (5d &amp; 21d positive, 21d-weighted)</h3>{html_lead}
+      <h3>Top Picks (buy_flag) — ranked by Final (60% Score / 40% Perf)</h3>{html_top}
+      <h3>Overall — ranked by Final (60% Score / 40% Perf)</h3>{html_over}
     </body></html>"""
 
     msg = EmailMessage()
@@ -242,7 +237,7 @@ def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str
     msg.set_content("See HTML version")
     msg.add_alternative(html_body, subtype="html")
 
-    # Attach CSVs (convenience)
+    # Attach CSVs for convenience
     msg.add_attachment(df_all.to_csv(index=False).encode("utf-8"),
                        maintype="text", subtype="csv",
                        filename=f"daily_snapshot_{stamp}.csv")
@@ -269,7 +264,6 @@ def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str
             s.login(email_from, pwd)
             s.send_message(msg)
 
-    # Try SSL first, then STARTTLS
     try:
         _try_ssl()
         logger.info("[email] sent via SSL")
@@ -283,7 +277,7 @@ def send_email_report(df_all: pd.DataFrame, df_leaders: pd.DataFrame, stamp: str
     except Exception as e2:
         logger.exception(f"[email] both SSL and STARTTLS failed: {e2}")
         raise
-        
+
 # ---------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------
@@ -294,9 +288,9 @@ def run_monitor(
     min_dollar_vol: int = MIN_DOLLAR_VOL_DEFAULT
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Computes:
-      - df_all (sorted by trend-follow score)
-      - df_leaders (5d & 21d positive, 21d-weighted)
+    Builds:
+      - df_all: full table sorted by FINAL rank (60% composite score, 40% return strength)
+      - df_leaders: convenience table (5d & 21d positive, 21d-weighted)
     Also triggers email (if SEND_EMAIL=1).
     """
     if today is None:
@@ -373,8 +367,10 @@ def run_monitor(
 
     out = pd.DataFrame(rows)
 
-    # Trend-follow score & buy flag
+    # Composite trend-follow score
     out["score"] = out.apply(lambda r: score_row(r, min_dollar_vol), axis=1)
+
+    # Buy filter (kept as a sanity gate)
     out["buy_flag"] = (
         (out["score"] > 1.5) &
         (out["rsi14"].between(45, 80)) &
@@ -383,19 +379,40 @@ def run_monitor(
         (out["dist_52w_high"] > -0.10)
     )
 
-    # Leaders (5d & 21d positive; 21d weighted heavier)
+    # Leaders / performance strength (5d & 21d positive; 21d weighted heavier)
     out["z_5d"] = zscore(out["ret_5d"]).fillna(0.0)
     out["z_21d"] = zscore(out["ret_21d"]).fillna(0.0)
     out["strength_score"] = 0.3 * out["z_5d"] + 0.7 * out["z_21d"]
+
+    # ---- 60/40 MERGE: percentile-normalized to 0..10, then weighted ----
+    def _pctl0_10(s: pd.Series) -> pd.Series:
+        return (s.rank(pct=True).fillna(0.0) * 10.0)
+
+    out["norm_score_0_10"]    = _pctl0_10(out["score"])
+    out["norm_strength_0_10"] = _pctl0_10(out["strength_score"])
+    out["final_rank"] = 0.6 * out["norm_score_0_10"] + 0.4 * out["norm_strength_0_10"]
+
+    # Leaders table (unchanged view for convenience)
     leaders = out[(out["ret_5d"] > 0) & (out["ret_21d"] > 0)].copy()
     leaders = leaders.sort_values("strength_score", ascending=False)
 
     # Email report if enabled
     stamp = today.strftime("%Y-%m-%d")
     try:
-        send_email_report(out, leaders, stamp)
+        send_email_report(out, leaders[["ticker","ret_5d","ret_21d","strength_score"]], stamp)
     except Exception as e:
         logger.exception(f"[email] failed to send report: {e}")
 
     logger.info("[monitor] completed")
-    return out.sort_values("score", ascending=False), leaders[["ticker","ret_5d","ret_21d","strength_score"]]
+    # Return full table sorted by FINAL rank
+    cols_order = [
+        "ticker", "final_rank", "norm_score_0_10", "norm_strength_0_10",
+        "score", "strength_score", "ret_5d", "ret_21d", "rsi14",
+        "close_above_sma50", "close_above_sma200", "dist_52w_high", "buy_flag"
+    ]
+    for c in cols_order:
+        if c not in out.columns:
+            out[c] = np.nan
+    df_all_sorted = out[cols_order].sort_values("final_rank", ascending=False)
+
+    return df_all_sorted, leaders[["ticker","ret_5d","ret_21d","strength_score"]]
