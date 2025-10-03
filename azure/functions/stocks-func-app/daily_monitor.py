@@ -487,6 +487,11 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
 
     out = pd.DataFrame(rows)
 
+    # Strictly drop penny stocks (< $5) from all further processing
+    out = out[out["last_price"] >= PENNY_PRICE].copy()
+    if out.empty:
+        raise RuntimeError("All tickers filtered out by penny-stock exclusion.")
+        
     # x-sectional ADV z
     out["adv_usd_20_z"] = zscore(out.get("adv_usd_20", pd.Series(dtype=float))).fillna(0.0)
 
