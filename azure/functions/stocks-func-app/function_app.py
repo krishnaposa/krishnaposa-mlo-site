@@ -142,12 +142,6 @@ def monitor_signals(timer: func.TimerRequest) -> None:
             _upload_bytes(cont, f"leaders_{stamp}.snappy.parquet",
                           df_leaders.to_parquet(engine=engine, compression="snappy", index=False),
                           "application/octet-stream")
-            _upload_bytes(cont, f"daily_snapshot_{stamp}.plain.parquet",
-                          df_all.to_parquet(engine=engine, compression="none", index=False),
-                          "application/octet-stream")
-            _upload_bytes(cont, f"leaders_{stamp}.plain.parquet",
-                          df_leaders.to_parquet(engine=engine, compression="none", index=False),
-                          "application/octet-stream")
             logging.info("[parquet] wrote daily + leaders to blob")
         except Exception as e:
             logging.warning(f"[parquet] skipped ({e})")
