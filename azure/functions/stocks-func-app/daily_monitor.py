@@ -15,6 +15,8 @@ from email.message import EmailMessage
 from universe_utils import read_universe_blob
 # dynamic local list utils (Blob-backed)
 from local_list_utils import load_local_list, save_local_list
+# <<< NEW: local AI scorer (shared util, no HTTP)
+from ai_utils import ai_rank_tickers
 
 logging.getLogger("yfinance").setLevel(logging.ERROR)
 logging.getLogger("urllib3").setLevel(logging.ERROR)
@@ -41,6 +43,9 @@ LOCAL_PRUNE_COUNT = int(os.getenv("LOCAL_PRUNE_COUNT", "5"))           # how man
 LOCAL_MAX_SIZE = int(os.getenv("LOCAL_MAX_SIZE", "0")) or None         # optional cap
 LOCAL_ADD_MIN_PRICE = float(os.getenv("LOCAL_MIN_PRICE", str(PENNY_PRICE)))
 LOCAL_ADD_MIN_STRENGTH_Z = float(os.getenv("LOCAL_MIN_STRENGTH_Z", "0.0"))
+
+# AI email length
+AI_EMAIL_TOPK = int(os.getenv("AI_EMAIL_TOPK", "8"))
 
 # --------------------------- Helpers ---------------------------------
 def rsi(series: pd.Series, n: int = 14) -> pd.Series:
@@ -262,6 +267,12 @@ def _render_list_html(items: List[str], max_items=60) -> str:
     more = "" if len(items) <= max_items else f" … (+{len(items)-max_items} more)"
     return "<div style='font-family:monospace'>" + ", ".join(clip) + more + "</div>"
 
+def _render_ai_table(df: pd.DataFrame, max_rows: int) -> str:
+    if df is None or df.empty:
+        return "<i>No AI picks</i>"
+    cols = [c for c in ["ticker","ai_score","thesis","risks","suggested_action"] if c in df.columns]
+    return df[cols].head(max_rows).to_html(index=False, border=0, justify="left")
+
 def send_email_report(
     df_all: pd.DataFrame,
     df_leaders: pd.DataFrame,
@@ -270,7 +281,9 @@ def send_email_report(
     *,
     only_in_universe: List[str] | None = None,
     only_in_local: List[str] | None = None,
-    changes: Dict[str, List[str]] | None = None
+    changes: Dict[str, List[str]] | None = None,
+    ai_leaps_df: pd.DataFrame | None = None,          # <<< NEW
+    ai_spreads_df: pd.DataFrame | None = None         # <<< NEW
 ):
     if os.getenv("SEND_EMAIL","0") != "1":
         return
@@ -298,6 +311,11 @@ def send_email_report(
     html_added   = _render_list_html(added)
     html_removed = _render_list_html(removed)
 
+    # <<< NEW: AI sections
+    ai_k = int(os.getenv("AI_EMAIL_TOPK", str(AI_EMAIL_TOPK)))
+    html_ai_leaps   = _render_ai_table(ai_leaps_df, ai_k)
+    html_ai_spreads = _render_ai_table(ai_spreads_df, ai_k)
+
     html_body = f"""<html><body>
       <h2>Daily Stock Picks — {stamp}</h2>
 
@@ -313,6 +331,13 @@ def send_email_report(
       <h3>Best 5 Overall (by Final Rank)</h3>{html_best5}
       <h3>Leaders (5d &amp; 21d positive, 21d-weighted)</h3>{html_lead}
       <h3>LEAP Picks (Top 5)</h3>{html_leaps}
+
+      <hr>
+      <h3>AI: LEAPS (12–24 months) — Top {ai_k}</h3>
+      {html_ai_leaps}
+
+      <h3>AI: 30–40 Day Debit Call Spreads — Top {ai_k}</h3>
+      {html_ai_spreads}
     </body></html>"""
 
     msg = EmailMessage()
@@ -548,6 +573,15 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
     leaders = out[(out.get("ret_5d", 0) > 0) & (out.get("ret_21d", 0) > 0)].copy().sort_values("strength_score", ascending=False)
     leaps   = out.sort_values("leap_rank", ascending=False)
 
+    # --------- AI: rank combined local + universe for email -----------
+    # Build combined candidate set (and enforce >=$5 using our computed prices)
+    price_map = dict(zip(out["ticker"].astype(str).str.upper(), out["last_price"].astype(float)))
+    combined = sorted(set(local_list) | set(universe_tickers))
+    combined = [t.upper().strip() for t in combined if price_map.get(t.upper().strip(), float("inf")) >= PENNY_PRICE]
+
+    ai_leaps_df   = ai_rank_tickers(combined, strategy="leaps",               horizon_text="12–24 months", top_k=AI_EMAIL_TOPK)
+    ai_spreads_df = ai_rank_tickers(combined, strategy="debit_call_spread",   horizon_text="30–40 days",   top_k=AI_EMAIL_TOPK)
+
     # --------- prune & replenish local list, then persist ------------
     try:
         new_local_list, changes = _prune_and_replenish_local_list(
@@ -565,7 +599,7 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         logger.warning(f"[local_list] update/save failed: {e}")
         changes = {"added": [], "removed": []}
 
-    # email report
+    # email report (now with AI sections)
     stamp = today.strftime("%Y-%m-%d")
     send_email_report(
         out,
@@ -574,7 +608,9 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         stamp,
         only_in_universe=only_in_universe,
         only_in_local=only_in_local,
-        changes=changes
+        changes=changes,
+        ai_leaps_df=ai_leaps_df,
+        ai_spreads_df=ai_spreads_df
     )
 
     # return main tables
