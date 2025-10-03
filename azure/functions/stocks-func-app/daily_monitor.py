@@ -219,12 +219,23 @@ def score_row(r: pd.Series, min_dollar_vol: int) -> float:
         0.50 * max(0.0, r.get("sma50_slope", 0.0)) +
         0.50 * max(0.0, r.get("sma200_slope", 0.0))
     )
-    # volume signal
+
+    # volume confirmation (existing)
     vol_surge = r.get("vol_surge", np.nan)
     vol_centered = 0.0 if pd.isna(vol_surge) else clamp(vol_surge, 0.5, 2.0) - 1.0
     adv_z = r.get("adv_usd_20_z", 0.0)
     volume_boost = 0.7 * vol_centered + 0.3 * adv_z
     momentum_trend += 0.6 * volume_boost
+
+    # --- NEW: ADX and MFI nudges ---
+    # Normalize ADX: reward strong, persistent trends mainly above ~20–25
+    adx14 = float(r.get("adx14", 0.0))
+    adx_norm = clamp((adx14 - 20.0) / 40.0, 0.0, 1.0)  # ~0 when <20, ~1 when >60
+    # Center MFI around 50; modest boost when demand > supply and not blow-off
+    mfi14 = float(r.get("mfi14", 50.0))
+    mfi_centered = clamp((mfi14 - 50.0) / 50.0, -1.0, 1.0)  # [-1..1]
+
+    momentum_trend += 0.30 * adx_norm + 0.20 * mfi_centered
 
     # liquidity & risk
     liquidity = 1.0 if r.get("adv_usd_20", 0.0) >= min_dollar_vol else -1.0
@@ -236,7 +247,6 @@ def score_row(r: pd.Series, min_dollar_vol: int) -> float:
     price_penalty = 0.6 if r.get("last_price", np.inf) < PENNY_PRICE else 0.0
 
     return float(momentum_trend + liquidity - risk_penalty - price_penalty)
-
 # ----------------- Fundamentals for LEAPs (last 4 quarters) ----------
 def _growth_rate(series: pd.Series) -> pd.Series:
     try:
@@ -548,6 +558,15 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         d = df.copy()
         d["CloseAdj"] = d["Adj Close"]
 
+        # --- NEW: ADX & MFI (trend strength + volume flow) ---
+        d["adx14"] = adx(d, 14)
+        d["mfi14"] = mfi(d, 14)
+
+        # --- NEW: EPS surprise (cache per ticker to avoid repeat calls) ---
+        # put a small cache dict above the loop if you want (eps_map = {})
+        # but simplest inline:
+        eps_sig = _eps_surprise_trend(t)
+        
         # returns
         d["ret"]     = d["CloseAdj"].pct_change()
         d["ret_5d"]  = d["CloseAdj"].pct_change(5)
@@ -602,7 +621,11 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         latest["ticker"] = t
         latest["last_price"] = float(d["CloseAdj"].iloc[-1])
         latest["market_cap"] = fast_caps.get(t, np.nan)
+        latest["adx14"] = float(d["adx14"].iloc[-1])
+        latest["mfi14"] = float(d["mfi14"].iloc[-1])
 
+        latest["eps_surprise_avg"] = float(eps_sig.get("eps_surprise_avg", 0.0))
+        latest["eps_beat_share"]   = float(eps_sig.get("eps_beat_share", 0.0))
         # -------- fundamentals (4-quarter trend) ----------
         if t not in fundamentals_map:
             fundamentals_map[t] = _compute_quarterly_trends(t)
@@ -676,7 +699,13 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
     rev_growth = pd.Series(rev_growth, index=out.index).clip(lower=-1.0, upper=1.0).fillna(0.0)
     ern_growth = pd.Series(ern_growth, index=out.index).clip(lower=-1.0, upper=1.0).fillna(0.0)
     streak     = out.get("growth_streak", pd.Series(0.0, index=out.index)).fillna(0.0)
-
+    # --- NEW: EPS surprise contributions ---
+    eps_avg = out["eps_surprise_avg"].astype(float).fillna(0.0)
+    # Clamp to +/-20% in decimal to avoid outliers (i.e., [-0.20, +0.20])
+    eps_avg = eps_avg.clip(lower=-0.20, upper=0.20)
+    # Share of last 4 beats in [0..1]
+    eps_beat = out["eps_beat_share"].astype(float).fillna(0.0)
+    
     out["leap_score"] = (
         0.30 * out["z_ret_63"] +
         0.35 * out["z_ret_252"] +
@@ -684,7 +713,9 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         0.15 * out.get("vol60", pd.Series(0.0, index=out.index)).fillna(0.0) +
         0.10 * rev_growth +
         0.10 * ern_growth +
-        0.05 * streak
+        0.05 * streak +
+        0.06 * eps_avg +       # avg surprise (decimal)
+        0.04 * eps_beat 
     )
     out["leap_rank"]  = _pctl0_10(out["leap_score"])
 
@@ -742,7 +773,9 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         "rsi14", "close_above_sma50", "close_above_sma200", "dist_52w_high", "buy_flag",
         # LEAP fundamentals we now compute
         "rev_q_yoy", "earn_q_yoy", "rev_q_qoq", "earn_q_qoq", "growth_streak", "fundamentals_quality",
-        "z_ret_63", "z_ret_252", "cap_bonus", "leap_score", "leap_rank"
+        "z_ret_63", "z_ret_252", "cap_bonus", "leap_score", "leap_rank",
+            # include near the end of cols_order
+        "adx14", "mfi14", "eps_surprise_avg", "eps_beat_share"
     ]
     for c in cols_order:
         if c not in out.columns:
