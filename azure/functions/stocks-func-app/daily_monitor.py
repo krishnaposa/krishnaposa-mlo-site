@@ -49,6 +49,94 @@ LOCAL_ADD_MIN_STRENGTH_Z = float(os.getenv("LOCAL_MIN_STRENGTH_Z", "0.0"))
 AI_EMAIL_TOPK = int(os.getenv("AI_EMAIL_TOPK", "8"))
 
 # --------------------------- Helpers ---------------------------------
+# ---------------- Extra indicators: ADX, MFI, EPS surprise ----------------
+def _wilder_smooth(s: pd.Series, n: int) -> pd.Series:
+    """Wilder's smoothing used in ADX."""
+    s = s.copy()
+    sm = s.ewm(alpha=1/n, adjust=False).mean()
+    return sm
+
+def adx(df: pd.DataFrame, n: int = 14) -> pd.Series:
+    """
+    Average Directional Index (trend strength 0..100).
+    Requires High, Low, Adj Close (or CloseAdj).
+    """
+    H = df["High"]; L = df["Low"]; C = df.get("CloseAdj", df["Adj Close"])
+    up_move = H.diff()
+    down_move = -L.diff()
+
+    plus_dm  = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0.0), index=df.index)
+    minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0.0), index=df.index)
+
+    tr = pd.concat([
+        H - L,
+        (H - C.shift(1)).abs(),
+        (L - C.shift(1)).abs()
+    ], axis=1).max(axis=1)
+
+    atr = _wilder_smooth(tr, n)
+    plus_di  = 100 * _wilder_smooth(plus_dm, n) / atr
+    minus_di = 100 * _wilder_smooth(minus_dm, n) / atr
+
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+    adx_val = _wilder_smooth(dx, n).fillna(0.0)
+    return adx_val.clip(0, 100)
+
+def mfi(df: pd.DataFrame, n: int = 14) -> pd.Series:
+    """
+    Money Flow Index (0..100). >50 bullish bias, 80+ stretched.
+    """
+    H, L = df["High"], df["Low"]
+    C = df.get("CloseAdj", df["Adj Close"])
+    V = df["Volume"].astype(float)
+    tp = (H + L + C) / 3.0  # typical price
+    rmf = tp * V
+
+    sign = np.sign(tp.diff().fillna(0.0))
+    pos_mf = pd.Series(np.where(sign > 0, rmf, 0.0), index=df.index)
+    neg_mf = pd.Series(np.where(sign < 0, rmf, 0.0), index=df.index)
+
+    pos = pos_mf.rolling(n).sum()
+    neg = neg_mf.rolling(n).sum().replace(0, np.nan)
+    mr = pos / neg
+    mfi_val = 100 - (100 / (1 + mr))
+    return mfi_val.fillna(50.0).clip(0, 100)
+
+def _eps_surprise_trend(ticker: str, lookback: int = 10) -> dict:
+    """
+    Best-effort EPS surprise signals using yfinance. Returns:
+      eps_surprise_avg  : average surprise (as decimal, e.g., +0.05 = +5%) over last 4
+      eps_beat_share    : share of last 4 with positive surprise in [0..1]
+    If yfinance provides % values, auto-detect and convert to decimal.
+    """
+    out = {"eps_surprise_avg": 0.0, "eps_beat_share": 0.0}
+    try:
+        ed = yf.Ticker(ticker).earnings_dates(limit=lookback)
+        if ed is None or ed.empty:
+            return out
+
+        # Try to find a surprise column
+        cols = [c for c in ed.columns if "surprise" in c.lower()]
+        if not cols:
+            return out
+        s = ed[cols[0]].astype(float).dropna()
+
+        # keep the freshest 4 values
+        last4 = s.tail(4)
+        if last4.empty:
+            return out
+
+        # If magnitudes look like 5..20, assume percent -> convert to decimal
+        if last4.abs().median() > 1.0:
+            last4 = last4 / 100.0
+
+        out["eps_surprise_avg"] = float(last4.mean())
+        out["eps_beat_share"]   = float(np.mean(last4 > 0))
+        return out
+    except Exception:
+        return out
+
+
 def rsi(series: pd.Series, n: int = 14) -> pd.Series:
     delta = series.diff()
     up = np.where(delta > 0, delta, 0.0)
