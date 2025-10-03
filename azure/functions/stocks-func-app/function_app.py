@@ -1,32 +1,31 @@
 import os, json, sys, subprocess, logging, pathlib, importlib.util, datetime, shlex
 import azure.functions as func
-from openai import AzureOpenAI
 from azure.storage.blob import BlobServiceClient, ContentSettings
-import daily_monitor  # <--- our new module
-from universe_utils import read_universe_blob as _read_universe_blob  # use shared cache reader
+import pandas as pd
+
+import daily_monitor
+from universe_utils import read_universe_blob as _read_universe_blob
+from local_list_utils import load_local_list  # <<< NEW: read local list for combined set
+from ai_utils import ai_rank_tickers          # <<< NEW: shared AI scorer
 
 app = func.FunctionApp()
 
 # ---------- Settings ----------
 WB4U_ENTRY = os.getenv("WB4U_ENTRY", "wb4u_main.py")
 
-# Universe caching (Blob)
-UNIVERSE_CONTAINER = os.getenv("UNIVERSE_CONTAINER", "cache")
-UNIVERSE_BLOB_NAME = os.getenv("UNIVERSE_BLOB_NAME", "universe.json")
-UNIVERSE_TTL_MIN   = int(os.getenv("UNIVERSE_TTL_MIN", "720"))   # 12h staleness flag
-UNIVERSE_MAX_SECONDS = int(os.getenv("UNIVERSE_MAX_SECONDS", "60"))  # hard budget
+UNIVERSE_CONTAINER   = os.getenv("UNIVERSE_CONTAINER", "cache")
+UNIVERSE_BLOB_NAME   = os.getenv("UNIVERSE_BLOB_NAME", "universe.json")
+UNIVERSE_TTL_MIN     = int(os.getenv("UNIVERSE_TTL_MIN", "720"))
+UNIVERSE_MAX_SECONDS = int(os.getenv("UNIVERSE_MAX_SECONDS", "60"))
 
-# Manual refresh protection
-REFRESH_SHARED_KEY = os.getenv("REFRESH_SHARED_KEY")  # set a strong random string
+REFRESH_SHARED_KEY = os.getenv("REFRESH_SHARED_KEY")
 
-# Azure OpenAI
-AZURE_OPENAI_ENDPOINT   = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_KEY    = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
-AZURE_OPENAI_API_VER    = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
+AZURE_OPENAI_API_VER = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")  # still used by ai_utils via env
 
 SIGNALS_CONTAINER = os.getenv("SIGNALS_CONTAINER", "signals")
-MIN_DOLLAR_VOL = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
+MIN_DOLLAR_VOL    = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
+PENNY_PRICE       = float(os.getenv("PENNY_PRICE", "5"))  # ensure <$5 filtering for AI section too
+AI_TOPK           = int(os.getenv("AI_TOPK", "10"))
 
 _BLOB_SVC = BlobServiceClient.from_connection_string(os.getenv("MONITOR_STORAGE"))
 
@@ -44,6 +43,21 @@ def _blob_container():
     except Exception:
         pass
     return cont
+
+def _signals_container():
+    cont = _BLOB_SVC.get_container_client(SIGNALS_CONTAINER)
+    try:
+        cont.create_container()
+    except Exception:
+        pass
+    return cont
+
+def _upload_bytes(container_client, blob_name: str, data: bytes, content_type: str):
+    container_client.upload_blob(
+        blob_name, data=data, overwrite=True,
+        content_settings=ContentSettings(content_type=content_type)
+    )
+    logging.info(f"[upload] wrote {container_client.container_name}/{blob_name} ({len(data)} bytes)")
 
 def _write_universe_blob(tickers: list[str], meta: dict | None = None) -> None:
     cont = _blob_container()
@@ -71,16 +85,10 @@ def _load_module_from_path(module_name: str, file_path: str):
     return mod
 
 def _compute_universe_budgeted(max_seconds: int) -> list[str]:
-    """
-    Prefer calling a function in wb4u_main.py: get_universe(max_seconds: int|None)
-    Fallback: execute script with --max-seconds and parse stdout.
-    This guarantees a hard wall-clock cap via subprocess timeout.
-    """
     script_path = (pathlib.Path(__file__).parent / WB4U_ENTRY).resolve()
     if not script_path.exists():
         raise FileNotFoundError(f"WB4U entry not found at {script_path}")
 
-    # Try import & call first (fast path)
     try:
         mod = _load_module_from_path("wb4u_main_dynamic", str(script_path))
         fn = getattr(mod, "get_universe", None)
@@ -95,7 +103,6 @@ def _compute_universe_budgeted(max_seconds: int) -> list[str]:
     except Exception as e:
         logging.info(f"[universe] import path skipped: {e}")
 
-    # Fallback: run as script with a hard timeout
     cmd = f"{shlex.quote(sys.executable)} {shlex.quote(str(script_path))} --max-seconds {int(max_seconds)}"
     proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=max_seconds+5)
     out = (proc.stdout or "").strip()
@@ -113,136 +120,19 @@ def _compute_universe_budgeted(max_seconds: int) -> list[str]:
         raise ValueError("No tickers produced by entry script")
     return cleaned
 
-# ---------- OpenAI ranking ----------
-def _make_prompt(tickers, strategy: str, horizon_text: str | None = None):
-    system = (
-        "You are an equity analyst. Return ONLY JSON.\n"
-        "Rank the provided tickers for the chosen strategy with concise reasoning.\n"
-        "Scores should be on a 0–10 scale (higher is better)."
-    )
-
-    STRAT_INSTRUCTIONS = {
-        "long_term":        "Emphasize durable moats, compounding, FCF quality, and drawdown resilience.",
-        "medium_term":      "Focus on 6–24 month setup quality: earnings trend, margin trajectory, valuation re-rate potential.",
-        "swing":            "Evaluate 1–8 week momentum/mean-reversion setups: trend strength, volume, risk areas.",
-        "leaps":            "Suitability for long-dated options: catalysts pipeline, trend quality, IV/liquidity, macro sensitivity.",
-        "short_term_options": "Weeklies/monthlies: near-term catalysts, IV crush risk, liquidity, technicals.",
-        "covered_calls":    "Underlying stability for call writing: dividend safety, beta, pullback risk, implied yield.",
-        "protective_puts":  "Hedge candidates: drawdown risk profile, tail risk factors, correlation benefits.",
-        "value":            "Undervaluation: low P/E/P/B/EV/EBITDA vs peers, FCF yield, balance sheet strength.",
-        "growth":           "Secular growth: revenue/EPS acceleration, TAM expansion, reinvestment runway, unit economics.",
-        "dividend_income":  "Income stability: dividend yield, payout ratio safety, growth history, balance sheet.",
-        "quality":          "Quality bias: high ROE/ROIC, stable margins, low leverage, consistent execution.",
-        "momentum":         "Relative/absolute strength: new highs, breadth, volume confirmation, trend persistence.",
-        "contrarian":       "Mean-reversion asymmetry: oversold extremes, improving revisions, identifiable catalysts.",
-        "tech_innovation":  "AI/semis/software leadership: product velocity, R&D moat, platform effects.",
-        "energy_transition":"Renewables/EV/infrastructure: policy tailwinds, cost curves, supply chains.",
-        "defensive":        "Defensive posture: staples/utilities/healthcare with stable cash flows and low beta.",
-        "cyclical":         "Economic leverage: operating leverage, order books, inventory cycles, sensitivity to PMI/rates.",
-        "earnings_play":    "Earnings skew: revision trends, surprise history, positioning/IV, post-earnings drift.",
-        "merger_arbitrage": "Announced deals: spread, deal risk, regulatory odds, timeline—expected outcome.",
-        "catalyst_trading": "Near-term discrete events: product launches, FDA/regulatory, investor days, macro prints.",
-        "short_squeeze":    "High short interest dynamics: borrow cost, days to cover, rel-vol, technical triggers."
-    }
-
-    base_instruction = STRAT_INSTRUCTIONS.get(
-        strategy,
-        f"Evaluate the '{strategy}' approach with clear, investable reasoning."
-    )
-
-    instruction = f"{base_instruction} Horizon: {horizon_text}." if horizon_text else base_instruction
-
-    schema_props = {
-        "strategy": {"type": "string"},
-        "ranked": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "ticker": {"type": "string"},
-                    "score": {"type": "number"},
-                    "thesis": {"type": "string"},
-                    "risks": {"type": "string"},
-                    "suggested_action": {"type": "string"}
-                },
-                "required": ["ticker", "score", "thesis"]
-            }
-        },
-        "notes": {"type": "string"}
-    }
-    required_fields = ["strategy", "ranked"]
-    if horizon_text:
-        schema_props["horizon"] = {"type": "string"}
-        required_fields.append("horizon")
-
-    user = {
-        "strategy": strategy,
-        "tickers": tickers,
-        "instructions": instruction,
-        "output_format": {
-            "type": "object",
-            "properties": schema_props,
-            "required": required_fields
-        },
-        "scoring_guidance": {
-            "scale": "0-10",
-            "rough_buckets": {"excellent": "8-10", "good": "6-7.9", "ok": "4-5.9", "weak": "<4"}
-        },
-        "format_expectations": "Return valid JSON that matches the schema. Keep theses/risks concise (1-3 lines)."
-    }
-    if horizon_text:
-        user["horizon"] = horizon_text
-    return system, user
-
-def _score_with_azure_openai(tickers, strategy: str, horizon_text: str) -> dict:
-    if not (AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY and AZURE_OPENAI_DEPLOYMENT):
-        raise RuntimeError("Azure OpenAI settings missing (endpoint/key/deployment).")
-    client = AzureOpenAI(
-        api_key=AZURE_OPENAI_API_KEY,
-        api_version=AZURE_OPENAI_API_VER,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT
-    )
-    system, user = _make_prompt(tickers, strategy, horizon_text)
-    resp = client.chat.completions.create(
-        model=AZURE_OPENAI_DEPLOYMENT,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": json.dumps(user)}
-        ],
-        temperature=0.3,
-        response_format={"type": "json_object"}
-    )
-    return json.loads(resp.choices[0].message.content)
-
-def _signals_container():
-    cont = _BLOB_SVC.get_container_client(SIGNALS_CONTAINER)
-    try:
-        cont.create_container()
-    except Exception:
-        pass
-    return cont
-
-def _upload_bytes(container_client, blob_name: str, data: bytes, content_type: str):
-    container_client.upload_blob(
-        blob_name, data=data, overwrite=True,
-        content_settings=ContentSettings(content_type=content_type)
-    )
-    logging.info(f"[upload] wrote {container_client.container_name}/{blob_name} ({len(data)} bytes)")
-
-# --- Timer function: run daily monitor (Mon–Fri 23:30 UTC) ---
+# --------------------------- Timer: monitor ---------------------------
 @app.schedule(schedule="0 30 23 * * 1-5", arg_name="timer", run_on_startup=False, use_monitor=True)
 def monitor_signals(timer: func.TimerRequest) -> None:
     try:
-        tickers = []  # dynamic list handled in daily_monitor
+        # 1) Quant run (includes email inside daily_monitor)
         df_all, df_leaders = daily_monitor.run_monitor(
-            tickers,
+            [],  # dynamic list handled in daily_monitor
             min_dollar_vol=MIN_DOLLAR_VOL
         )
 
+        # 2) Persist parquet outputs
         stamp = datetime.date.today().strftime("%Y-%m-%d")
         cont = _signals_container()
-
-        # ✅ Parquet uploads only
         try:
             import pyarrow  # noqa: F401
             engine = "pyarrow"
@@ -262,6 +152,42 @@ def monitor_signals(timer: func.TimerRequest) -> None:
         except Exception as e:
             logging.warning(f"[parquet] skipped ({e})")
 
+        # 3) Build combined local+universe list for AI ranking
+        try:
+            cached = _read_universe_blob() or {}
+            universe = [str(t).upper().strip() for t in (cached.get("tickers") or []) if str(t).strip()]
+        except Exception:
+            universe = []
+        try:
+            local = load_local_list(initial_fallback=[])
+        except Exception:
+            local = []
+
+        combined = sorted(set(universe) | set(local))
+        if not combined:
+            combined = df_all["ticker"].astype(str).str.upper().unique().tolist()
+
+        # Filter out <$5 using df_all’s last_price when available
+        if "last_price" in df_all.columns:
+            px_map = dict(zip(df_all["ticker"].astype(str).str.upper(), df_all["last_price"].astype(float)))
+            combined = [t for t in combined if px_map.get(t, float("inf")) >= PENNY_PRICE]
+
+        # 4) AI rankings (LEAPS & 30–40d debit call spreads)
+        ai_leaps   = ai_rank_tickers(combined, strategy="leaps", horizon_text="12–24 months", top_k=AI_TOPK)
+        ai_spreads = ai_rank_tickers(combined, strategy="debit_call_spread", horizon_text="30–40 days", top_k=AI_TOPK)
+
+        # Persist AI outputs alongside daily snapshot
+        try:
+            _upload_bytes(cont, f"ai_leaps_{stamp}.json",
+                          ai_leaps.to_json(orient="records").encode("utf-8"),
+                          "application/json")
+            _upload_bytes(cont, f"ai_debit_call_spreads_{stamp}.json",
+                          ai_spreads.to_json(orient="records").encode("utf-8"),
+                          "application/json")
+            logging.info(f"[ai] wrote AI picks (leaps & 30–40d) -> {SIGNALS_CONTAINER}")
+        except Exception as e:
+            logging.warning(f"[ai] failed to persist AI outputs: {e}")
+
         # Log quick summary
         logging.info("[top picks]\n" + str(
             df_all[df_all["buy_flag"]][["ticker", "score"]]
@@ -269,11 +195,17 @@ def monitor_signals(timer: func.TimerRequest) -> None:
             .head(12)
             .reset_index(drop=True)
         ))
-        logging.info("[leaders]\n" + str(
-            df_leaders.head(15).reset_index(drop=True)
-        ))
+        logging.info("[leaders]\n" + str(df_leaders.head(15).reset_index(drop=True)))
 
-        # ✅ Email already sent inside daily_monitor.run_monitor()
+        if not ai_leaps.empty:
+            logging.info("[AI LEAPS]\n" + str(ai_leaps.head(10)))
+        if not ai_spreads.empty:
+            logging.info("[AI 30–40d Debit Call Spreads]\n" + str(ai_spreads.head(10)))
+
+        # NOTE: Your existing HTML email is sent inside daily_monitor.
+        # If you want the AI sections *in the same email*, add optional
+        # params to daily_monitor.send_email_report and pass these two
+        # DataFrames there. (I can wire that next if you want.)
 
     except Exception as e:
         logging.exception(f"[monitor_signals] failed: {e}")
@@ -307,7 +239,6 @@ def get_universe(req: func.HttpRequest) -> func.HttpResponse:
             _write_universe_blob(tickers, {"budget_seconds": UNIVERSE_MAX_SECONDS})
             cached = {"ok": True, "tickers": tickers, "updated_utc": datetime.datetime.utcnow().isoformat() + "Z"}
 
-        # stale flag
         try:
             ts = datetime.datetime.fromisoformat(cached.get("updated_utc", "").replace("Z", ""))
             age_min = (datetime.datetime.utcnow() - ts).total_seconds() / 60.0
@@ -323,7 +254,7 @@ def get_universe(req: func.HttpRequest) -> func.HttpResponse:
         logging.exception("universe error")
         return func.HttpResponse(json.dumps({"ok": False, "error": str(e)}), status_code=500, mimetype="application/json")
 
-# ---------- Manual refresh (shared-key protected) ----------
+# ---------- Manual refresh ----------
 @app.function_name(name="refresh")
 @app.route(route="refresh", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def manual_refresh(req: func.HttpRequest) -> func.HttpResponse:
@@ -343,10 +274,11 @@ def manual_refresh(req: func.HttpRequest) -> func.HttpResponse:
         logging.exception("manual refresh error")
         return func.HttpResponse(json.dumps({"ok": False, "error": str(e)}), status_code=500, mimetype="application/json")
 
-# ---------- Rank ----------
+# ---------- Rank (kept for HTTP use; now ai_utils powers it) ----------
 @app.function_name(name="rank")
 @app.route(route="rank", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def rank(req: func.HttpRequest) -> func.HttpResponse:
+    from ai_utils import score_with_azure_openai  # local import to avoid any tool load order issues
     try:
         body = _parse_json_body(req)
         tickers = body.get("tickers")
@@ -360,18 +292,9 @@ def rank(req: func.HttpRequest) -> func.HttpResponse:
                                      status_code=400, mimetype="application/json")
 
         strategy = (body.get("strategy") or "long_term").strip()
-        horizon_text = body.get("horizon")
-        if not horizon_text:
-            hy = body.get("horizon_years")
-            if hy is not None:
-                try:
-                    horizon_text = f"{int(hy)} years"
-                except Exception:
-                    horizon_text = f"{str(hy).strip()} years"
-        if not horizon_text:
-            horizon_text = "3 years"
+        horizon_text = body.get("horizon") or (f"{int(body['horizon_years'])} years" if body.get("horizon_years") else "3 years")
 
-        result = _score_with_azure_openai(tickers, strategy, horizon_text)
+        result = score_with_azure_openai(tickers, strategy, horizon_text)
         return func.HttpResponse(
             json.dumps({"ok": True, "strategy": strategy, "horizon": horizon_text, "result": result}, ensure_ascii=False),
             mimetype="application/json"
