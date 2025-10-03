@@ -10,6 +10,7 @@ import pandas as pd
 import yfinance as yf
 import smtplib, ssl
 from email.message import EmailMessage
+import warnings
 
 # shared cache reader (avoid circular imports by keeping in a separate module)
 from universe_utils import read_universe_blob
@@ -155,12 +156,17 @@ def _growth_rate(series: pd.Series) -> pd.Series:
     except Exception:
         return pd.Series(dtype=float)
 
+
+
 def _compute_quarterly_trends(ticker: str) -> Dict[str, float]:
     """
-    Returns dict with:
-      rev_q_yoy, earn_q_yoy  -> avg YoY growth for last 4 matching quarters (if >=8 qtrs)
+    Uses yf.Ticker(...).quarterly_financials (not deprecated) to build
+    last-4-quarter revenue & earnings trends.
+
+    Returns:
+      rev_q_yoy, earn_q_yoy  -> avg YoY growth for last 4 matching quarters (needs >=8 qtrs)
       rev_q_qoq, earn_q_qoq  -> avg QoQ growth (fallback if YoY unavailable)
-      growth_streak          -> 1.0 if last 4 (YoY) or last 3 (QoQ) growth readings are all positive, else 0.0
+      growth_streak          -> 1.0 if last 4 (YoY) or last 3 (QoQ) readings all positive, else 0.0
       fundamentals_quality   -> 1.0 if YoY used, 0.5 if QoQ fallback, 0.0 if missing
     """
     out = {
@@ -169,18 +175,32 @@ def _compute_quarterly_trends(ticker: str) -> Dict[str, float]:
         "growth_streak": 0.0,
         "fundamentals_quality": 0.0,
     }
+
     try:
-        te = yf.Ticker(ticker).quarterly_earnings  # columns: Revenue, Earnings
-        if te is None or te.empty:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tf = yf.Ticker(ticker).quarterly_financials  # wide format, index = fields
+
+        if tf is None or tf.empty:
             return out
 
-        te = te.sort_index()  # oldest -> newest
+        # We want quarters as rows
+        qf = tf.T.copy()  # rows=quarters, cols=fields
+        # Normalize column names we need
+        cols = {c.lower(): c for c in qf.columns}
+        rev_col = cols.get("total revenue") or cols.get("revenue")
+        ni_col  = cols.get("net income")   or cols.get("netincome")
 
-        # Prefer YoY (need 8+ quarters to compare last 4 vs t-4)
-        if len(te) >= 8:
-            rev = te["Revenue"].astype(float)
-            ern = te["Earnings"].astype(float)
+        if not rev_col or not ni_col:
+            return out
 
+        # Ensure numeric, sort oldest->newest by index if possible
+        qf = qf.sort_index()
+        rev = pd.to_numeric(qf[rev_col], errors="coerce")
+        ern = pd.to_numeric(qf[ni_col],  errors="coerce")
+
+        # Prefer YoY if we have >=8 quarters (compare t vs t-4 for last 4)
+        if len(rev.dropna()) >= 8 and len(ern.dropna()) >= 8:
             yoy_rev = (rev / rev.shift(4) - 1.0)
             yoy_ern = (ern / ern.shift(4) - 1.0)
 
@@ -192,19 +212,18 @@ def _compute_quarterly_trends(ticker: str) -> Dict[str, float]:
             if len(last4_ern) >= 3:
                 out["earn_q_yoy"] = float(np.nanmean(last4_ern.values))
 
-            positives = []
-            # Align to last four quarters; treat NaNs as not positive
-            for r, e in zip(yoy_rev.tail(4).values, yoy_ern.tail(4).values):
-                positives.append((pd.notna(r) and r > 0) and (pd.notna(e) and e > 0))
-            out["growth_streak"] = 1.0 if len(positives) == 4 and all(positives) else 0.0
+            # streak: both revenue & earnings YoY positive in each of last 4
+            pos = []
+            r4, e4 = yoy_rev.tail(4), yoy_ern.tail(4)
+            for r, e in zip(r4.values, e4.values):
+                pos.append(pd.notna(r) and r > 0 and pd.notna(e) and e > 0)
+            out["growth_streak"] = 1.0 if len(pos) == 4 and all(pos) else 0.0
             out["fundamentals_quality"] = 1.0
             return out
 
-        # Fallback: QoQ (if only ~4 quarters available)
-        rev = te["Revenue"].astype(float)
-        ern = te["Earnings"].astype(float)
-        qoq_rev = _growth_rate(rev)
-        qoq_ern = _growth_rate(ern)
+        # Fallback: QoQ (if fewer quarters)
+        qoq_rev = rev.pct_change().replace([np.inf, -np.inf], np.nan)
+        qoq_ern = ern.pct_change().replace([np.inf, -np.inf], np.nan)
 
         last3_rev = qoq_rev.tail(3).dropna()
         last3_ern = qoq_ern.tail(3).dropna()
@@ -214,11 +233,9 @@ def _compute_quarterly_trends(ticker: str) -> Dict[str, float]:
         if len(last3_ern) >= 2:
             out["earn_q_qoq"] = float(np.nanmean(last3_ern.values))
 
-        readings = []
+        # streak: last 3 quarters both positive QoQ
         pairs = list(zip(qoq_rev.dropna().tail(3).values, qoq_ern.dropna().tail(3).values))
-        for r, e in pairs:
-            readings.append((r > 0) and (e > 0))
-        out["growth_streak"] = 1.0 if len(readings) == 3 and all(readings) else 0.0
+        out["growth_streak"] = 1.0 if len(pairs) == 3 and all((r > 0 and e > 0) for r, e in pairs) else 0.0
         out["fundamentals_quality"] = 0.5
         return out
 
