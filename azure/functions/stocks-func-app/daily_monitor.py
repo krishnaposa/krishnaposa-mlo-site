@@ -101,6 +101,20 @@ def cap_multiplier(mcap: float | None) -> float:
         return 1.10
     return 1.12      # mega
 
+def _shrink_df(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+
+    # Downcast numerics to save space
+    for c in d.select_dtypes(include=["float64"]).columns:
+        d[c] = pd.to_numeric(d[c], downcast="float")
+    for c in d.select_dtypes(include=["int64"]).columns:
+        d[c] = pd.to_numeric(d[c], downcast="integer")
+
+    # Make ticker categorical (compact)
+    if "ticker" in d.columns and d["ticker"].dtype != "category":
+        d["ticker"] = d["ticker"].astype("category")
+
+    return d
 # -------------------- Trend-follow scoring ---------------------------
 def score_row(r: pd.Series, min_dollar_vol: int) -> float:
     momentum_trend = (
@@ -629,5 +643,8 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
         if c not in out.columns:
             out[c] = np.nan
     df_all_sorted = out[cols_order].sort_values("final_rank", ascending=False)
+
+    df_all_sorted = _shrink_df(df_all_sorted)
+    leaders = _shrink_df(leaders[["ticker","ret_5d","ret_21d","strength_score"]])
 
     return df_all_sorted, leaders
