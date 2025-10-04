@@ -1,3 +1,6 @@
+
+
+
 # daily_monitor.py
 import os
 import time
@@ -40,62 +43,67 @@ MIN_DOLLAR_VOL_DEFAULT = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
 PENNY_PRICE = float(os.getenv("PENNY_PRICE", "5"))
 
 # Prune/replenish policy (env-tunable)
-LOCAL_PRUNE_COUNT = int(os.getenv("LOCAL_PRUNE_COUNT", "5"))           # how many to drop (worst by final_rank)
-LOCAL_MAX_SIZE = int(os.getenv("LOCAL_MAX_SIZE", "0")) or None         # optional cap
+LOCAL_PRUNE_COUNT = int(os.getenv("LOCAL_PRUNE_COUNT", "5"))
+LOCAL_MAX_SIZE = int(os.getenv("LOCAL_MAX_SIZE", "0")) or None
 LOCAL_ADD_MIN_PRICE = float(os.getenv("LOCAL_MIN_PRICE", str(PENNY_PRICE)))
 LOCAL_ADD_MIN_STRENGTH_Z = float(os.getenv("LOCAL_MIN_STRENGTH_Z", "0.0"))
 
 # AI email length
 AI_EMAIL_TOPK = int(os.getenv("AI_EMAIL_TOPK", "8"))
 
+# --------------------------- Weight configurations ------------------
+WEIGHTS_DEBIT_SPREAD = {
+    "ret_20_z": 0.5,
+    "ret_60_z": 1.0,
+    "ret_120_z": 1.2,
+    "dist_52w_high": 0.8,
+    "new_55d_high": 0.5,
+    "adx14": 0.3,
+    "mfi14": 0.2,
+    "vol20_penalty": -0.3,
+    "mdd_60_penalty": -1.2,
+}
+
+WEIGHTS_LEAPS = {
+    "ret_20_z": 0.3,
+    "ret_60_z": 0.8,
+    "ret_120_z": 1.2,
+    "dist_52w_high": 0.6,
+    "new_55d_high": 0.4,
+    "adx14": 0.4,
+    "mfi14": 0.1,
+    "vol20_penalty": -0.2,
+    "mdd_60_penalty": -0.8,
+}
+
 # --------------------------- Helpers ---------------------------------
-# ---------------- Extra indicators: ADX, MFI, EPS surprise ----------------
 def _wilder_smooth(s: pd.Series, n: int) -> pd.Series:
-    """Wilder's smoothing used in ADX."""
     s = s.copy()
     sm = s.ewm(alpha=1/n, adjust=False).mean()
     return sm
 
 def adx(df: pd.DataFrame, n: int = 14) -> pd.Series:
-    """
-    Average Directional Index (trend strength 0..100).
-    Requires High, Low, Adj Close (or CloseAdj).
-    """
     H = df["High"]; L = df["Low"]; C = df.get("CloseAdj", df["Adj Close"])
-    up_move = H.diff()
-    down_move = -L.diff()
-
+    up_move = H.diff(); down_move = -L.diff()
     plus_dm  = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0.0), index=df.index)
     minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0.0), index=df.index)
-
-    tr = pd.concat([
-        H - L,
-        (H - C.shift(1)).abs(),
-        (L - C.shift(1)).abs()
-    ], axis=1).max(axis=1)
-
+    tr = pd.concat([H - L, (H - C.shift(1)).abs(), (L - C.shift(1)).abs()], axis=1).max(axis=1)
     atr = _wilder_smooth(tr, n)
     plus_di  = 100 * _wilder_smooth(plus_dm, n) / atr
     minus_di = 100 * _wilder_smooth(minus_dm, n) / atr
-
     dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
     adx_val = _wilder_smooth(dx, n).fillna(0.0)
     return adx_val.clip(0, 100)
 
 def mfi(df: pd.DataFrame, n: int = 14) -> pd.Series:
-    """
-    Money Flow Index (0..100). >50 bullish bias, 80+ stretched.
-    """
     H, L = df["High"], df["Low"]
     C = df.get("CloseAdj", df["Adj Close"])
     V = df["Volume"].astype(float)
-    tp = (H + L + C) / 3.0  # typical price
+    tp = (H + L + C) / 3.0
     rmf = tp * V
-
     sign = np.sign(tp.diff().fillna(0.0))
     pos_mf = pd.Series(np.where(sign > 0, rmf, 0.0), index=df.index)
     neg_mf = pd.Series(np.where(sign < 0, rmf, 0.0), index=df.index)
-
     pos = pos_mf.rolling(n).sum()
     neg = neg_mf.rolling(n).sum().replace(0, np.nan)
     mr = pos / neg
@@ -103,39 +111,21 @@ def mfi(df: pd.DataFrame, n: int = 14) -> pd.Series:
     return mfi_val.fillna(50.0).clip(0, 100)
 
 def _eps_surprise_trend(ticker: str, lookback: int = 10) -> dict:
-    """
-    Best-effort EPS surprise signals using yfinance. Returns:
-      eps_surprise_avg  : average surprise (as decimal, e.g., +0.05 = +5%) over last 4
-      eps_beat_share    : share of last 4 with positive surprise in [0..1]
-    If yfinance provides % values, auto-detect and convert to decimal.
-    """
     out = {"eps_surprise_avg": 0.0, "eps_beat_share": 0.0}
     try:
         ed = yf.Ticker(ticker).earnings_dates(limit=lookback)
-        if ed is None or ed.empty:
-            return out
-
-        # Try to find a surprise column
+        if ed is None or ed.empty: return out
         cols = [c for c in ed.columns if "surprise" in c.lower()]
-        if not cols:
-            return out
+        if not cols: return out
         s = ed[cols[0]].astype(float).dropna()
-
-        # keep the freshest 4 values
         last4 = s.tail(4)
-        if last4.empty:
-            return out
-
-        # If magnitudes look like 5..20, assume percent -> convert to decimal
-        if last4.abs().median() > 1.0:
-            last4 = last4 / 100.0
-
+        if last4.empty: return out
+        if last4.abs().median() > 1.0: last4 = last4 / 100.0
         out["eps_surprise_avg"] = float(last4.mean())
         out["eps_beat_share"]   = float(np.mean(last4 > 0))
         return out
     except Exception:
         return out
-
 
 def rsi(series: pd.Series, n: int = 14) -> pd.Series:
     delta = series.diff()
@@ -143,7 +133,7 @@ def rsi(series: pd.Series, n: int = 14) -> pd.Series:
     down = np.where(delta < 0, -delta, 0.0)
     roll_up = pd.Series(up, index=series.index).rolling(n).mean()
     roll_down = pd.Series(down, index=series.index).rolling(n).mean()
-    rs = roll_up / (roll_down.replace(0, np.nan))
+    rs = roll_up / roll_down.replace(0, np.nan)
     return (100 - (100 / (1 + rs))).fillna(50)
 
 def macd(series: pd.Series, fast=12, slow=26, signal=9):
@@ -176,50 +166,36 @@ def clamp(x: float, lo: float, hi: float) -> float:
     return float(max(lo, min(hi, x)))
 
 def cap_multiplier(mcap: float | None) -> float:
-    if mcap is None or (isinstance(mcap, float) and np.isnan(mcap)):
-        return 1.0
-    try:
-        m = float(mcap)
-    except Exception:
-        return 1.0
-    if m < 2e9:      # small
-        return 0.85
-    if m < 10e9:     # mid
-        return 1.05
-    if m < 200e9:    # large
-        return 1.10
-    return 1.12      # mega
+    if mcap is None or (isinstance(mcap, float) and np.isnan(mcap)): return 1.0
+    try: m = float(mcap)
+    except Exception: return 1.0
+    if m < 2e9: return 0.85
+    if m < 10e9: return 1.05
+    if m < 200e9: return 1.10
+    return 1.12
 
 def _shrink_df(df: pd.DataFrame) -> pd.DataFrame:
     d = df.copy()
-
-    # Downcast numerics to save space
     for c in d.select_dtypes(include=["float64"]).columns:
         d[c] = pd.to_numeric(d[c], downcast="float")
     for c in d.select_dtypes(include=["int64"]).columns:
         d[c] = pd.to_numeric(d[c], downcast="integer")
-
-    # Make ticker categorical (compact)
     if "ticker" in d.columns and d["ticker"].dtype != "category":
         d["ticker"] = d["ticker"].astype("category")
-
     return d
-# -------------------- Trend-follow scoring ---------------------------
 
+# -------------------- Trend-follow scoring ---------------------------
 def score_row(r: pd.Series, min_dollar_vol: int, strategy: str = "debit_call_spread") -> float:
     if strategy == "leaps":
         w = WEIGHTS_LEAPS
     else:
         w = WEIGHTS_DEBIT_SPREAD
 
-    # ----- Trend Core -----
     trend = (
         w.get("ret_20_z", 0)  * r.get("ret_20_z", 0.0) +
         w.get("ret_60_z", 0)  * r.get("ret_60_z", 0.0) +
         w.get("ret_120_z", 0) * r.get("ret_120_z", 0.0)
     )
-
-    # Moving average alignment
     trend += 1.0 * (1.0 if (r.get("sma20", 0) > r.get("sma50", 0) > r.get("sma200", 0)) else 0.0)
     trend += 0.8 * r.get("close_above_sma50", 0.0)
     trend += 0.5 * r.get("close_above_sma200", 0.0)
@@ -227,27 +203,22 @@ def score_row(r: pd.Series, min_dollar_vol: int, strategy: str = "debit_call_spr
     trend += w.get("dist_52w_high", 0.8) * (1.0 if r.get("dist_52w_high", -1.0) > -0.05 else 0.0)
     trend += w.get("new_55d_high", 0.5) * r.get("new_55d_high", 0.0)
 
-    # ADX + MFI
     adx_norm = clamp((r.get("adx14", 0.0) - 20.0) / 40.0, 0.0, 1.0)
     mfi_centered = clamp((r.get("mfi14", 50.0) - 50.0) / 50.0, -1.0, 1.0)
     trend += w.get("adx14", 0.3) * adx_norm + w.get("mfi14", 0.1) * mfi_centered
 
-    # Liquidity + risk
     liquidity = 1.0 if r.get("adv_usd_20", 0.0) >= min_dollar_vol else -1.0
     risk = w.get("vol20_penalty", -0.15) * r.get("vol20", 0.0) + w.get("mdd_60_penalty", -1.0) * abs(min(0.0, r.get("mdd_60", 0.0)))
 
-    # Penny filter
     penny_penalty = 0.6 if r.get("last_price", np.inf) < PENNY_PRICE else 0.0
-
     return float(trend + liquidity - risk - penny_penalty)
-# ----------------- Fundamentals for LEAPs (last 4 quarters) ----------
+
+# ----------------- Fundamentals for LEAPs -----------------------------
 def _growth_rate(series: pd.Series) -> pd.Series:
     try:
         return series.pct_change().replace([np.inf, -np.inf], np.nan)
     except Exception:
         return pd.Series(dtype=float)
-
-
 
 def _compute_quarterly_trends(ticker: str) -> Dict[str, float]:
     """
