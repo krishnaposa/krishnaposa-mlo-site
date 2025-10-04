@@ -205,48 +205,41 @@ def _shrink_df(df: pd.DataFrame) -> pd.DataFrame:
 
     return d
 # -------------------- Trend-follow scoring ---------------------------
-def score_row(r: pd.Series, min_dollar_vol: int) -> float:
-    momentum_trend = (
-        0.50 * r.get("ret_20_z", 0.0) +
-        1.00 * r.get("ret_60_z", 0.0) +
-        1.20 * r.get("ret_120_z", 0.0) +
-        1.00 * (1.0 if (r.get("sma20", 0) > r.get("sma50", 0) > r.get("sma200", 0)) else 0.0) +
-        0.80 * r.get("close_above_sma50", 0.0) +
-        0.50 * r.get("close_above_sma200", 0.0) +
-        0.60 * (1.0 if r.get("macd_hist", 0.0) > 0 else 0.0) +
-        0.80 * (1.0 if r.get("dist_52w_high", -1.0) > -0.05 else 0.0) +
-        0.50 * r.get("new_55d_high", 0.0) +
-        0.50 * max(0.0, r.get("sma50_slope", 0.0)) +
-        0.50 * max(0.0, r.get("sma200_slope", 0.0))
+
+def score_row(r: pd.Series, min_dollar_vol: int, strategy: str = "debit_call_spread") -> float:
+    if strategy == "leaps":
+        w = WEIGHTS_LEAPS
+    else:
+        w = WEIGHTS_DEBIT_SPREAD
+
+    # ----- Trend Core -----
+    trend = (
+        w.get("ret_20_z", 0)  * r.get("ret_20_z", 0.0) +
+        w.get("ret_60_z", 0)  * r.get("ret_60_z", 0.0) +
+        w.get("ret_120_z", 0) * r.get("ret_120_z", 0.0)
     )
 
-    # volume confirmation (existing)
-    vol_surge = r.get("vol_surge", np.nan)
-    vol_centered = 0.0 if pd.isna(vol_surge) else clamp(vol_surge, 0.5, 2.0) - 1.0
-    adv_z = r.get("adv_usd_20_z", 0.0)
-    volume_boost = 0.7 * vol_centered + 0.3 * adv_z
-    momentum_trend += 0.6 * volume_boost
+    # Moving average alignment
+    trend += 1.0 * (1.0 if (r.get("sma20", 0) > r.get("sma50", 0) > r.get("sma200", 0)) else 0.0)
+    trend += 0.8 * r.get("close_above_sma50", 0.0)
+    trend += 0.5 * r.get("close_above_sma200", 0.0)
+    trend += 0.6 * (1.0 if r.get("macd_hist", 0.0) > 0 else 0.0)
+    trend += w.get("dist_52w_high", 0.8) * (1.0 if r.get("dist_52w_high", -1.0) > -0.05 else 0.0)
+    trend += w.get("new_55d_high", 0.5) * r.get("new_55d_high", 0.0)
 
-    # --- NEW: ADX and MFI nudges ---
-    # Normalize ADX: reward strong, persistent trends mainly above ~20–25
-    adx14 = float(r.get("adx14", 0.0))
-    adx_norm = clamp((adx14 - 20.0) / 40.0, 0.0, 1.0)  # ~0 when <20, ~1 when >60
-    # Center MFI around 50; modest boost when demand > supply and not blow-off
-    mfi14 = float(r.get("mfi14", 50.0))
-    mfi_centered = clamp((mfi14 - 50.0) / 50.0, -1.0, 1.0)  # [-1..1]
+    # ADX + MFI
+    adx_norm = clamp((r.get("adx14", 0.0) - 20.0) / 40.0, 0.0, 1.0)
+    mfi_centered = clamp((r.get("mfi14", 50.0) - 50.0) / 50.0, -1.0, 1.0)
+    trend += w.get("adx14", 0.3) * adx_norm + w.get("mfi14", 0.1) * mfi_centered
 
-    momentum_trend += 0.30 * adx_norm + 0.20 * mfi_centered
-
-    # liquidity & risk
+    # Liquidity + risk
     liquidity = 1.0 if r.get("adv_usd_20", 0.0) >= min_dollar_vol else -1.0
-    vol20 = r.get("vol20", 0.0)
-    mdd_60 = r.get("mdd_60", 0.0)
-    risk_penalty = 0.30 * vol20 + 1.20 * abs(min(0.0, mdd_60))
+    risk = w.get("vol20_penalty", -0.15) * r.get("vol20", 0.0) + w.get("mdd_60_penalty", -1.0) * abs(min(0.0, r.get("mdd_60", 0.0)))
 
-    # penny penalty
-    price_penalty = 0.6 if r.get("last_price", np.inf) < PENNY_PRICE else 0.0
+    # Penny filter
+    penny_penalty = 0.6 if r.get("last_price", np.inf) < PENNY_PRICE else 0.0
 
-    return float(momentum_trend + liquidity - risk_penalty - price_penalty)
+    return float(trend + liquidity - risk - penny_penalty)
 # ----------------- Fundamentals for LEAPs (last 4 quarters) ----------
 def _growth_rate(series: pd.Series) -> pd.Series:
     try:
