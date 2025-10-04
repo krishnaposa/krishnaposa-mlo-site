@@ -725,6 +725,7 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
     ai_leaps_df   = ai_rank_tickers(combined, strategy="leaps",               horizon_text="12–24 months", top_k=AI_EMAIL_TOPK)
     ai_spreads_df = ai_rank_tickers(combined, strategy="debit_call_spread",   horizon_text="30–40 days",   top_k=AI_EMAIL_TOPK)
 
+    out["score"] = out.apply(lambda r: score_row(r, min_dollar_vol, "debit_call_spread"), axis=1)
     # --------- prune & replenish local list, then persist ------------
     try:
         new_local_list, changes = _prune_and_replenish_local_list(
