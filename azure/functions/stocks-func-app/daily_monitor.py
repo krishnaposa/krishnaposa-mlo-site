@@ -391,68 +391,118 @@ def send_email_report(
     only_in_universe: List[str] | None = None,
     only_in_local: List[str] | None = None,
     changes: Dict[str, List[str]] | None = None,
-    ai_leaps_df: pd.DataFrame | None = None,          # <<< NEW
-    ai_spreads_df: pd.DataFrame | None = None         # <<< NEW
+    ai_leaps_df: pd.DataFrame | None = None,
+    ai_spreads_df: pd.DataFrame | None = None
 ):
     if os.getenv("SEND_EMAIL","0") != "1":
         return
+
     email_from = os.getenv("EMAIL_FROM"); pwd = os.getenv("EMAIL_PASSWORD")
     tos = [t.strip() for t in os.getenv("EMAIL_TO","").split(",") if t.strip()]
     subj_prefix = os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks")
     if not (email_from and pwd and tos):
         return
 
-    top_picks = df_all[df_all.get("buy_flag", False) == True]
-    best5 = df_all.sort_values("final_rank", ascending=False).head(5)
-    leaps5 = df_leaps.head(5)
-
-    html_top = "<i>No strict picks today</i>" if top_picks.empty else _render_html_table(
-        top_picks[["ticker","final_rank","score","strength_score","last_price"]], max_rows=10
-    )
-    html_best5 = _render_html_table(best5[["ticker","final_rank","score","strength_score","last_price"]], max_rows=5)
-    html_lead = _render_html_table(df_leaders, max_rows=15)
-    html_leaps = _render_html_table(leaps5[["ticker","leap_rank","leap_score","ret_63","ret_252","market_cap"]], max_rows=5)
-
-    html_only_universe = _render_list_html(only_in_universe or [])
-    html_only_local    = _render_list_html(only_in_local or [])
-    added  = (changes or {}).get("added", [])
-    removed= (changes or {}).get("removed", [])
-    html_added   = _render_list_html(added)
-    html_removed = _render_list_html(removed)
-
-    # <<< NEW: AI sections
+    simple_mode = os.getenv("EMAIL_SIMPLE", "0") == "1"
+    include_full = os.getenv("EMAIL_INCLUDE_FULL", "0") == "1"  # off by default
     ai_k = int(os.getenv("AI_EMAIL_TOPK", str(AI_EMAIL_TOPK)))
-    html_ai_leaps   = _render_ai_table(ai_leaps_df, ai_k)
-    html_ai_spreads = _render_ai_table(ai_spreads_df, ai_k)
 
-    html_body = f"""<html><body>
-      <h2>Daily Stock Picks — {stamp}</h2>
+    # --- Compose compact AI sections (always shown) ---
+    # Sort by ai_score desc if available
+    def _sort_ai(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty: return df
+        if "ai_score" in df.columns:
+            return df.sort_values("ai_score", ascending=False)
+        return df
 
-      <h3>Universe vs Local List</h3>
-      <p><b>In Universe but NOT in Local:</b><br>{html_only_universe}</p>
-      <p><b>In Local but NOT in Universe:</b><br>{html_only_local}</p>
+    ai_spreads_df = _sort_ai(ai_spreads_df)
+    ai_leaps_df   = _sort_ai(ai_leaps_df)
 
-      <h3>Local List Updates</h3>
-      <p><b>Added:</b><br>{html_added}</p>
-      <p><b>Removed:</b><br>{html_removed}</p>
+    html_ai_spreads = _render_compact_ai_table(ai_spreads_df, ai_k)
+    html_ai_leaps   = _render_compact_ai_table(ai_leaps_df,   ai_k)
 
-      <h3>Top Picks (strict buy_flag)</h3>{html_top}
-      <h3>Best 5 Overall (by Final Rank)</h3>{html_best5}
-      <h3>Leaders (5d &amp; 21d positive, 21d-weighted)</h3>{html_lead}
-      <h3>LEAP Picks (Top 5)</h3>{html_leaps}
+    # --- Subject line: surface top 2 names for each bucket ---
+    def _take_tickers(df, n=2):
+        try:
+            return ", ".join(df["ticker"].astype(str).head(n).tolist())
+        except Exception:
+            return ""
+    s_spreads = _take_tickers(ai_spreads_df, 2)
+    s_leaps   = _take_tickers(ai_leaps_df, 2)
+    subj_tail = f"Spreads: {s_spreads}" + (f" | LEAPS: {s_leaps}" if s_leaps else "")
+    subject = f"{subj_prefix} — {stamp} | {subj_tail}".strip().rstrip(" |")
 
-      <hr>
-      <h3>AI: LEAPS (12–24 months) — Top {ai_k}</h3>
-      {html_ai_leaps}
+    # --- Optional full report blocks (behind a flag) ---
+    html_full = ""
+    if include_full:
+        top_picks = df_all[df_all.get("buy_flag", False) == True]
+        best5 = df_all.sort_values("final_rank", ascending=False).head(5)
+        leaps5 = df_leaps.head(5)
 
-      <h3>AI: 30–40 Day Debit Call Spreads — Top {ai_k}</h3>
-      {html_ai_spreads}
-    </body></html>"""
+        def _render_list_html(items: List[str], max_items=60) -> str:
+            if not items:
+                return "<i>None</i>"
+            clip = items[:max_items]
+            more = "" if len(items) <= max_items else f" … (+{len(items)-max_items} more)"
+            return "<div style='font-family:monospace'>" + ", ".join(clip) + more + "</div>"
 
+        html_top = "<i>No strict picks today</i>" if top_picks.empty else _render_html_table(
+            top_picks[["ticker","final_rank","score","strength_score","last_price"]], max_rows=10
+        )
+        html_best5 = _render_html_table(best5[["ticker","final_rank","score","strength_score","last_price"]], max_rows=5)
+        html_lead = _render_html_table(df_leaders, max_rows=15)
+        html_leaps = _render_html_table(leaps5[["ticker","leap_rank","leap_score","ret_63","ret_252","market_cap"]], max_rows=5)
+
+        html_only_universe = _render_list_html(only_in_universe or [])
+        html_only_local    = _render_list_html(only_in_local or [])
+        added  = (changes or {}).get("added", [])
+        removed= (changes or {}).get("removed", [])
+        html_added   = _render_list_html(added)
+        html_removed = _render_list_html(removed)
+
+        html_full = f"""
+        <hr>
+        <h3>Universe vs Local List</h3>
+        <p><b>In Universe but NOT in Local:</b><br>{html_only_universe}</p>
+        <p><b>In Local but NOT in Universe:</b><br>{html_only_local}</p>
+
+        <h3>Local List Updates</h3>
+        <p><b>Added:</b><br>{html_added}</p>
+        <p><b>Removed:</b><br>{html_removed}</p>
+
+        <h3>Top Picks (strict buy_flag)</h3>{html_top}
+        <h3>Best 5 Overall (by Final Rank)</h3>{html_best5}
+        <h3>Leaders (5d &amp; 21d positive)</h3>{html_lead}
+        <h3>LEAP Picks (Model, Top 5)</h3>{html_leaps}
+        """
+
+    # --- Final body ---
+    if simple_mode:
+        # Minimal layout
+        html_body = f"""<html><body>
+          <h2>Picks — {stamp}</h2>
+          <h3>AI: 30–40 Day Debit Call Spreads — Top {ai_k}</h3>
+          {html_ai_spreads}
+          <h3>AI: LEAPS (12–24 months) — Top {ai_k}</h3>
+          {html_ai_leaps}
+          {html_full}
+        </body></html>"""
+    else:
+        # Compact AI first, then (optionally) the rest
+        html_body = f"""<html><body>
+          <h2>Daily Stock Picks — {stamp}</h2>
+          <h3>AI: 30–40 Day Debit Call Spreads — Top {ai_k}</h3>
+          {html_ai_spreads}
+          <h3>AI: LEAPS (12–24 months) — Top {ai_k}</h3>
+          {html_ai_leaps}
+          {html_full}
+        </body></html>"""
+
+    # --- Send ---
     msg = EmailMessage()
     msg["From"] = email_from
     msg["To"] = ", ".join(tos)
-    msg["Subject"] = f"{subj_prefix} — {stamp}"
+    msg["Subject"] = subject
     msg.set_content("See HTML version")
     msg.add_alternative(html_body, subtype="html")
 
@@ -460,7 +510,7 @@ def send_email_report(
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as s:
         s.login(email_from, pwd)
         s.send_message(msg)
-
+        
 # ----------------- Prune & replenish local list ----------------------
 def _prune_and_replenish_local_list(
     df_all: pd.DataFrame,
