@@ -76,6 +76,22 @@ WEIGHTS_LEAPS = {
     "mdd_60_penalty": -0.8,
 }
 
+def _render_compact_ai_table(df: pd.DataFrame, max_rows: int) -> str:
+    if df is None or df.empty:
+        return "<i>No picks</i>"
+    d = df.copy()
+    # pick/order columns if present
+    cols = [c for c in ["ticker","ai_score","last_price","thesis"] if c in d.columns]
+    d = d[cols].head(max_rows)
+    # one-line thesis
+    if "thesis" in d.columns:
+        d["thesis"] = d["thesis"].astype(str).str.replace(r"\s+", " ", regex=True).str.slice(0, 140)
+    # format ai_score if present
+    if "ai_score" in d.columns:
+        d["ai_score"] = pd.to_numeric(d["ai_score"], errors="coerce").round(2)
+    # light HTML table
+    return d.to_html(index=False, border=0, justify="left")
+    
 # --------------------------- Helpers ---------------------------------
 def _wilder_smooth(s: pd.Series, n: int) -> pd.Series:
     s = s.copy()
