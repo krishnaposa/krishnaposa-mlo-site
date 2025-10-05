@@ -403,9 +403,11 @@ def send_email_report(
     if not (email_from and pwd and tos):
         return
 
+    #simple_mode = os.getenv("EMAIL_SIMPLE", "0") == "1"
+    #include_full = os.getenv("EMAIL_INCLUDE_FULL", "0") == "1"  # off by default
+    
     simple_mode = os.getenv("EMAIL_SIMPLE", "0") == "1"
-    include_full = os.getenv("EMAIL_INCLUDE_FULL", "0") == "1"  # off by default
-    ai_k = int(os.getenv("AI_EMAIL_TOPK", str(AI_EMAIL_TOPK)))
+    include_full = os.getenv("EMAIL_INCLUDE_FULL", "1") != "0"  # now ON by defaultai_k = int(os.getenv("AI_EMAIL_TOPK", str(AI_EMAIL_TOPK)))
 
     # --- Compose compact AI sections (always shown) ---
     # Sort by ai_score desc if available
