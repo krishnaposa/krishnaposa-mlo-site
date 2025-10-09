@@ -48,6 +48,10 @@ LOCAL_ADD_MIN_STRENGTH_Z = float(os.getenv("LOCAL_MIN_STRENGTH_Z", "0.0"))
 # AI email length
 AI_EMAIL_TOPK = int(os.getenv("AI_EMAIL_TOPK", "8"))
 
+# Leaders -> Local rotation controls
+TOP_LEADERS_ADD = int(os.getenv("TOP_LEADERS_ADD", "10"))          # how many leaders to consider
+LEADER_STRENGTH_BOOST = float(os.getenv("LEADER_STRENGTH_BOOST", "1.0"))  # 1.0 = no boost
+
 # --------------------------- Weight configurations ------------------
 WEIGHTS_DEBIT_SPREAD = {
     "ret_20_z": 0.5,
@@ -381,7 +385,7 @@ def send_email_report(
 
     simple_mode = (os.getenv("EMAIL_SIMPLE", "0") == "1")
     include_full = (os.getenv("EMAIL_INCLUDE_FULL", "1") != "0")  # ON by default
-    ai_k = int(os.getenv("AI_EMAIL_TOPK", str(AI_EMAIL_TOPK)))    # <-- define BEFORE use
+    ai_k = int(os.getenv("AI_EMAIL_TOPK", str(AI_EMAIL_TOPK)))
 
     # --- Compose compact AI sections (always shown) ---
     def _sort_ai(df: pd.DataFrame) -> pd.DataFrame:
@@ -711,12 +715,33 @@ def run_monitor(tickers: List[str], *, today=None, min_dollar_vol=MIN_DOLLAR_VOL
     ai_leaps_df   = ai_rank_tickers(combined, strategy="leaps",             horizon_text="12–24 months", top_k=AI_EMAIL_TOPK)
     ai_spreads_df = ai_rank_tickers(combined, strategy="debit_call_spread", horizon_text="30–40 days",   top_k=AI_EMAIL_TOPK)
 
+    # ===================== NEW: feed Leaders into local list =====================
+    # Select tickers of strongest leaders
+    top_leaders = (
+        leaders.sort_values("strength_score", ascending=False)
+               .head(TOP_LEADERS_ADD)["ticker"]
+               .astype(str).str.upper().tolist()
+    )
+
+    # Optionally boost leaders' strength to bias final_rank during rotation
+    if LEADER_STRENGTH_BOOST != 1.0 and top_leaders:
+        mask = out["ticker"].astype(str).str.upper().isin(top_leaders)
+        out.loc[mask, "strength_score"] = out.loc[mask, "strength_score"] * LEADER_STRENGTH_BOOST
+        # Recompute downstream rank fields that depend on strength_score
+        out["norm_strength_0_10"] = (out["strength_score"].rank(pct=True).fillna(0.0) * 10.0)
+        out["final_60_40"] = 0.6 * out["norm_score_0_10"] + 0.4 * out["norm_strength_0_10"]
+        out["final_rank"] = out["final_60_40"] * out["cap_mult"]
+
+    # Expand universe with top leaders so they are eligible to be added
+    universe_with_leaders = sorted(set(universe_tickers) | set(top_leaders))
+    # ============================================================================
+
     # --------- prune & replenish local list, then persist ------------
     try:
         new_local_list, changes = _prune_and_replenish_local_list(
             df_all=out,
             local_list=list(local_list),
-            universe_list=universe_tickers,
+            universe_list=universe_with_leaders,  # <--- use expanded set
             prune_count=LOCAL_PRUNE_COUNT,
             min_price=LOCAL_ADD_MIN_PRICE,
             min_strength_z=LOCAL_ADD_MIN_STRENGTH_Z,
