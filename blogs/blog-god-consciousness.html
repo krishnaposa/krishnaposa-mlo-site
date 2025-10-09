@@ -127,6 +127,134 @@
         through every possible form. That makes every day sacred, not because someone is watching, but because <strong>we are that someone</strong>.
       </p>
 
+<hr>
+
+<h2>Reader Questions (FAQ)</h2>
+
+<!-- Optional controls -->
+<div class="faq-controls">
+  <button type="button" id="faq-open-all" aria-controls="faq-list">Open all</button>
+  <button type="button" id="faq-close-all" aria-controls="faq-list">Close all</button>
+</div>
+
+<div id="faq-list" class="faq">
+  <details>
+    <summary>1. If God is everything, why do bad things happen?</summary>
+    <p>
+      From this perspective, <em>“good”</em> and <em>“bad”</em> are relative experiences within one field of consciousness.
+      Contrast allows awareness to deepen—just as darkness lets light be seen. Suffering is not punishment but a way for
+      consciousness to experience growth, empathy, and balance.
+    </p>
+  </details>
+
+  <details>
+    <summary>2. Does this mean we have no free will?</summary>
+    <p>
+      Free will is how the divine experiences choice through you. Think of it like waves in the ocean—the wave moves freely,
+      yet it’s still made of the ocean. Your choices are real and meaningful, but they’re expressions of the larger intelligence
+      that flows through everything.
+    </p>
+  </details>
+
+  <details>
+    <summary>3. If everything is God, why try to improve or evolve?</summary>
+    <p>
+      Because evolution <strong>is</strong> the divine impulse itself. Growth, compassion, and creativity are God’s ways of
+      exploring higher awareness through you. When you evolve, the universe evolves with you.
+    </p>
+  </details>
+
+  <details>
+    <summary>4. What happens after death?</summary>
+    <p>
+      Consciousness does not end; only the form changes. Awareness remains—like switching channels on the same screen.
+      Some call it rebirth; others call it merging back into Source. Either way, the essence continues beyond the body.
+    </p>
+  </details>
+
+  <details>
+    <summary>5. Does this make religion wrong?</summary>
+    <p>
+      Not at all. Religions are symbolic languages pointing to the same truth: unity with the divine. Their outer forms differ,
+      but the mystical core—love, surrender, and awakening—echoes the same realization of one consciousness.
+    </p>
+  </details>
+
+  <details>
+    <summary>6. How can I connect with this awareness?</summary>
+    <p>
+      Quiet the mind and observe. Meditation, gratitude, time in nature, or the simple question “Who am I beyond thought?”
+      all lead you closer. When the mind settles, awareness reveals itself as the silent presence behind every experience—
+      that’s what we call God.
+    </p>
+  </details>
+
+  <details>
+    <summary>7. So what’s the purpose of my individual life?</summary>
+    <p>
+      Your purpose is to experience, express, and remember. To live fully, to love deeply, and to awaken to the truth
+      that you and the Source are one essence exploring itself through countless forms.
+    </p>
+  </details>
+</div>
+
+<hr>
+
+<!-- Scoped styles for the FAQ accordion -->
+<style>
+  /* Scope to this page block only */
+  .faq details {
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    margin: 0.5rem 0;
+    background: #fff;
+  }
+  .faq summary {
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary:before {
+    content: "▸";
+    transition: transform .2s ease;
+    display: inline-block;
+  }
+  .faq details[open] summary:before {
+    transform: rotate(90deg);
+  }
+  .faq p { margin: .75rem 0 0 0; }
+  .faq-controls {
+    display: flex; gap: .5rem; margin: .5rem 0 1rem;
+  }
+  .faq-controls button {
+    padding: .4rem .75rem; border: 1px solid rgba(0,0,0,0.12);
+    border-radius: 6px; background: #f7f8fa; cursor: pointer;
+  }
+  .faq-controls button:hover { background: #eef2ff; }
+</style>
+
+<!-- Tiny helper script (no external deps) -->
+<script>
+  (function () {
+    var root = document.getElementById('faq-list');
+    if (!root) return;
+    var openAllBtn = document.getElementById('faq-open-all');
+    var closeAllBtn = document.getElementById('faq-close-all');
+    var items = root.querySelectorAll('details');
+
+    if (openAllBtn) openAllBtn.addEventListener('click', function () {
+      items.forEach(function (d) { d.open = true; });
+    });
+    if (closeAllBtn) closeAllBtn.addEventListener('click', function () {
+      items.forEach(function (d) { d.open = false; });
+    });
+  })();
+</script>
       <p><a href="blog.html">← Back to Blog</a></p>
 
     </div>
