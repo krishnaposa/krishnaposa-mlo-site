@@ -1,3 +1,11 @@
+# function_app.py  — quiet HTTP logging
+#
+# NOTE: To also quiet Azure Functions host trigger chatter, add a host.json:
+# {
+#   "logging": {
+#     "logLevel": { "default": "Warning" }
+#   }
+# }
 import os, json, sys, subprocess, logging, pathlib, importlib.util, datetime, shlex
 import azure.functions as func
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -5,10 +13,24 @@ import pandas as pd
 
 import daily_monitor
 from universe_utils import read_universe_blob as _read_universe_blob
-from local_list_utils import load_local_list  # <<< NEW: read local list for combined set
-from ai_utils import ai_rank_tickers          # <<< NEW: shared AI scorer
+from local_list_utils import load_local_list
+from ai_utils import ai_rank_tickers
 
 app = func.FunctionApp()
+
+# ---------- Quiet noisy HTTP logs ----------
+QUIET_HTTP_LOGS = os.getenv("QUIET_HTTP_LOGS", "1") == "1"
+if QUIET_HTTP_LOGS:
+    for name in [
+        "urllib3",
+        "requests",
+        "httpx",
+        "azure.core.pipeline",
+        "azure.core.pipeline.policies.http_logging_policy",
+        "azure.storage.blob",
+        "azure.identity",
+    ]:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 # ---------- Settings ----------
 WB4U_ENTRY = os.getenv("WB4U_ENTRY", "wb4u_main.py")
@@ -24,7 +46,7 @@ AZURE_OPENAI_API_VER = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")  # st
 
 SIGNALS_CONTAINER = os.getenv("SIGNALS_CONTAINER", "signals")
 MIN_DOLLAR_VOL    = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
-PENNY_PRICE       = float(os.getenv("PENNY_PRICE", "5"))  # ensure <$5 filtering for AI section too
+PENNY_PRICE       = float(os.getenv("PENNY_PRICE", "5"))
 AI_TOPK           = int(os.getenv("AI_TOPK", "10"))
 
 _BLOB_SVC = BlobServiceClient.from_connection_string(os.getenv("MONITOR_STORAGE"))
@@ -57,7 +79,8 @@ def _upload_bytes(container_client, blob_name: str, data: bytes, content_type: s
         blob_name, data=data, overwrite=True,
         content_settings=ContentSettings(content_type=content_type)
     )
-    logging.info(f"[upload] wrote {container_client.container_name}/{blob_name} ({len(data)} bytes)")
+    # quieter: only show in DEBUG (headers/status come from SDK otherwise)
+    logging.debug(f"[upload] wrote {container_client.container_name}/{blob_name} ({len(data)} bytes)")
 
 def _write_universe_blob(tickers: list[str], meta: dict | None = None) -> None:
     cont = _blob_container()
@@ -182,7 +205,7 @@ def monitor_signals(timer: func.TimerRequest) -> None:
         except Exception as e:
             logging.warning(f"[ai] failed to persist AI outputs: {e}")
 
-        # Log quick summary
+        # Log quick summary (kept)
         logging.info("[top picks]\n" + str(
             df_all[df_all["buy_flag"]][["ticker", "score"]]
             .sort_values("score", ascending=False)
@@ -190,16 +213,10 @@ def monitor_signals(timer: func.TimerRequest) -> None:
             .reset_index(drop=True)
         ))
         logging.info("[leaders]\n" + str(df_leaders.head(15).reset_index(drop=True)))
-
         if not ai_leaps.empty:
             logging.info("[AI LEAPS]\n" + str(ai_leaps.head(10)))
         if not ai_spreads.empty:
             logging.info("[AI 30–40d Debit Call Spreads]\n" + str(ai_spreads.head(10)))
-
-        # NOTE: Your existing HTML email is sent inside daily_monitor.
-        # If you want the AI sections *in the same email*, add optional
-        # params to daily_monitor.send_email_report and pass these two
-        # DataFrames there. (I can wire that next if you want.)
 
     except Exception as e:
         logging.exception(f"[monitor_signals] failed: {e}")
@@ -268,7 +285,7 @@ def manual_refresh(req: func.HttpRequest) -> func.HttpResponse:
         logging.exception("manual refresh error")
         return func.HttpResponse(json.dumps({"ok": False, "error": str(e)}), status_code=500, mimetype="application/json")
 
-# ---------- Rank (kept for HTTP use; now ai_utils powers it) ----------
+# ---------- Rank ----------
 @app.function_name(name="rank")
 @app.route(route="rank", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def rank(req: func.HttpRequest) -> func.HttpResponse:
