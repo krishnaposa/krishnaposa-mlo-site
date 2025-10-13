@@ -23,7 +23,7 @@ AI_EMAIL_TOPK = int(os.getenv("AI_EMAIL_TOPK", "8"))
 EMAIL_INCLUDE_FULL = (os.getenv("EMAIL_INCLUDE_FULL", "0") == "1")  # OFF by default
 
 # Leaders inclusion into picks
-ADD_LEADERS_TOPK = int(os.getenv("ADD_LEADERS_TOPK", "5"))
+ADD_LEADERS_TOPK = int(os.getenv("ADD_LEADERS_TOPK", "8"))
 
 # Optional MC/HMM filter
 USE_MC_HMM_FILTER = (os.getenv("USE_MC_HMM_FILTER", "0") == "1")
