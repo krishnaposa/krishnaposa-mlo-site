@@ -21,7 +21,7 @@ app = func.FunctionApp()
 # ---------- Quiet noisy HTTP logs ----------
 QUIET_HTTP_LOGS = os.getenv("QUIET_HTTP_LOGS", "1") == "1"
 if QUIET_HTTP_LOGS:
-    for name in [
+    noisy_loggers = [
         "urllib3",
         "requests",
         "httpx",
@@ -29,7 +29,8 @@ if QUIET_HTTP_LOGS:
         "azure.core.pipeline.policies.http_logging_policy",
         "azure.storage.blob",
         "azure.identity",
-    ]:
+    ]
+    for name in noisy_loggers:
         logging.getLogger(name).setLevel(logging.WARNING)
 
 # ---------- Settings ----------
