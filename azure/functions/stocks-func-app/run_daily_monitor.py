@@ -1,7 +1,7 @@
 import datetime
 import os
 import logging
-from monitoring import run_monitor  # <- new import
+from monitoring.monitor import run_monitor  # <- new import
 
 logging.basicConfig(
     level=logging.INFO,
