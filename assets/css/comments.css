@@ -1,6 +1,5 @@
 /* Comments section wrapper */
 #comments.container {
-  max-width: 600px;
   font-size: 0.95rem;
   margin: 2rem auto;
   padding: 1rem;
