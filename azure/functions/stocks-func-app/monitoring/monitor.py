@@ -267,6 +267,8 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     # map ML prob into dataframe (0..1)
     out["ml_prob_up_30d"] = out["ticker"].map(ml_prob_map).astype(float)
+    out["ml_prob_up_30d"] = out["ml_prob_up_30d"].fillna(out["ml_prob_up_30d"]).fillna(0.5)
+
 
     # leaders & leaps tables
     leaders = out[
