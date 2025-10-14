@@ -29,3 +29,19 @@ ADD_LEADERS_TOPK = int(os.getenv("ADD_LEADERS_TOPK", "8"))
 USE_MC_HMM_FILTER = (os.getenv("USE_MC_HMM_FILTER", "0") == "1")
 MC_MIN_PUP = float(os.getenv("MC_MIN_PUP", "0.55"))
 HMM_MIN_BULL = float(os.getenv("HMM_MIN_BULL", "0.50"))
+
+# --- Options-specific gates for debit call spreads (defaults; override via env) ---
+
+OPT_MIN_OI         = int(os.getenv("OPT_MIN_OI", "500"))        # min OI for each leg
+OPT_MAX_SPREAD_PCT = float(os.getenv("OPT_MAX_SPREAD_PCT", "0.12"))  # combined bid/ask width vs mid debit (≤ 12%)
+
+IVP_MIN            = float(os.getenv("IVP_MIN", "0.20"))         # 20th percentile proxy
+IVP_MAX            = float(os.getenv("IVP_MAX", "0.70"))         # 70th percentile proxy
+
+DTE_MIN            = int(os.getenv("DTE_MIN", "25"))
+DTE_MAX            = int(os.getenv("DTE_MAX", "50"))
+
+EARNINGS_BLOCK_DAYS = int(os.getenv("EARNINGS_BLOCK_DAYS", "14"))
+
+OTM_LONG_PCT       = float(os.getenv("OTM_LONG_PCT", "0.05"))    # +5% OTM for the long call
+OTM_SHORT_PCT      = float(os.getenv("OTM_SHORT_PCT", "0.10"))   # +10% OTM for the short call
