@@ -20,14 +20,14 @@ from .simulations import mc_paths_prob_up, fit_hmm_regime
 from .data_fetch import fetch_prices_batched
 from .scoring import score_row
 from .local_list_ops import prune_and_replenish_local_list
-from .emailer import send_email_report_simple  # lists + simulation lines
+from .emailer import send_email_report_with_sims  # << use the new emailer
 
 # external utils (existing files)
 from universe_utils import read_universe_blob
 from local_list_utils import load_local_list, save_local_list
 from ai_utils import ai_rank_tickers
 
-# NEW: 30-day direction ML model (kept previously, now shown in email)
+# NEW: 30-day direction ML model
 from .model_predict import train_direction_model, predict_up_probability_for_latest
 
 logging.basicConfig(
@@ -69,7 +69,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     # ---- ML (30-day up probability) ----
     mdl, _, _ = train_direction_model(frames, horizon_days=30)
-    ml_prob_map = predict_up_probability_for_latest(frames, mdl)  # dict: ticker -> prob_up
+    ml_prob_map = predict_up_probability_for_latest(frames, mdl)  # dict: ticker -> prob_up (0..1)
 
     rows = []
     fast_caps = {}
@@ -287,7 +287,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     except Exception as e:
         logger.warning(f"[local_list] update/save failed: {e}")
 
-    # ------- Email (lists + simulations line) -------
+    # ------- Email (lists + simulator table) -------
     # picks: union of buy_flag + top leaders
     picks = out[out["buy_flag"]].copy()
     leaders_top = leaders.head(ADD_LEADERS_TOPK)
@@ -306,37 +306,31 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     ai_leaps_list   = _tickers_only(ai_leaps_df)[:AI_EMAIL_TOPK]
 
     # Build compact simulation rows only for the picks (keep email short)
-    sim_cols = ["ticker", "mc_p_up_30d", "hmm_prob_bull", "ml_prob_up_30d"]
-    sim_df = out[out["ticker"].isin(picks_tickers)][sim_cols].copy()
+    sim_df = out[out["ticker"].isin(picks_tickers)][
+        ["ticker", "mc_p_up_30d", "hmm_prob_bull", "ml_prob_up_30d"]
+    ].copy()
 
     # Sort by MC P_up, then HMM, then ML prob
     sim_df = sim_df.sort_values(["mc_p_up_30d", "hmm_prob_bull", "ml_prob_up_30d"], ascending=False)
 
-    # Format as a list of dicts for emailer
+    # Re-map keys to what the emailer expects: mc30, hmm_bull, ml_prob
     sim_rows = [
         {
             "ticker": str(row["ticker"]),
-            "mc_p_up_30d": float(row["mc_p_up_30d"]) if pd.notna(row["mc_p_up_30d"]) else np.nan,
-            "hmm_prob_bull": float(row["hmm_prob_bull"]) if pd.notna(row["hmm_prob_bull"]) else np.nan,
-            "ml_prob_up_30d": float(row["ml_prob_up_30d"]) if pd.notna(row["ml_prob_up_30d"]) else np.nan,
+            "mc30": float(row["mc_p_up_30d"]) if pd.notna(row["mc_p_up_30d"]) else np.nan,
+            "hmm_bull": float(row["hmm_prob_bull"]) if pd.notna(row["hmm_prob_bull"]) else np.nan,
+            "ml_prob": float(row["ml_prob_up_30d"]) if pd.notna(row["ml_prob_up_30d"]) else np.nan,
         }
         for _, row in sim_df.iterrows()
     ]
 
-    # EAT note (customizable via env var)
-    eat_note = os.getenv(
-        "EAT_NOTE",
-        "EAT = your custom 'Edge-Adjusted Threshold' metric; set EAT_NOTE env to change this line."
-    )
-
     stamp = today.strftime("%Y-%m-%d")
-    send_email_report_simple(
+    send_email_report_with_sims(
         stamp=stamp,
         picks_tickers=picks_tickers,
         ai_spreads_list=ai_spreads_list,
         ai_leaps_list=ai_leaps_list,
-        sim_rows=sim_rows,               # includes Monte Carlo, HMM, and ML 30d prob
-        eat_note=eat_note,
+        sim_rows=sim_rows,  # Monte Carlo (P↑) / HMM (Bull Prob) / ML (P↑)
         subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),
     )
 
