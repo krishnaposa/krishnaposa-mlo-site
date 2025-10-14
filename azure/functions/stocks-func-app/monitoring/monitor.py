@@ -26,6 +26,7 @@ from .emailer import send_email_report_simple  # <— updated emailer that accep
 from universe_utils import read_universe_blob
 from local_list_utils import load_local_list, save_local_list
 from ai_utils import ai_rank_tickers
+from .model_predict import train_direction_model, predict_up_probability_for_latest
 
 logging.basicConfig(
     level=getattr(logging, DAILY_MONITOR_LOG_LEVEL, logging.INFO),
@@ -63,6 +64,9 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     end = today + datetime.timedelta(days=1)
     start = today - datetime.timedelta(days=420)
     frames = fetch_prices_batched(merged_tickers, start, end)
+
+    mdl, Xtrain, ytrain = train_direction_model(frames, horizon_days=30)
+    ml_prob_map = predict_up_probability_for_latest(frames, mdl)
 
     rows = []
     fast_caps = {}
@@ -248,7 +252,8 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         0.05 * streak + 0.06 * eps_avg + 0.04 * eps_beat
     )
     out["leap_rank"] = _pctl0_10(out["leap_score"])
-
+    
+    out["ml_prob_up_30d"] = out["ticker"].map(ml_prob_map).astype(float)
     # leaders & leaps tables
     leaders = out[(out.get("ret_5d", 0) > 0) & (out.get("ret_21d", 0) > 0)].copy().sort_values("strength_score", ascending=False)
     leaps   = out.sort_values("leap_rank", ascending=False)
