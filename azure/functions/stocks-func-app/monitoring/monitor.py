@@ -20,7 +20,7 @@ from .simulations import mc_paths_prob_up, fit_hmm_regime
 from .data_fetch import fetch_prices_batched
 from .scoring import score_row
 from .local_list_ops import prune_and_replenish_local_list
-from .emailer import send_email_report_with_sims  # emailer that shows sims table
+from .emailer import send_email_report_with_sims  # emailer that shows sims table + spread candidates
 
 # external utils (existing files)
 from universe_utils import read_universe_blob
@@ -69,7 +69,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     rows = []
     fast_caps = {}
-    enriched_frames: dict[str, pd.DataFrame] = {}  # will hold engineered features for ML
+    enriched_frames: dict[str, pd.DataFrame] = {}  # for the ML model
 
     # best-effort market caps
     for t in merged_tickers:
@@ -83,7 +83,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     fundamentals_map = {}
 
-    # ---- per-ticker feature engineering ----
+    # ---- feature engineering per ticker ----
     for t, df in frames.items():
         d = df.copy()
         d["CloseAdj"] = d["Adj Close"]
@@ -92,7 +92,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         d["adx14"] = adx(d, 14)
         d["mfi14"] = mfi(d, 14)
 
-        # returns (needed by sims & other features)
+        # returns
         d["ret"]     = d["CloseAdj"].pct_change()
         d["ret_5d"]  = d["CloseAdj"].pct_change(5)
         d["ret_20"]  = d["CloseAdj"].pct_change(20)
@@ -189,7 +189,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
         rows.append(latest)
 
-        # Save enriched frame for ML training later
+        # Save enriched frame for ML
         enriched_frames[t] = d
 
     if not rows:
@@ -265,12 +265,75 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     )
     out["leap_rank"] = _pctl0_10(out["leap_score"])
 
-    # map ML prob into dataframe (0..1)
+    # map ML prob into dataframe (0..1), fallback 0.5 if missing
     out["ml_prob_up_30d"] = out["ticker"].map(ml_prob_map).astype(float)
-    out["ml_prob_up_30d"] = out["ml_prob_up_30d"].fillna(out["ml_prob_up_30d"]).fillna(0.5)
+    out["ml_prob_up_30d"] = out["ml_prob_up_30d"].fillna(0.5)
 
+    # -------------------- Spread-friendly composite --------------------
+    def _minmax01(s: pd.Series) -> pd.Series:
+        s = s.replace([np.inf, -np.inf], np.nan)
+        rng = (s.max() - s.min())
+        out01 = (s - s.min()) / rng if rng and np.isfinite(rng) and rng != 0 else pd.Series(0.5, index=s.index)
+        return out01.fillna(0.5)
 
-    # leaders & leaps tables
+    # Strength 0..100 (you already have 0..10)
+    Strength = out["norm_strength_0_10"] * 10.0
+
+    # TrendScore 0..100
+    trend_bits = []
+    trend_bits.append(out["close_above_sma50"].clip(0, 1))
+    trend_bits.append(out["close_above_sma200"].clip(0, 1))
+    trend_bits.append((1.0 + out["dist_52w_high"]).clip(0, 1))  # closer to high = better
+    adx01 = ((out["adx14"] - 15.0) / 35.0).clip(0, 1)
+    trend_bits.append(adx01)
+    TrendScore = pd.concat(trend_bits, axis=1).mean(axis=1) * 100.0
+
+    # ProbScore 0..100
+    ProbScore = pd.concat([
+        out["mc_p_up_30d"].fillna(0.5),
+        out["hmm_prob_bull"].fillna(0.5),
+        out.get("ml_prob_up_30d", pd.Series(0.5, index=out.index)).fillna(0.5)
+    ], axis=1).mean(axis=1) * 100.0
+
+    # Quality 0..100
+    rev = out[["rev_q_yoy", "rev_q_qoq"]].max(axis=1).clip(-0.2, 0.5)
+    ern = out[["earn_q_yoy","earn_q_qoq"]].max(axis=1).clip(-0.2, 0.5)
+    beat = out["eps_beat_share"].clip(0,1)
+    Quality = pd.concat([_minmax01(rev), _minmax01(ern), beat.fillna(0.5)], axis=1).mean(axis=1) * 100.0
+
+    # Liquidity 0..100
+    Liquidity = _minmax01(out["adv_usd_20"].fillna(0)) * 100.0
+
+    # VolPenalty 0..100 (higher = worse)
+    VolPenalty = (_minmax01(out["vol20"].fillna(out["vol20"].median())) * 100.0
+                  + (_minmax01(-out["mdd_60"].fillna(0)) * 20.0))
+
+    out["spread_score"] = (
+        0.30 * Strength +
+        0.25 * TrendScore +
+        0.15 * ProbScore +
+        0.10 * Quality +
+        0.10 * Liquidity -
+        0.10 * VolPenalty
+    )
+
+    # Hard gates for spreads
+    gates = (
+        (out["rsi14"].between(45, 75)) &
+        (out["close_above_sma50"] == 1.0) &
+        (out["close_above_sma200"] == 1.0) &
+        (out["dist_52w_high"] > -0.10) &
+        (out["adx14"] >= 18) &
+        (out["adv_usd_20"] >= 1_000_000)
+    )
+    if bool(int(os.getenv("USE_MC_HMM_FILTER", "0"))):
+        gates = gates & (out["mc_p_up_30d"].fillna(0.5) >= 0.55) & (out["hmm_prob_bull"].fillna(0.5) >= 0.55)
+
+    spread_candidates = out[gates].sort_values("spread_score", ascending=False)
+    SPREAD_TOPK = int(os.getenv("SPREAD_TOPK", "12"))
+    spread_candidates_list = spread_candidates["ticker"].astype(str).head(SPREAD_TOPK).tolist()
+
+    # -------------------- leaders & leaps --------------------
     leaders = out[
         (out.get("ret_5d", 0) > 0) & (out.get("ret_21d", 0) > 0)
     ].copy().sort_values("strength_score", ascending=False)
@@ -300,8 +363,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     except Exception as e:
         logger.warning(f"[local_list] update/save failed: {e}")
 
-    # ------- Email (lists + simulator table) -------
-    # picks: union of buy_flag + top leaders
+    # ------- Email (lists + simulator table + spread candidates) -------
     picks = out[out["buy_flag"]].copy()
     leaders_top = leaders.head(ADD_LEADERS_TOPK)
     picks_tickers = list(dict.fromkeys(
@@ -324,10 +386,8 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         ["ticker", "mc_p_up_30d", "hmm_prob_bull", "ml_prob_up_30d"]
     ].copy()
 
-    # Sort by MC P_up, then HMM, then ML prob
     sim_df = sim_df.sort_values(["mc_p_up_30d", "hmm_prob_bull", "ml_prob_up_30d"], ascending=False)
 
-    # Re-map keys to what the emailer expects: mc30, hmm_bull, ml_prob
     sim_rows = [
         {
             "ticker": str(row["ticker"]),
@@ -344,7 +404,8 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         picks_tickers=picks_tickers,
         ai_spreads_list=ai_spreads_list,
         ai_leaps_list=ai_leaps_list,
-        sim_rows=sim_rows,  # Monte Carlo (P↑) / HMM (Bull Prob) / ML (P↑)
+        sim_rows=sim_rows,                      # Monte Carlo (P↑) / HMM (Bull Prob) / ML (P↑)
+        spread_candidates_list=spread_candidates_list,  # NEW: “Top Debit Call Spread Candidates”
         subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),
     )
 
@@ -361,6 +422,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         "adx14", "mfi14", "eps_surprise_avg", "eps_beat_share",
         "mc_p_up_30d", "mc_p_up_40d", "hmm_state", "hmm_prob_bull",
         "ml_prob_up_30d",
+        "spread_score",
     ]
     for c in cols_order:
         if c not in out.columns:
