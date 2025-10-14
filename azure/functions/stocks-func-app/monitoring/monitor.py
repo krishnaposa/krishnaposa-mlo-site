@@ -13,6 +13,12 @@ from .config import (
     LOCAL_PRUNE_COUNT, LOCAL_MAX_SIZE, LOCAL_ADD_MIN_PRICE, LOCAL_ADD_MIN_STRENGTH_Z,
     AI_EMAIL_TOPK, ADD_LEADERS_TOPK,
     USE_MC_HMM_FILTER, MC_MIN_PUP, HMM_MIN_BULL,
+    # NEW: options gates (with safe defaults)
+    OPT_MIN_OI, OPT_MAX_SPREAD_PCT,
+    IVP_MIN, IVP_MAX,
+    DTE_MIN, DTE_MAX,
+    EARNINGS_BLOCK_DAYS,
+    OTM_LONG_PCT, OTM_SHORT_PCT,
 )
 from .indicators import adx, mfi, rsi, macd, true_range, realized_vol, zscore
 from .fundamentals import eps_surprise_trend, compute_quarterly_trends, cap_multiplier
@@ -20,15 +26,20 @@ from .simulations import mc_paths_prob_up, fit_hmm_regime
 from .data_fetch import fetch_prices_batched
 from .scoring import score_row
 from .local_list_ops import prune_and_replenish_local_list
-from .emailer import send_email_report_with_sims  # emailer that shows sims table + spread candidates
+from .emailer import send_email_report_with_sims
+from .options_metrics import option_liquidity_and_debit
 
 # external utils (existing files)
 from universe_utils import read_universe_blob
 from local_list_utils import load_local_list, save_local_list
 from ai_utils import ai_rank_tickers
 
-# 30-day direction ML model
-from .model_predict import train_direction_model, predict_up_probability_for_latest
+# (optional ML; if you’ve added it)
+try:
+    from .model_predict import train_direction_model, predict_up_probability_for_latest
+    _HAS_ML = True
+except Exception:
+    _HAS_ML = False
 
 logging.basicConfig(
     level=getattr(logging, DAILY_MONITOR_LOG_LEVEL, logging.INFO),
@@ -60,18 +71,12 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     local_list = load_local_list(initial_fallback=seed_list)
 
     merged_tickers = sorted(set(local_list) | set(universe_tickers))
-    only_in_universe = sorted(list(set(universe_tickers) - set(local_list)))
-    only_in_local    = sorted(list(set(local_list) - set(universe_tickers)))
-
     end = today + datetime.timedelta(days=1)
     start = today - datetime.timedelta(days=420)
     frames = fetch_prices_batched(merged_tickers, start, end)
 
     rows = []
     fast_caps = {}
-    enriched_frames: dict[str, pd.DataFrame] = {}  # for the ML model
-
-    # best-effort market caps
     for t in merged_tickers:
         try:
             fi = yf.Ticker(t).fast_info
@@ -83,7 +88,6 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     fundamentals_map = {}
 
-    # ---- feature engineering per ticker ----
     for t, df in frames.items():
         d = df.copy()
         d["CloseAdj"] = d["Adj Close"]
@@ -145,7 +149,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         # EPS surprises
         eps_sig = eps_surprise_trend(t)
 
-        # ---- Monte Carlo (GBM) & HMM ----
+        # Monte Carlo (GBM) & HMM
         mu_d    = float(d["ret"].rolling(63).mean().iloc[-1])
         sigma_d = float(d["ret"].rolling(20).std().iloc[-1])
         mc_p30  = mc_paths_prob_up(float(d["CloseAdj"].iloc[-1]), mu_d, sigma_d, 30, 5000, 0.0)
@@ -170,7 +174,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         latest["hmm_prob_bull"]    = prob_bull
         latest.update(fundamentals_map[t])
 
-        # cap bonus for leaps reuse
+        # cap bonus
         mc_val = latest.get("market_cap")
         try:
             mc_val = float(mc_val) if mc_val is not None else np.nan
@@ -189,32 +193,19 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
         rows.append(latest)
 
-        # Save enriched frame for ML
-        enriched_frames[t] = d
-
     if not rows:
         raise RuntimeError("No rows produced—check data availability or ticker list.")
 
     out = pd.DataFrame(rows)
-
-    # Strictly drop penny stocks
     out = out[out["last_price"] >= PENNY_PRICE].copy()
     if out.empty:
         raise RuntimeError("All tickers filtered out by penny-stock exclusion.")
 
-    # ---- ML (30-day up probability) — train AFTER features exist ----
-    try:
-        mdl, _, _ = train_direction_model(enriched_frames, horizon_days=30)
-        ml_prob_map = predict_up_probability_for_latest(enriched_frames, mdl)  # dict: ticker -> prob_up
-    except Exception as e:
-        logger.warning(f"[ML] training/predict failed: {e}")
-        ml_prob_map = {}
-
-    # x-sec ADV z, composite score (use debit_call_spread weights)
+    # Composite trend score (your existing)
     out["adv_usd_20_z"] = zscore(out.get("adv_usd_20", pd.Series(dtype=float))).fillna(0.0)
     out["score"] = out.apply(lambda r: score_row(r, min_dollar_vol, "debit_call_spread"), axis=1)
 
-    # buy flag (optionally gated by MC/HMM)
+    # Base trend buy flag
     base_buy = (
         (out["score"] > 1.5) &
         (out["rsi14"].between(45, 80)) &
@@ -229,7 +220,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     else:
         out["buy_flag"] = base_buy
 
-    # strength & ranks
+    # Strength/ranks
     out["z_5d"] = zscore(out.get("ret_5d", pd.Series(dtype=float))).fillna(0.0)
     out["z_21d"] = zscore(out.get("ret_21d", pd.Series(dtype=float))).fillna(0.0)
     out["strength_score"] = 0.3 * out["z_5d"] + 0.7 * out["z_21d"]
@@ -243,7 +234,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     out["cap_mult"]           = out["market_cap"].apply(cap_multiplier)
     out["final_rank"]         = out["final_60_40"] * out["cap_mult"]
 
-    # leaps score
+    # LEAPS score (unchanged)
     out["z_ret_63"]  = zscore(out.get("ret_63", pd.Series(dtype=float))).fillna(0.0)
     out["z_ret_252"] = zscore(out.get("ret_252", pd.Series(dtype=float))).fillna(0.0)
 
@@ -265,89 +256,74 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     )
     out["leap_rank"] = _pctl0_10(out["leap_score"])
 
-    # map ML prob into dataframe (0..1), fallback 0.5 if missing
-    out["ml_prob_up_30d"] = out["ticker"].map(ml_prob_map).astype(float)
-    out["ml_prob_up_30d"] = out["ml_prob_up_30d"].fillna(0.5)
+    # ---------- OPTIONS GATES: debit call spread metrics ----------
+    opt_cols = [
+        "opt_expiry", "opt_dte", "opt_long_k", "opt_short_k", "opt_mid_debit",
+        "opt_leg1_spread_pct", "opt_leg2_spread_pct", "opt_combo_spread_pct",
+        "opt_oi_long", "opt_oi_short", "opt_ivp_proxy", "opt_days_to_earnings",
+    ]
+    for c in opt_cols:
+        out[c] = np.nan
 
-    # -------------------- Spread-friendly composite --------------------
-    def _minmax01(s: pd.Series) -> pd.Series:
-        s = s.replace([np.inf, -np.inf], np.nan)
-        rng = (s.max() - s.min())
-        out01 = (s - s.min()) / rng if rng and np.isfinite(rng) and rng != 0 else pd.Series(0.5, index=s.index)
-        return out01.fillna(0.5)
+    for i, r in out.iterrows():
+        t = str(r["ticker"])
+        try:
+            res = option_liquidity_and_debit(
+                tkr=t,
+                min_dte=DTE_MIN, max_dte=DTE_MAX,
+                pct_otm_long=OTM_LONG_PCT, pct_otm_short=OTM_SHORT_PCT,
+                today=today,
+            )
+            if res.get("ok"):
+                out.at[i, "opt_expiry"] = res.get("expiry")
+                out.at[i, "opt_dte"] = res.get("dte")
+                out.at[i, "opt_long_k"] = res.get("long_k")
+                out.at[i, "opt_short_k"] = res.get("short_k")
+                out.at[i, "opt_mid_debit"] = res.get("mid_debit")
+                out.at[i, "opt_leg1_spread_pct"] = res.get("leg1_spread_pct")
+                out.at[i, "opt_leg2_spread_pct"] = res.get("leg2_spread_pct")
+                out.at[i, "opt_combo_spread_pct"] = res.get("combo_spread_pct")
+                out.at[i, "opt_oi_long"] = res.get("oi_long")
+                out.at[i, "opt_oi_short"] = res.get("oi_short")
+                out.at[i, "opt_ivp_proxy"] = res.get("ivp_proxy")
+                out.at[i, "opt_days_to_earnings"] = res.get("days_to_earnings")
+        except Exception as e:
+            logger.debug(f"[options] {t} metrics failed: {e}")
 
-    # Strength 0..100 (you already have 0..10)
-    Strength = out["norm_strength_0_10"] * 10.0
-
-    # TrendScore 0..100
-    trend_bits = []
-    trend_bits.append(out["close_above_sma50"].clip(0, 1))
-    trend_bits.append(out["close_above_sma200"].clip(0, 1))
-    trend_bits.append((1.0 + out["dist_52w_high"]).clip(0, 1))  # closer to high = better
-    adx01 = ((out["adx14"] - 15.0) / 35.0).clip(0, 1)
-    trend_bits.append(adx01)
-    TrendScore = pd.concat(trend_bits, axis=1).mean(axis=1) * 100.0
-
-    # ProbScore 0..100
-    ProbScore = pd.concat([
-        out["mc_p_up_30d"].fillna(0.5),
-        out["hmm_prob_bull"].fillna(0.5),
-        out.get("ml_prob_up_30d", pd.Series(0.5, index=out.index)).fillna(0.5)
-    ], axis=1).mean(axis=1) * 100.0
-
-    # Quality 0..100
-    rev = out[["rev_q_yoy", "rev_q_qoq"]].max(axis=1).clip(-0.2, 0.5)
-    ern = out[["earn_q_yoy","earn_q_qoq"]].max(axis=1).clip(-0.2, 0.5)
-    beat = out["eps_beat_share"].clip(0,1)
-    Quality = pd.concat([_minmax01(rev), _minmax01(ern), beat.fillna(0.5)], axis=1).mean(axis=1) * 100.0
-
-    # Liquidity 0..100
-    Liquidity = _minmax01(out["adv_usd_20"].fillna(0)) * 100.0
-
-    # VolPenalty 0..100 (higher = worse)
-    VolPenalty = (_minmax01(out["vol20"].fillna(out["vol20"].median())) * 100.0
-                  + (_minmax01(-out["mdd_60"].fillna(0)) * 20.0))
-
-    out["spread_score"] = (
-        0.30 * Strength +
-        0.25 * TrendScore +
-        0.15 * ProbScore +
-        0.10 * Quality +
-        0.10 * Liquidity -
-        0.10 * VolPenalty
+    # Hard gates for debit call spreads
+    opt_ok = (
+        (pd.to_numeric(out["opt_oi_long"], errors="coerce").fillna(0) >= OPT_MIN_OI) &
+        (pd.to_numeric(out["opt_oi_short"], errors="coerce").fillna(0) >= OPT_MIN_OI) &
+        (pd.to_numeric(out["opt_combo_spread_pct"], errors="coerce") <= OPT_MAX_SPREAD_PCT) &
+        (pd.to_numeric(out["opt_ivp_proxy"], errors="coerce").between(IVP_MIN, IVP_MAX, inclusive="both")) &
+        (pd.to_numeric(out["opt_dte"], errors="coerce").between(DTE_MIN, DTE_MAX, inclusive="both")) &
+        (
+            pd.to_numeric(out["opt_days_to_earnings"], errors="coerce").isna() |
+            (pd.to_numeric(out["opt_days_to_earnings"], errors="coerce") > EARNINGS_BLOCK_DAYS)
+        )
     )
 
-    # Hard gates for spreads
-    gates = (
-        (out["rsi14"].between(45, 75)) &
-        (out["close_above_sma50"] == 1.0) &
-        (out["close_above_sma200"] == 1.0) &
-        (out["dist_52w_high"] > -0.10) &
-        (out["adx14"] >= 18) &
-        (out["adv_usd_20"] >= 1_000_000)
-    )
-    if bool(int(os.getenv("USE_MC_HMM_FILTER", "0"))):
-        gates = gates & (out["mc_p_up_30d"].fillna(0.5) >= 0.55) & (out["hmm_prob_bull"].fillna(0.5) >= 0.55)
+    # Optional directional confirms (already in base_buy if enabled)
+    spread_base = out["buy_flag"].astype(bool)
+    out["buy_flag_spread"] = (spread_base & opt_ok)
 
-    spread_candidates = out[gates].sort_values("spread_score", ascending=False)
-    SPREAD_TOPK = int(os.getenv("SPREAD_TOPK", "12"))
-    spread_candidates_list = spread_candidates["ticker"].astype(str).head(SPREAD_TOPK).tolist()
+    # Spread score: boost trend score with direction + options quality
+    dir_boost = 0.5 * np.clip(out["mc_p_up_30d"].fillna(0.5) * 2 - 1, -1, 1) \
+              + 0.3 * np.clip(out.get("ml_prob_up_30d", pd.Series(0.5, index=out.index)) * 2 - 1, -1, 1)
+    qual_boost = 0.2 * opt_ok.astype(float)
+    out["spread_score"] = out["score"] + dir_boost + qual_boost
 
-    # -------------------- leaders & leaps --------------------
-    leaders = out[
-        (out.get("ret_5d", 0) > 0) & (out.get("ret_21d", 0) > 0)
-    ].copy().sort_values("strength_score", ascending=False)
-    leaps = out.sort_values("leap_rank", ascending=False)
+    # Leaders & leaps tables
+    leaders = out[(out.get("ret_5d", 0) > 0) & (out.get("ret_21d", 0) > 0)].copy().sort_values("strength_score", ascending=False)
+    leaps   = out.sort_values("leap_rank", ascending=False)
 
-    # --------- AI ranking for email lists ---------
+    # AI ranking for email lists (unchanged)
     price_map = dict(zip(out["ticker"].astype(str).str.upper(), out["last_price"].astype(float)))
-    combined = sorted(set(local_list) | set(universe_tickers))
-    combined = [t.upper().strip() for t in combined if price_map.get(t.upper().strip(), float("inf")) >= PENNY_PRICE]
-
+    combined = [t for t in merged_tickers if price_map.get(t.upper(), float("inf")) >= PENNY_PRICE]
     ai_leaps_df   = ai_rank_tickers(combined, strategy="leaps",             horizon_text="12–24 months", top_k=AI_EMAIL_TOPK)
     ai_spreads_df = ai_rank_tickers(combined, strategy="debit_call_spread", horizon_text="30–40 days",   top_k=AI_EMAIL_TOPK)
 
-    # --------- prune & persist ---------
+    # Prune & persist local list
     try:
         new_local_list, changes = prune_and_replenish_local_list(
             df_all=out,
@@ -356,19 +332,19 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
             prune_count=LOCAL_PRUNE_COUNT,
             min_price=LOCAL_ADD_MIN_PRICE,
             min_strength_z=LOCAL_ADD_MIN_STRENGTH_Z,
-            max_size=LOCAL_MAX_SIZE
+            max_size=LOCAL_MAX_SIZE,
         )
         save_local_list(new_local_list, meta={"updated_utc": datetime.datetime.utcnow().isoformat()+"Z"})
         logger.info(f"[local_list] removed={len(changes.get('removed',[]))} added={len(changes.get('added',[]))} size={len(new_local_list)}")
     except Exception as e:
         logger.warning(f"[local_list] update/save failed: {e}")
 
-    # ------- Email (lists + simulator table + spread candidates) -------
-    picks = out[out["buy_flag"]].copy()
+    # ------- Email (use spread-focused picks) -------
+    # Use spread signal: top spread names (strict) + a few leaders
+    picks = out[out["buy_flag_spread"]].copy().sort_values("spread_score", ascending=False)
     leaders_top = leaders.head(ADD_LEADERS_TOPK)
-    picks_tickers = list(dict.fromkeys(
-        [*picks["ticker"].astype(str).tolist(), *leaders_top["ticker"].astype(str).tolist()]
-    ))
+    picks_tickers = list(dict.fromkeys([*picks["ticker"].astype(str).tolist(),
+                                        *leaders_top["ticker"].astype(str).tolist()]))
 
     def _tickers_only(df):
         if df is None or df.empty:
@@ -381,21 +357,21 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     ai_spreads_list = _tickers_only(ai_spreads_df)[:AI_EMAIL_TOPK]
     ai_leaps_list   = _tickers_only(ai_leaps_df)[:AI_EMAIL_TOPK]
 
-    # Build compact simulation rows only for the picks (keep email short)
+    # Sim table (same format your emailer expects)
     sim_df = out[out["ticker"].isin(picks_tickers)][
-        ["ticker", "mc_p_up_30d", "hmm_prob_bull", "ml_prob_up_30d"]
+        ["ticker", "mc_p_up_30d", "hmm_prob_bull"]
     ].copy()
+    sim_df["ml_prob"] = 0.5  # default
+    if "ml_prob_up_30d" in out.columns:
+        sim_df["ml_prob"] = out.set_index("ticker").loc[sim_df["ticker"], "ml_prob_up_30d"].values
 
-    sim_df = sim_df.sort_values(["mc_p_up_30d", "hmm_prob_bull", "ml_prob_up_30d"], ascending=False)
-
+    sim_df = sim_df.sort_values(["mc_p_up_30d", "hmm_prob_bull", "ml_prob"], ascending=False)
     sim_rows = [
-        {
-            "ticker": str(row["ticker"]),
-            "mc30": float(row["mc_p_up_30d"]) if pd.notna(row["mc_p_up_30d"]) else np.nan,
-            "hmm_bull": float(row["hmm_prob_bull"]) if pd.notna(row["hmm_prob_bull"]) else np.nan,
-            "ml_prob": float(row["ml_prob_up_30d"]) if pd.notna(row["ml_prob_up_30d"]) else np.nan,
-        }
-        for _, row in sim_df.iterrows()
+        {"ticker": str(r["ticker"]),
+         "mc30": float(r["mc_p_up_30d"]) if pd.notna(r["mc_p_up_30d"]) else np.nan,
+         "hmm_bull": float(r["hmm_prob_bull"]) if pd.notna(r["hmm_prob_bull"]) else np.nan,
+         "ml_prob": float(r["ml_prob"]) if pd.notna(r["ml_prob"]) else np.nan}
+        for _, r in sim_df.iterrows()
     ]
 
     stamp = today.strftime("%Y-%m-%d")
@@ -404,8 +380,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         picks_tickers=picks_tickers,
         ai_spreads_list=ai_spreads_list,
         ai_leaps_list=ai_leaps_list,
-        sim_rows=sim_rows,                      # Monte Carlo (P↑) / HMM (Bull Prob) / ML (P↑)
-        spread_candidates_list=spread_candidates_list,  # NEW: “Top Debit Call Spread Candidates”
+        sim_rows=sim_rows,
         subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),
     )
 
@@ -416,19 +391,20 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         "score", "strength_score", "ret_5d", "ret_21d",
         "last_price", "market_cap",
         "adv_usd_20", "adv_usd_20_z", "vol_surge",
-        "rsi14", "close_above_sma50", "close_above_sma200", "dist_52w_high", "buy_flag",
+        "rsi14", "close_above_sma50", "close_above_sma200", "dist_52w_high",
+        "buy_flag", "buy_flag_spread", "spread_score",
         "rev_q_yoy", "earn_q_yoy", "rev_q_qoq", "earn_q_qoq", "growth_streak", "fundamentals_quality",
         "z_ret_63", "z_ret_252", "cap_bonus", "leap_score", "leap_rank",
         "adx14", "mfi14", "eps_surprise_avg", "eps_beat_share",
         "mc_p_up_30d", "mc_p_up_40d", "hmm_state", "hmm_prob_bull",
-        "ml_prob_up_30d",
-        "spread_score",
+        # options metrics
+        "opt_expiry", "opt_dte", "opt_long_k", "opt_short_k", "opt_mid_debit",
+        "opt_leg1_spread_pct", "opt_leg2_spread_pct", "opt_combo_spread_pct",
+        "opt_oi_long", "opt_oi_short", "opt_ivp_proxy", "opt_days_to_earnings",
     ]
     for c in cols_order:
         if c not in out.columns:
             out[c] = np.nan
-    df_all_sorted = out[cols_order].sort_values("final_rank", ascending=False)
-    df_all_sorted = _shrink_df(df_all_sorted)
+    df_all_sorted = _shrink_df(out[cols_order].sort_values("spread_score", ascending=False))
     leaders = _shrink_df(leaders[["ticker","ret_5d","ret_21d","strength_score"]])
-
     return df_all_sorted, leaders
