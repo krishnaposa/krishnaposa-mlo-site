@@ -17,7 +17,6 @@ def _sim_table_html(rows: Optional[List[Dict]], max_rows: int = 60) -> str:
     if not rows:
         return "<i>No simulation metrics</i>"
 
-    # clip & format
     def _fmt_pct(x):
         try:
             return f"{float(x)*100:0.0f}%"
@@ -53,16 +52,15 @@ def send_email_report_with_sims(*,
     picks_tickers: List[str],
     ai_spreads_list: List[str],
     ai_leaps_list: List[str],
-    sim_rows: Optional[List[Dict]] = None,   # expects keys: ticker, mc30, hmm_bull, ml_prob
+    sim_rows: Optional[List[Dict]] = None,   # expects: ticker, mc30, hmm_bull, ml_prob
+    spread_candidates_list: Optional[List[str]] = None,  # NEW: top debit call spread names
     subj_prefix: str = "Daily Stock Picks"
 ):
     """
-    Minimal, list-first email with a compact simulator table.
-
-    Subject: "... | Spreads: A, B | LEAPS: C, D"
-    Body:
+    Minimal, list-first email with:
       - Picks (buy_flag + leaders slice)
       - AI lists (spreads, leaps)
+      - NEW: Top Debit Call Spread Candidates (from spread_score)
       - Simulator table: Monte Carlo (P↑), HMM (Bull Prob), ML (P↑)
       - Tiny EAT reminder line
     """
@@ -86,6 +84,7 @@ def send_email_report_with_sims(*,
     html_spreads = _list_html(ai_spreads_list)
     html_leaps   = _list_html(ai_leaps_list)
     html_sims    = _sim_table_html(sim_rows)
+    html_spread_candidates = _list_html(spread_candidates_list or [])
 
     # Small reminder line about EAT
     eat_note = (
@@ -106,6 +105,9 @@ def send_email_report_with_sims(*,
 
       <h3>AI: LEAPS (12–24 months)</h3>
       <div>{html_leaps}</div>
+
+      <h3>Top Debit Call Spread Candidates</h3>
+      <div>{html_spread_candidates}</div>
 
       <h3>Simulators</h3>
       {html_sims}
