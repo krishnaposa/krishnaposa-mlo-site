@@ -20,14 +20,14 @@ from .simulations import mc_paths_prob_up, fit_hmm_regime
 from .data_fetch import fetch_prices_batched
 from .scoring import score_row
 from .local_list_ops import prune_and_replenish_local_list
-from .emailer import send_email_report_with_sims  # << use the new emailer
+from .emailer import send_email_report_with_sims  # emailer that shows sims table
 
 # external utils (existing files)
 from universe_utils import read_universe_blob
 from local_list_utils import load_local_list, save_local_list
 from ai_utils import ai_rank_tickers
 
-# NEW: 30-day direction ML model
+# 30-day direction ML model
 from .model_predict import train_direction_model, predict_up_probability_for_latest
 
 logging.basicConfig(
@@ -67,12 +67,9 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     start = today - datetime.timedelta(days=420)
     frames = fetch_prices_batched(merged_tickers, start, end)
 
-    # ---- ML (30-day up probability) ----
-    mdl, _, _ = train_direction_model(frames, horizon_days=30)
-    ml_prob_map = predict_up_probability_for_latest(frames, mdl)  # dict: ticker -> prob_up (0..1)
-
     rows = []
     fast_caps = {}
+    enriched_frames: dict[str, pd.DataFrame] = {}  # will hold engineered features for ML
 
     # best-effort market caps
     for t in merged_tickers:
@@ -95,10 +92,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         d["adx14"] = adx(d, 14)
         d["mfi14"] = mfi(d, 14)
 
-        # EPS surprises
-        eps_sig = eps_surprise_trend(t)
-
-        # returns
+        # returns (needed by sims & other features)
         d["ret"]     = d["CloseAdj"].pct_change()
         d["ret_5d"]  = d["CloseAdj"].pct_change(5)
         d["ret_20"]  = d["CloseAdj"].pct_change(20)
@@ -148,6 +142,20 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
             sd = d[col].rolling(180).std()
             d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
 
+        # EPS surprises
+        eps_sig = eps_surprise_trend(t)
+
+        # ---- Monte Carlo (GBM) & HMM ----
+        mu_d    = float(d["ret"].rolling(63).mean().iloc[-1])
+        sigma_d = float(d["ret"].rolling(20).std().iloc[-1])
+        mc_p30  = mc_paths_prob_up(float(d["CloseAdj"].iloc[-1]), mu_d, sigma_d, 30, 5000, 0.0)
+        mc_p40  = mc_paths_prob_up(float(d["CloseAdj"].iloc[-1]), mu_d, sigma_d, 40, 5000, 0.0)
+        state_today, prob_bull = fit_hmm_regime(d["ret"])
+
+        # fundamentals (cached)
+        if t not in fundamentals_map:
+            fundamentals_map[t] = compute_quarterly_trends(t)
+
         latest = d.iloc[-1].to_dict()
         latest["ticker"] = t
         latest["last_price"] = float(d["CloseAdj"].iloc[-1])
@@ -156,20 +164,10 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         latest["mfi14"] = float(d["mfi14"].iloc[-1])
         latest["eps_surprise_avg"] = float(eps_sig.get("eps_surprise_avg", 0.0))
         latest["eps_beat_share"]   = float(eps_sig.get("eps_beat_share", 0.0))
-
-        # Monte Carlo (GBM) & HMM
-        mu_d    = float(d["ret"].rolling(63).mean().iloc[-1])
-        sigma_d = float(d["ret"].rolling(20).std().iloc[-1])
-        latest["mc_p_up_30d"] = mc_paths_prob_up(latest["last_price"], mu_d, sigma_d, 30, 5000, 0.0)
-        latest["mc_p_up_40d"] = mc_paths_prob_up(latest["last_price"], mu_d, sigma_d, 40, 5000, 0.0)
-
-        state_today, prob_bull = fit_hmm_regime(d["ret"])
-        latest["hmm_state"]     = state_today
-        latest["hmm_prob_bull"] = prob_bull
-
-        # fundamentals (cached)
-        if t not in fundamentals_map:
-            fundamentals_map[t] = compute_quarterly_trends(t)
+        latest["mc_p_up_30d"]      = mc_p30
+        latest["mc_p_up_40d"]      = mc_p40
+        latest["hmm_state"]        = state_today
+        latest["hmm_prob_bull"]    = prob_bull
         latest.update(fundamentals_map[t])
 
         # cap bonus for leaps reuse
@@ -191,6 +189,9 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
         rows.append(latest)
 
+        # Save enriched frame for ML training later
+        enriched_frames[t] = d
+
     if not rows:
         raise RuntimeError("No rows produced—check data availability or ticker list.")
 
@@ -200,6 +201,14 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     out = out[out["last_price"] >= PENNY_PRICE].copy()
     if out.empty:
         raise RuntimeError("All tickers filtered out by penny-stock exclusion.")
+
+    # ---- ML (30-day up probability) — train AFTER features exist ----
+    try:
+        mdl, _, _ = train_direction_model(enriched_frames, horizon_days=30)
+        ml_prob_map = predict_up_probability_for_latest(enriched_frames, mdl)  # dict: ticker -> prob_up
+    except Exception as e:
+        logger.warning(f"[ML] training/predict failed: {e}")
+        ml_prob_map = {}
 
     # x-sec ADV z, composite score (use debit_call_spread weights)
     out["adv_usd_20_z"] = zscore(out.get("adv_usd_20", pd.Series(dtype=float))).fillna(0.0)
@@ -260,8 +269,10 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     out["ml_prob_up_30d"] = out["ticker"].map(ml_prob_map).astype(float)
 
     # leaders & leaps tables
-    leaders = out[(out.get("ret_5d", 0) > 0) & (out.get("ret_21d", 0) > 0)].copy().sort_values("strength_score", ascending=False)
-    leaps   = out.sort_values("leap_rank", ascending=False)
+    leaders = out[
+        (out.get("ret_5d", 0) > 0) & (out.get("ret_21d", 0) > 0)
+    ].copy().sort_values("strength_score", ascending=False)
+    leaps = out.sort_values("leap_rank", ascending=False)
 
     # --------- AI ranking for email lists ---------
     price_map = dict(zip(out["ticker"].astype(str).str.upper(), out["last_price"].astype(float)))
@@ -291,8 +302,9 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     # picks: union of buy_flag + top leaders
     picks = out[out["buy_flag"]].copy()
     leaders_top = leaders.head(ADD_LEADERS_TOPK)
-    picks_tickers = list(dict.fromkeys([*picks["ticker"].astype(str).tolist(),
-                                        *leaders_top["ticker"].astype(str).tolist()]))
+    picks_tickers = list(dict.fromkeys(
+        [*picks["ticker"].astype(str).tolist(), *leaders_top["ticker"].astype(str).tolist()]
+    ))
 
     def _tickers_only(df):
         if df is None or df.empty:
