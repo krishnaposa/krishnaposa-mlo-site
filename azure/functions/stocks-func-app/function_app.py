@@ -2,14 +2,11 @@
 #
 # NOTE: To also quiet Azure Functions host trigger chatter, add a host.json:
 # {
-#   "logging": {
-#     "logLevel": { "default": "Warning" }
-#   }
+#   "logging": { "logLevel": { "default": "Warning" } }
 # }
 import os, json, sys, subprocess, logging, pathlib, importlib.util, datetime, shlex
 import azure.functions as func
 from azure.storage.blob import BlobServiceClient, ContentSettings
-import pandas as pd
 
 import daily_monitor
 from universe_utils import read_universe_blob as _read_universe_blob
@@ -22,16 +19,24 @@ app = func.FunctionApp()
 QUIET_HTTP_LOGS = os.getenv("QUIET_HTTP_LOGS", "1") == "1"
 if QUIET_HTTP_LOGS:
     noisy_loggers = [
-        "urllib3",
-        "requests",
-        "httpx",
+        "azure",  # parent clamp
         "azure.core.pipeline",
         "azure.core.pipeline.policies.http_logging_policy",
         "azure.storage.blob",
         "azure.identity",
+        "urllib3",
+        "urllib3.connectionpool",
+        "requests",
+        "httpx",
+        "httpcore",
     ]
     for name in noisy_loggers:
-        logging.getLogger(name).setLevel(logging.WARNING)
+        lg = logging.getLogger(name)
+        lg.setLevel(logging.WARNING)   # use ERROR if you want *nothing*
+        lg.propagate = False
+
+# You can also enforce via env (SDK respects this):
+os.environ.setdefault("AZURE_LOG_LEVEL", "WARNING")
 
 # ---------- Settings ----------
 WB4U_ENTRY = os.getenv("WB4U_ENTRY", "wb4u_main.py")
@@ -43,14 +48,18 @@ UNIVERSE_MAX_SECONDS = int(os.getenv("UNIVERSE_MAX_SECONDS", "60"))
 
 REFRESH_SHARED_KEY = os.getenv("REFRESH_SHARED_KEY")
 
-AZURE_OPENAI_API_VER = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")  # still used by ai_utils via env
+AZURE_OPENAI_API_VER = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")  # used by ai_utils via env
 
 SIGNALS_CONTAINER = os.getenv("SIGNALS_CONTAINER", "signals")
 MIN_DOLLAR_VOL    = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
 PENNY_PRICE       = float(os.getenv("PENNY_PRICE", "5"))
 AI_TOPK           = int(os.getenv("AI_TOPK", "10"))
 
-_BLOB_SVC = BlobServiceClient.from_connection_string(os.getenv("MONITOR_STORAGE"))
+# IMPORTANT: disable per-client logging so headers/bodies aren’t dumped
+_BLOB_SVC = BlobServiceClient.from_connection_string(
+    os.getenv("MONITOR_STORAGE"),
+    logging_enable=False
+)
 
 # ---------- Small utils ----------
 def _parse_json_body(req: func.HttpRequest) -> dict:
@@ -62,7 +71,7 @@ def _parse_json_body(req: func.HttpRequest) -> dict:
 def _blob_container():
     cont = _BLOB_SVC.get_container_client(UNIVERSE_CONTAINER)
     try:
-        cont.create_container()
+        cont.create_container(logging_enable=False)
     except Exception:
         pass
     return cont
@@ -70,17 +79,20 @@ def _blob_container():
 def _signals_container():
     cont = _BLOB_SVC.get_container_client(SIGNALS_CONTAINER)
     try:
-        cont.create_container()
+        cont.create_container(logging_enable=False)
     except Exception:
         pass
     return cont
 
 def _upload_bytes(container_client, blob_name: str, data: bytes, content_type: str):
     container_client.upload_blob(
-        blob_name, data=data, overwrite=True,
-        content_settings=ContentSettings(content_type=content_type)
+        blob_name,
+        data=data,
+        overwrite=True,
+        content_settings=ContentSettings(content_type=content_type),
+        logging_enable=False,  # <- critical to suppress per-call logging
     )
-    # quieter: only show in DEBUG (headers/status come from SDK otherwise)
+    # Quieter: only show on DEBUG (no headers/status here)
     logging.debug(f"[upload] wrote {container_client.container_name}/{blob_name} ({len(data)} bytes)")
 
 def _write_universe_blob(tickers: list[str], meta: dict | None = None) -> None:
@@ -96,7 +108,8 @@ def _write_universe_blob(tickers: list[str], meta: dict | None = None) -> None:
         UNIVERSE_BLOB_NAME,
         data=json.dumps(payload).encode("utf-8"),
         overwrite=True,
-        content_settings=ContentSettings(content_type="application/json")
+        content_settings=ContentSettings(content_type="application/json"),
+        logging_enable=False,
     )
 
 # ---------- Universe computation (budgeted) ----------
