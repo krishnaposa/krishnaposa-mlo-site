@@ -1,3 +1,5 @@
+# monitoring/emailer.py
+
 import os
 import ssl
 from email.message import EmailMessage
@@ -10,10 +12,6 @@ def _list_html(items: List[str], max_items: int = 100) -> str:
     return ", ".join(map(str, items))
 
 def _sim_table_html(rows: Optional[List[Dict]], max_rows: int = 60) -> str:
-    """
-    rows: [{"ticker": "AAPL", "mc30": 0.67, "hmm_bull": 0.58, "ml_prob": 0.62}, ...]
-    All values are rendered as percentages where applicable.
-    """
     if not rows:
         return "<i>No simulation metrics</i>"
 
@@ -34,15 +32,60 @@ def _sim_table_html(rows: Optional[List[Dict]], max_rows: int = 60) -> str:
         "</tr></thead><tbody>"
     ]
     for r in head:
-        tkr = str(r.get("ticker", ""))
-        mc  = _fmt_pct(r.get("mc30"))
-        hmm = _fmt_pct(r.get("hmm_bull"))
-        ml  = _fmt_pct(r.get("ml_prob"))
         html.append(
-            f"<tr><td>{tkr}</td>"
-            f"<td align='right'>{mc}</td>"
-            f"<td align='right'>{hmm}</td>"
-            f"<td align='right'>{ml}</td></tr>"
+            f"<tr><td>{r.get('ticker','')}</td>"
+            f"<td align='right'>{_fmt_pct(r.get('mc30'))}</td>"
+            f"<td align='right'>{_fmt_pct(r.get('hmm_bull'))}</td>"
+            f"<td align='right'>{_fmt_pct(r.get('ml_prob'))}</td></tr>"
+        )
+    html.append("</tbody></table>")
+    return "".join(html)
+
+def _opt_table_html(rows: Optional[List[Dict]], max_rows: int = 40) -> str:
+    """
+    rows: [{"ticker","expiry","dte","k1","k2","debit","oi1","oi2","combo_spread"}]
+    """
+    if not rows:
+        return "<i>No options data</i>"
+
+    def _fmt_money(x):
+        try:
+            return f"${float(x):.2f}"
+        except Exception:
+            return "—"
+
+    def _fmt_pct(x):
+        try:
+            return f"{float(x)*100:.0f}%"
+        except Exception:
+            return "—"
+
+    head = rows[:max_rows]
+    html = [
+        "<table border='0' cellspacing='0' cellpadding='4'>",
+        "<thead><tr>",
+        "<th align='left'>Ticker</th>",
+        "<th align='left'>Expiry</th>",
+        "<th align='right'>DTE</th>",
+        "<th align='right'>Long&nbsp;K</th>",
+        "<th align='right'>Short&nbsp;K</th>",
+        "<th align='right'>Mid&nbsp;Debit</th>",
+        "<th align='right'>OI&nbsp;Long</th>",
+        "<th align='right'>OI&nbsp;Short</th>",
+        "<th align='right'>Combo Spread%</th>",
+        "</tr></thead><tbody>",
+    ]
+    for r in head:
+        html.append(
+            f"<tr><td>{r.get('ticker','')}</td>"
+            f"<td>{r.get('expiry','')}</td>"
+            f"<td align='right'>{r.get('dte','')}</td>"
+            f"<td align='right'>{r.get('k1','')}</td>"
+            f"<td align='right'>{r.get('k2','')}</td>"
+            f"<td align='right'>{_fmt_money(r.get('debit'))}</td>"
+            f"<td align='right'>{r.get('oi1','')}</td>"
+            f"<td align='right'>{r.get('oi2','')}</td>"
+            f"<td align='right'>{_fmt_pct(r.get('combo_spread'))}</td></tr>"
         )
     html.append("</tbody></table>")
     return "".join(html)
@@ -52,18 +95,10 @@ def send_email_report_with_sims(*,
     picks_tickers: List[str],
     ai_spreads_list: List[str],
     ai_leaps_list: List[str],
-    sim_rows: Optional[List[Dict]] = None,   # expects: ticker, mc30, hmm_bull, ml_prob
-    spread_candidates_list: Optional[List[str]] = None,  # NEW: top debit call spread names
+    sim_rows: Optional[List[Dict]] = None,    # ticker, mc30, hmm_bull, ml_prob
+    opt_rows: Optional[List[Dict]] = None,    # ticker, expiry, dte, k1, k2, debit, oi1, oi2, combo_spread
     subj_prefix: str = "Daily Stock Picks"
 ):
-    """
-    Minimal, list-first email with:
-      - Picks (buy_flag + leaders slice)
-      - AI lists (spreads, leaps)
-      - NEW: Top Debit Call Spread Candidates (from spread_score)
-      - Simulator table: Monte Carlo (P↑), HMM (Bull Prob), ML (P↑)
-      - Tiny EAT reminder line
-    """
     if os.getenv("SEND_EMAIL", "0") != "1":
         return
 
@@ -73,20 +108,17 @@ def send_email_report_with_sims(*,
     if not (email_from and pwd and tos):
         return
 
-    # Subject tail from top 2 AI names
     s_spreads = ", ".join(ai_spreads_list[:2])
     s_leaps   = ", ".join(ai_leaps_list[:2])
     subj_tail = f"Spreads: {s_spreads}" + (f" | LEAPS: {s_leaps}" if s_leaps else "")
     subject = f"{subj_prefix} — {stamp} | {subj_tail}".strip().rstrip(" |")
 
-    # Sections
     html_picks   = _list_html(picks_tickers)
     html_spreads = _list_html(ai_spreads_list)
     html_leaps   = _list_html(ai_leaps_list)
     html_sims    = _sim_table_html(sim_rows)
-    html_spread_candidates = _list_html(spread_candidates_list or [])
+    html_opts    = _opt_table_html(opt_rows)
 
-    # Small reminder line about EAT
     eat_note = (
         "<div style='font-size:12px;color:#666;margin-top:8px'>"
         "<b>EAT</b> = Earnings Avoid Threshold (we typically avoid opening new trades if earnings "
@@ -106,15 +138,15 @@ def send_email_report_with_sims(*,
       <h3>AI: LEAPS (12–24 months)</h3>
       <div>{html_leaps}</div>
 
-      <h3>Top Debit Call Spread Candidates</h3>
-      <div>{html_spread_candidates}</div>
-
       <h3>Simulators</h3>
       {html_sims}
+
+      <h3>Options (30–45 DTE) Setup</h3>
+      {html_opts}
+
       {eat_note}
     </body></html>"""
 
-    # Send
     msg = EmailMessage()
     msg["From"] = email_from
     msg["To"] = ", ".join(tos)
