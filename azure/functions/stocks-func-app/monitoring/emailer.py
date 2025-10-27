@@ -5,11 +5,13 @@ import ssl
 from email.message import EmailMessage
 from typing import List, Dict, Optional
 
+
 def _list_html(items: List[str], max_items: int = 100) -> str:
     if not items:
         return "<i>None</i>"
     items = items[:max_items]
     return ", ".join(map(str, items))
+
 
 def _sim_table_html(rows: Optional[List[Dict]], max_rows: int = 60) -> str:
     if not rows:
@@ -40,6 +42,41 @@ def _sim_table_html(rows: Optional[List[Dict]], max_rows: int = 60) -> str:
         )
     html.append("</tbody></table>")
     return "".join(html)
+
+
+def _perf_table_html(rows: Optional[List[Dict]], max_rows: int = 50) -> str:
+    """
+    rows: [{"ticker": "AAPL", "perf_5d": 2.4, "perf_1m": 5.6, "perf_6m": 28.7}, ...]
+    """
+    if not rows:
+        return "<i>No performance data</i>"
+
+    def _fmt(x):
+        try:
+            return f"{float(x):.1f}%"
+        except Exception:
+            return "—"
+
+    head = rows[:max_rows]
+    html = [
+        "<table border='0' cellspacing='0' cellpadding='4'>",
+        "<thead><tr>",
+        "<th align='left'>Ticker</th>",
+        "<th align='right'>5-Day</th>",
+        "<th align='right'>1-Month</th>",
+        "<th align='right'>6-Month</th>",
+        "</tr></thead><tbody>"
+    ]
+    for r in head:
+        html.append(
+            f"<tr><td>{r.get('ticker','')}</td>"
+            f"<td align='right'>{_fmt(r.get('perf_5d'))}</td>"
+            f"<td align='right'>{_fmt(r.get('perf_1m'))}</td>"
+            f"<td align='right'>{_fmt(r.get('perf_6m'))}</td></tr>"
+        )
+    html.append("</tbody></table>")
+    return "".join(html)
+
 
 def _opt_table_html(rows: Optional[List[Dict]], max_rows: int = 40) -> str:
     """
@@ -90,6 +127,7 @@ def _opt_table_html(rows: Optional[List[Dict]], max_rows: int = 40) -> str:
     html.append("</tbody></table>")
     return "".join(html)
 
+
 def send_email_report_with_sims(*,
     stamp: str,
     picks_tickers: List[str],
@@ -97,6 +135,7 @@ def send_email_report_with_sims(*,
     ai_leaps_list: List[str],
     sim_rows: Optional[List[Dict]] = None,    # ticker, mc30, hmm_bull, ml_prob
     opt_rows: Optional[List[Dict]] = None,    # ticker, expiry, dte, k1, k2, debit, oi1, oi2, combo_spread
+    perf_rows: Optional[List[Dict]] = None,   # ticker, perf_5d, perf_1m, perf_6m
     subj_prefix: str = "Daily Stock Picks"
 ):
     if os.getenv("SEND_EMAIL", "0") != "1":
@@ -117,6 +156,7 @@ def send_email_report_with_sims(*,
     html_spreads = _list_html(ai_spreads_list)
     html_leaps   = _list_html(ai_leaps_list)
     html_sims    = _sim_table_html(sim_rows)
+    html_perf    = _perf_table_html(perf_rows)
     html_opts    = _opt_table_html(opt_rows)
 
     eat_note = (
@@ -140,6 +180,9 @@ def send_email_report_with_sims(*,
 
       <h3>Simulators</h3>
       {html_sims}
+
+      <h3>Performance (Price Change)</h3>
+      {html_perf}
 
       <h3>Options (30–45 DTE) Setup</h3>
       {html_opts}
