@@ -124,10 +124,12 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
         # momentum z-scores
         for col in ["ret_20", "ret_60", "ret_120"]:
-            mu = d[col].rolling(180).mean()
-            sd = d[col].rolling(180).std()
-            d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
-
+           if col not in d.columns:
+              d[col] = np.nan  # ensure column exists even if data is short
+           mu = d[col].rolling(180).mean()
+           sd = d[col].rolling(180).std()
+           d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
+        
         eps_sig = eps_surprise_trend(t)
 
         # ---- Monte Carlo & HMM ----
