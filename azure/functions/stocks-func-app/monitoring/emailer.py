@@ -130,6 +130,7 @@ def _opt_table_html(rows: Optional[List[Dict]], max_rows: int = 40) -> str:
 
 def send_email_report_with_sims(*,
     stamp: str,
+    universe_tickers: List[str],
     picks_tickers: List[str],
     ai_spreads_list: List[str],
     ai_leaps_list: List[str],
@@ -152,6 +153,7 @@ def send_email_report_with_sims(*,
     subj_tail = f"Spreads: {s_spreads}" + (f" | LEAPS: {s_leaps}" if s_leaps else "")
     subject = f"{subj_prefix} — {stamp} | {subj_tail}".strip().rstrip(" |")
 
+    html_universe   = _list_html(universe_tickers)
     html_picks   = _list_html(picks_tickers)
     html_spreads = _list_html(ai_spreads_list)
     html_leaps   = _list_html(ai_leaps_list)
@@ -168,6 +170,9 @@ def send_email_report_with_sims(*,
 
     html_body = f"""<html><body>
       <h2>Daily Stock Picks — {stamp}</h2>
+
+      <h3>Universe stocks</h3>
+      <div>{html_universe}</div>
 
       <h3>Stock Picks (buy_flag + top leaders)</h3>
       <div>{html_picks}</div>

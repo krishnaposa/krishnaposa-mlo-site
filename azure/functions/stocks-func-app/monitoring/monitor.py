@@ -278,6 +278,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     stamp = today.strftime("%Y-%m-%d")
     send_email_report_with_sims(
         stamp=stamp,
+        universe_tickers=universe_tickers,
         picks_tickers=picks_tickers,
         ai_spreads_list=ai_spreads_list,
         ai_leaps_list=ai_leaps_list,
