@@ -2,7 +2,7 @@
 import json, logging, re
 from azure.storage.blob import ContentSettings
 import azure.functions as func
-from shared import BLOB, INPUT, enqueue_job, job_id_for, put_status
+from shared import BLOB, INPUT, enqueue_job, job_id_for, put_status, ensure_vm_running
 
 YTLINK_RE = re.compile(r'^https?://(www\.)?(youtube\.com|youtu\.be)/', re.I)
 
@@ -64,7 +64,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # enqueue work
         enqueue_job({"job_id": job_id, "src": src})
 
-        return _json(200, {"job_id": job_id})
+        payload = {"job_id": job_id}
+        try:
+            payload["vm"] = ensure_vm_running()
+        except Exception as e:
+            logging.warning("ensure_vm_running: %s", e)
+
+        return _json(200, payload)
 
     except Exception as e:
         logging.exception("submit failed")

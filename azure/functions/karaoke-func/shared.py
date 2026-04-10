@@ -10,12 +10,16 @@ OUTPUT = os.environ.get("OUTPUT_CONTAINER","karaoke-output")
 STATUS = os.environ.get("STATUS_CONTAINER","karaoke-status")
 QUEUE  = os.environ.get("QUEUE_NAME","karaoke-jobs")
 
-SUBSCRIPTION_ID = os.environ["SUBSCRIPTION_ID"]
-RESOURCE_GROUP  = os.environ["RESOURCE_GROUP"]
-VM_NAME         = os.environ["VM_NAME"]
-
 BLOB = BlobServiceClient.from_connection_string(STOR)
 QCLIENT = QueueClient.from_connection_string(STOR, QUEUE)
+
+
+def _vm_ids():
+    return (
+        os.environ["SUBSCRIPTION_ID"],
+        os.environ["RESOURCE_GROUP"],
+        os.environ["VM_NAME"],
+    )
 
 def job_id_for(name: str) -> str:
     return hashlib.sha1(f"{name}-{time.time()}".encode()).hexdigest()[:16]
@@ -36,21 +40,24 @@ def enqueue_job(msg: dict):
 
 # ---------- VM control ----------
 def _compute():
+    sub, _, _ = _vm_ids()
     cred = DefaultAzureCredential(exclude_interactive_browser_credential=False)
-    return ComputeManagementClient(cred, SUBSCRIPTION_ID)
+    return ComputeManagementClient(cred, sub)
 
 def ensure_vm_running():
+    _, rg, name = _vm_ids()
     cm = _compute()
-    vm = cm.virtual_machines.get(RESOURCE_GROUP, VM_NAME, expand="instanceView")
+    vm = cm.virtual_machines.get(rg, name, expand="instanceView")
     statuses = [s.code for s in vm.instance_view.statuses]
     if any("powerstate/running" in s for s in statuses):
         return "running"
-    cm.virtual_machines.begin_start(RESOURCE_GROUP, VM_NAME).wait()
+    cm.virtual_machines.begin_start(rg, name).wait()
     return "started"
 
 def deallocate_vm():
+    _, rg, name = _vm_ids()
     cm = _compute()
-    cm.virtual_machines.begin_deallocate(RESOURCE_GROUP, VM_NAME).wait()
+    cm.virtual_machines.begin_deallocate(rg, name).wait()
 
 def queue_length() -> int:
     meta = QCLIENT.get_queue_properties()

@@ -1,12 +1,12 @@
 import os, json, time
 from azure.storage.blob import BlobClient
-from shared import queue_length, deallocate_vm, BLOB
+from shared import queue_length, deallocate_vm, BLOB, STATUS
 
 IDLE_MIN = int(os.environ.get("IDLE_MINUTES","5"))
 
 def main(myTimer):
     # Use a tiny blob as heartbeat updated by the VM worker
-    bc = BLOB.get_container_client("karaoke-status")
+    bc = BLOB.get_container_client(STATUS)
     last = 0
     try:
         last = int(bc.download_blob("_last_done_epoch.txt").content_as_text())

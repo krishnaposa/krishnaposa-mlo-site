@@ -87,3 +87,43 @@ yt-dlp --cookies "C:\pers\cookies\youtube_cookies.txt" -f "bestaudio[ext=m4a]/be
 
 curl -v "https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/lyrics?title=Shayad&artist=Arijit%20Singh&duration=250" \
   -H "Accept: application/json"
+
+
+
+  Review: how karaoke-func fits together
+API (Azure Functions, Python) under azure/functions/karaoke-func: HTTP handlers for submit, list, status, lyrics; vmreaper is a timer that deallocates the worker VM when the queue is idle and the worker has written a recent heartbeat (_last_done_epoch.txt in the status container).
+Worker (Linux VM) runs azure/virtualmachine/karaoke-agent/agent.py: reads the queue, pulls input from blob or YouTube, runs demucs, uploads vocals / no_vocals to blob, updates job status.
+Shared data plane: one Storage account with containers karaoke-input, karaoke-output, karaoke-status, karaoke-lyrics and queue karaoke-jobs. App settings use STORAGE_CONN (same connection string as the Functions runtime storage in the template).
+Gaps that blocked a “full stack” after removing the resource group
+
+There was no IaC in the repo to recreate RG + dependencies.
+shared.py required SUBSCRIPTION_ID / RESOURCE_GROUP / VM_NAME at import time, so anything importing shared failed in local setups that only had storage settings.
+submit/init.py never called ensure_vm_running(), so after deallocate the API could enqueue work without starting the VM (unless you started it manually).
+submit/init_remote.py imported ensure_vm_running from shared_local, where it does not exist.
+list/function.json and local.settings.json used // comments, which are not valid JSON (risky for tooling).
+vmreaper hard-coded "karaoke-status" instead of the configured status container name.
+What was added
+Item														Purpose
+azure/functions/karaoke-func/infra/main.bicep		One-shot RG deployment: Storage (containers + queue), Linux Consumption Function App (Python 3.10) with app settings, Ubuntu VM, NSG + public IP, role assignment so the Function App’s managed identity can start/deallocate the VM.
+azure/functions/karaoke-func/infra/deploy.ps1		Creates the RG if needed and runs az deployment group create.
+.gitignore											Ignores generated infra/main.json.
+.funcignore											Ignores infra/ so it isn’t published with the app.
+
+Deploy (after az login):
+
+cd c:\pers\krishnaposa-mlo-site\azure\functions\karaoke-func\infra
+.\deploy.ps1 -ResourceGroupName "rg-karaoke-prod" -Location "canadacentral" -SshPublicKey (Get-Content "$env:USERPROFILE\.ssh\id_ed25519.pub" -Raw)
+Then:
+
+SSH to the VM using the deployment outputs (vmPublicIp / vmSshHint).
+Install the worker using azure/virtualmachine/karaoke-agent/instructions.txt (venv, demucs, systemd, same STORAGE_CONN / container / queue names as the template).
+From azure/functions/karaoke-func, publish: func azure functionapp publish <functionAppName-from-output>.
+DefaultAzureCredential in Azure will use the Function App’s system-assigned identity for the Compute SDK once the role assignment has propagated (can take a few minutes).
+
+Code changes (behavior)
+shared.py: VM settings are read only inside ensure_vm_running / deallocate_vm via _vm_ids(), so importing shared no longer requires VM env vars until those run.
+submit/init.py: After enqueue, calls ensure_vm_running() and adds a vm field when it succeeds; failures are logged so local runs without VM config still return job_id.
+vmreaper/init.py: Uses the STATUS container from config.
+init_remote.py: Imports ensure_vm_running from shared.
+list/function.json / local.settings.json: Comment-only JSON issues removed.
+If you want, we can next add a parameter file for deploy.ps1 (cleaner than long SSH keys on the command line) or wire Application Insights into the Bicep template.
