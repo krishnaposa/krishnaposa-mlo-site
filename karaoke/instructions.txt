@@ -74,7 +74,6 @@ az storage account show-connection-string --resource-group karaoke-rg --name kpk
 --query connectionString -o tsv
 
 
-
 .\deploy.ps1 -ResourceGroupName karaoke-rg -ExternalStorage -ExistingAppServicePlanResourceId "/subscriptions/..."
 
 
