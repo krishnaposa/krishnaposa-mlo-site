@@ -72,7 +72,12 @@ infra/deploy.ps1: -DeployWorkerVm optional; validates SSH key only when that swi
 
 az storage account show-connection-string --resource-group karaoke-rg --name kpkaraokef34hnamn2t2os
 --query connectionString -o tsv
-DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=kpkaraokef34hnamn2t2os;AccountKey=WmcJbagDcoMQty1eNsmfmCyhz7cu1nFqo1f25uke1GXD8tEOhM1LWkS81CyFxfvqzOcGQXVXOG41+AStnyC18A==;BlobEndpoint=https://kpkaraokef34hnamn2t2os.blob.core.windows.net/;FileEndpoint=https://kpkaraokef34hnamn2t2os.file.core.windows.net/;QueueEndpoint=https://kpkaraokef34hnamn2t2os.queue.core.windows.net/;TableEndpoint=https://kpkaraokef34hnamn2t2os.table.core.windows.net/
+DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;...
 
 
-.\deploy.ps1 -ResourceGroupName karaoke-rg -ExternalStorage -ExistingAppServicePlanResourceId "/subscriptions/da1584eb-0846-48ba-8ce5-b695f126b6dc/resourceGroups/karaoke-rg/providers/Microsoft.Web/serverfarms/ASP-karaokerg-9ff3"
+.\deploy.ps1 -ResourceGroupName karaoke-rg -ExternalStorage -ExistingAppServicePlanResourceId "/subscriptions/..."
+
+
+
+ cd C:\pers\krishnaposa-mlo-site\azure\functions\karaoke-func
+       func azure functionapp publish YOUR_FUNCTION_APP_NAME
