@@ -2,7 +2,7 @@
    Shared helpers (state, endpoints, playback, lyrics).
 */
 (function (w) {
-  const API_BASE = 'https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net';
+  const API_BASE = 'https://karaoke-func-f34hnamn2t2os.azurewebsites.net';
   const FUNCTION_CODE = ''; // if your function needs ?code=
   const withCode = (u) => FUNCTION_CODE ? `${u}?code=${FUNCTION_CODE}` : u;
 

@@ -48,3 +48,31 @@ curl -X POST "https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsit
     "job_id": "1f388398d84a6a5b3",
     "text": "Tu Hi Ye Mujhko Bata De\r\nChahun Main Ya Naa\r\nApne Tu Dil Ka Pata De\r\nChahun Main Ya Naa\r\nTu Hi Ye Mujhko Bata De\r\nChahun Main Ya Naa\r\nApne Tu Dil Ka Pata De\r\nChahun Main Ya Naa\r\nItna Bata Doon Tujhko\r\nChaahat Pe Apni Mujhko\r\nYun Ton Nahi Ikhtiyaar\r\nPhir Bhi Yeh Socha Dil Ne\r\nAb Jo Laga Hoon Milne\r\nPoochhu Tujhe Ek Baar\r\nTu Hi Ye Mujhko Bata De\r\nChahun Main Ya Naa\r\nApne Tu Dil Ka Pata De\r\nChahun Main Ya Naa\r\nAisi Kabhi Pehle Hui Naa Thi Khwaahishein\r\nO.. Kisi Se Bhi Milne Ki\r\nNaa Ki Thi Koshishein\r\nUljhan Meri Suljha De\r\nChaahun Main Ya Naa\r\nAankhon Aankhon Mein Jataa De\r\nChaahun Main Ya Naa\r\nMere Chhote Chhote Khwaab Hain\r\nKhwabon Mein Geet Hain\r\nGeeton Mein Zindagi Hain\r\nChaahat Hai, Preet Hai\r\nAbhi Main Na Dekhoon Khwaab Woo\r\nJin Mein Na Tu Mile\r\nLe Khole Honth Maine\r\nAb Tak The Jo Sile\r\nMujhko Na Jitna Mujh Pe\r\nUtna Iss Dil Ko Tujh Pe\r\nHone Laga Aitbaar\r\nTanha Lamhon Mein Apne\r\nBunti Hoon Tere Sapne\r\nTujhse Hua Mujhko Pyaar O O..\r\nPoochungi Tujhko Kabhi Naa\r\nChaahun Main Ya Naa\r\nTere Khaabon Mein Ab Jeena\r\nChaahun Main Kyun Naa!\r\nTu Hi Yeh Mujhko Bata De\r\nChahun Main Ya Naa\r\nApne Tu Dil Ka Pata De\r\nChahun Main Ya Naa\r\n"
   }'
+
+
+Deploy without a VM
+cd c:\pers\krishnaposa-mlo-site\azure\functions\karaoke-func\infra
+.\deploy.ps1 -ResourceGroupName "rg-karaoke-prod" -Location "canadacentral"
+No -SshPublicKey needed. After deploy, get the storage connection string (portal or az storage account show-connection-string) and point local_worker.py at it (same names as today: karaoke-input / karaoke-output / karaoke-status / karaoke-jobs).
+
+local.settings.json now includes WORKER_VM_ENABLED": "false" so local Functions behave the same way.
+
+If you ever want the VM path
+.\deploy.ps1 -ResourceGroupName "rg-karaoke-prod" -DeployWorkerVm `
+  -SshPublicKey (Get-Content "$env:USERPROFILE\.ssh\id_ed25519.pub" -Raw)
+That sets WORKER_VM_ENABLED=true on the Function App and creates the VM, network, and role assignment.
+
+Code touchpoints
+infra/main.bicep: param deployWorkerVm bool = false; VM/network/role only when true; app setting WORKER_VM_ENABLED.
+shared.py: worker_vm_enabled(); ensure_vm_running / deallocate_vm no-op when disabled.
+vmreaper/init.py: returns immediately when the worker VM path is disabled.
+infra/deploy.ps1: -DeployWorkerVm optional; validates SSH key only when that switch is used.
+
+
+
+az storage account show-connection-string --resource-group karaoke-rg --name kpkaraokef34hnamn2t2os
+--query connectionString -o tsv
+DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=kpkaraokef34hnamn2t2os;AccountKey=WmcJbagDcoMQty1eNsmfmCyhz7cu1nFqo1f25uke1GXD8tEOhM1LWkS81CyFxfvqzOcGQXVXOG41+AStnyC18A==;BlobEndpoint=https://kpkaraokef34hnamn2t2os.blob.core.windows.net/;FileEndpoint=https://kpkaraokef34hnamn2t2os.file.core.windows.net/;QueueEndpoint=https://kpkaraokef34hnamn2t2os.queue.core.windows.net/;TableEndpoint=https://kpkaraokef34hnamn2t2os.table.core.windows.net/
+
+
+.\deploy.ps1 -ResourceGroupName karaoke-rg -ExternalStorage -ExistingAppServicePlanResourceId "/subscriptions/da1584eb-0846-48ba-8ce5-b695f126b6dc/resourceGroups/karaoke-rg/providers/Microsoft.Web/serverfarms/ASP-karaokerg-9ff3"

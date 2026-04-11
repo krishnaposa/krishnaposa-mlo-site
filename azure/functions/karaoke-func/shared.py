@@ -14,6 +14,12 @@ BLOB = BlobServiceClient.from_connection_string(STOR)
 QCLIENT = QueueClient.from_connection_string(STOR, QUEUE)
 
 
+def worker_vm_enabled() -> bool:
+    """When false, skip Azure VM start/deallocate (e.g. worker is local_worker.py on a laptop)."""
+    v = (os.environ.get("WORKER_VM_ENABLED") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
 def _vm_ids():
     return (
         os.environ["SUBSCRIPTION_ID"],
@@ -45,6 +51,8 @@ def _compute():
     return ComputeManagementClient(cred, sub)
 
 def ensure_vm_running():
+    if not worker_vm_enabled():
+        return "disabled"
     _, rg, name = _vm_ids()
     cm = _compute()
     vm = cm.virtual_machines.get(rg, name, expand="instanceView")
@@ -55,6 +63,8 @@ def ensure_vm_running():
     return "started"
 
 def deallocate_vm():
+    if not worker_vm_enabled():
+        return
     _, rg, name = _vm_ids()
     cm = _compute()
     cm.virtual_machines.begin_deallocate(rg, name).wait()
