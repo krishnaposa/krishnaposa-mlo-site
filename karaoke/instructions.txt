@@ -72,7 +72,7 @@ infra/deploy.ps1: -DeployWorkerVm optional; validates SSH key only when that swi
 
 az storage account show-connection-string --resource-group karaoke-rg --name kpkaraokef34hnamn2t2os
 --query connectionString -o tsv
-DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;...
+
 
 
 .\deploy.ps1 -ResourceGroupName karaoke-rg -ExternalStorage -ExistingAppServicePlanResourceId "/subscriptions/..."
