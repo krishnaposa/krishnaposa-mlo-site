@@ -78,10 +78,23 @@
       try { navigator.mediaDevices.addEventListener('devicechange', listOutputs); } catch {}
     });
 
+    vOut?.addEventListener('change', () => { applySinks().catch(() => {}); });
+    bOut?.addEventListener('change', () => { applySinks().catch(() => {}); });
+
     async function applySinks(){
       if (!supportSink) return;
-      try { await vEl?.setSinkId(vOut?.value || 'default'); } catch {}
-      try { await bEl?.setSinkId(bOut?.value || 'default'); } catch {}
+      const errs = [];
+      try {
+        await vEl?.setSinkId(vOut?.value || 'default');
+      } catch (e) {
+        errs.push('Vocals output: ' + (e && e.message ? e.message : e));
+      }
+      try {
+        await bEl?.setSinkId(bOut?.value || 'default');
+      } catch (e) {
+        errs.push('Band output: ' + (e && e.message ? e.message : e));
+      }
+      if (errs.length) setDeviceMsg(errs.join(' · '));
     }
 
     function currentOffsetMs(){
@@ -129,11 +142,13 @@
     }
 
     async function preloadIfNeeded(){
-      if (isLoaded) return;
+      if (isLoaded) {
+        await applySinks();
+        return;
+      }
       if (!vEl?.src || !bEl?.src) {
         throw new Error('No audio URLs loaded yet — choose a song and click “Load selection”.');
       }
-      await applySinks();
       vEl.load();
       bEl.load();
       const waitOne = (el, label) =>
@@ -157,10 +172,12 @@
           el.addEventListener('error', onErr, { once: true });
         });
       await Promise.all([waitOne(vEl, 'Vocals'), waitOne(bEl, 'Band')]);
+      await applySinks();
       isLoaded = true;
     }
 
     async function resumePlay(){
+      await applySinks();
       const [vr, br] = await Promise.allSettled([vEl.play(), bEl.play()]);
       const errs = [vr, br].filter((x) => x.status === 'rejected').map((x) => (x.reason && x.reason.message) || String(x.reason));
       if (errs.length) {
@@ -178,6 +195,7 @@
           throw new Error(`${label}: ${err?.message || err}`);
         });
       try {
+        await applySinks();
         if (offsetMs >= 0) {
           await playOrThrow(bEl, 'Band');
           await new Promise((r) => setTimeout(r, offsetMs));
