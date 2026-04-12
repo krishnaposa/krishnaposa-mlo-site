@@ -93,9 +93,9 @@
       <span class="help">Positive delays vocals; negative delays band.</span>
     </div>
 
-    <!-- Hidden players -->
-    <audio id="vocalsEl" crossorigin="anonymous" preload="auto"></audio>
-    <audio id="bandEl"   crossorigin="anonymous" preload="auto"></audio>
+    <!-- No crossorigin: blob SAS URLs often lack CORS for this site; anonymous would block decode/play. -->
+    <audio id="vocalsEl" preload="auto" playsinline></audio>
+    <audio id="bandEl"   preload="auto" playsinline></audio>
 
     <!-- Hidden inputs for common code (player mode) -->
     <input id="vocalsUrl" type="hidden">

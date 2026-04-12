@@ -120,29 +120,75 @@
       } catch {}
     }
 
+    function _mediaErrorDetail(el, label){
+      const e = el?.error;
+      if (!e) return `${label}: unknown media error`;
+      const codes = { 1: 'ABORTED', 2: 'NETWORK', 3: 'DECODE', 4: 'SRC_NOT_SUPPORTED' };
+      return `${label}: ${codes[e.code] || e.code} (${e.message || 'no message'})`;
+    }
+
     async function preloadIfNeeded(){
       if (isLoaded) return;
+      if (!vEl?.src || !bEl?.src) {
+        throw new Error('No audio URLs loaded yet — choose a song and click “Load selection”.');
+      }
       await applySinks();
-      vEl.load(); bEl.load();
-      await Promise.all([
-        new Promise(r => vEl.addEventListener('canplay', r, {once:true})),
-        new Promise(r => bEl.addEventListener('canplay', r, {once:true})),
-      ]);
+      vEl.load();
+      bEl.load();
+      const waitOne = (el, label) =>
+        new Promise((resolve, reject) => {
+          const to = setTimeout(() => {
+            el.removeEventListener('canplay', onOk);
+            el.removeEventListener('error', onErr);
+            reject(new Error(`${label}: timed out waiting to load (network/CORS/blob URL).`));
+          }, 45000);
+          function onOk(){
+            clearTimeout(to);
+            el.removeEventListener('error', onErr);
+            resolve();
+          }
+          function onErr(){
+            clearTimeout(to);
+            el.removeEventListener('canplay', onOk);
+            reject(new Error(_mediaErrorDetail(el, label)));
+          }
+          el.addEventListener('canplay', onOk, { once: true });
+          el.addEventListener('error', onErr, { once: true });
+        });
+      await Promise.all([waitOne(vEl, 'Vocals'), waitOne(bEl, 'Band')]);
       isLoaded = true;
     }
 
     async function resumePlay(){
-      await Promise.all([ vEl.play().catch(()=>{}), bEl.play().catch(()=>{}) ]);
+      const [vr, br] = await Promise.allSettled([vEl.play(), bEl.play()]);
+      const errs = [vr, br].filter((x) => x.status === 'rejected').map((x) => (x.reason && x.reason.message) || String(x.reason));
+      if (errs.length) {
+        throw new Error('Play blocked: ' + errs.join(' | ') + ' (try interacting with the page first, or check browser autoplay settings.)');
+      }
       isPlaying = true;
       startDriftCorrection(currentOffsetMs());
     }
 
     async function startFromZeroWithOffset(offsetMs){
-      vEl.currentTime = 0; bEl.currentTime = 0;
-      if (offsetMs >= 0) {
-        await bEl.play(); await new Promise(r=>setTimeout(r, offsetMs)); await vEl.play();
-      } else {
-        await vEl.play(); await new Promise(r=>setTimeout(r, -offsetMs)); await bEl.play();
+      vEl.currentTime = 0;
+      bEl.currentTime = 0;
+      const playOrThrow = (el, label) =>
+        el.play().catch((err) => {
+          throw new Error(`${label}: ${err?.message || err}`);
+        });
+      try {
+        if (offsetMs >= 0) {
+          await playOrThrow(bEl, 'Band');
+          await new Promise((r) => setTimeout(r, offsetMs));
+          await playOrThrow(vEl, 'Vocals');
+        } else {
+          await playOrThrow(vEl, 'Vocals');
+          await new Promise((r) => setTimeout(r, -offsetMs));
+          await playOrThrow(bEl, 'Band');
+        }
+      } catch (e) {
+        pauseAll();
+        throw e;
       }
       isPlaying = true;
       startDriftCorrection(offsetMs);
