@@ -80,3 +80,20 @@ az storage account show-connection-string --resource-group karaoke-rg --name kpk
 
  cd C:\pers\krishnaposa-mlo-site\azure\functions\karaoke-func
        func azure functionapp publish YOUR_FUNCTION_APP_NAME
+
+
+       run local_worker
+
+       cd C:\pers\krishnaposa-mlo-site\azure\virtualmachine\karaoke-agent
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python .\local_worker.py
+
+Container Apps worker (Azure-hosted queue consumer; no VM)
+cd C:\pers\krishnaposa-mlo-site\azure\functions\karaoke-func\infra
+# Uses same STORAGE_CONN as local.settings.json (or env KARAOKE_STORAGE_CONNECTION_STRING). First run builds the image in ACR (slow).
+.\deploy.ps1 -ResourceGroupName karaoke-rg -Location eastus2 -ContainerWorker -AcrBuild
+# Or deploy only the app when the image already exists in that RG's ACR:
+# .\deploy.ps1 -ResourceGroupName karaoke-rg -Location eastus2 -ContainerWorker -ContainerImage YOUR_ACR.azurecr.io/karaoke-worker:latest
+# Bicep: azure/container-apps/infra/main.aca-worker.bicep  Dockerfile: azure/container-apps/karaoke-worker/Dockerfile

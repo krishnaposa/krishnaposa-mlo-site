@@ -8,7 +8,10 @@
   w.KARAOKE_MODE = 'player';
 
   const LIST_META = document.querySelector('meta[name="karaoke-list"]');
-  const LIST_URL  = LIST_META?.content || '';
+  // Prefer API_BASE from karaoke-common.js; meta tag overrides if set (non-empty).
+  const LIST_URL = (LIST_META?.content && LIST_META.content.trim())
+    ? LIST_META.content.trim()
+    : (K.endpoints && K.endpoints.listUrl) || '';
 
   const pick        = K.$('songPick');
   const useBtn      = K.$('useSelection');
@@ -34,12 +37,18 @@
 
   async function loadList(){
     try{
-      if (!LIST_URL) throw new Error('Missing karaoke-list URL meta.');
+      if (!LIST_URL) throw new Error('Missing list URL: set meta name="karaoke-list" or API_BASE in karaoke-common.js.');
       setListStatus('Loading songs…');
 
       const res = await fetch(LIST_URL, { mode:'cors' });
-      if (!res.ok) throw new Error(`List failed (${res.status})`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = (data && data.error) ? String(data.error) : res.statusText;
+        throw new Error(`List failed (${res.status}): ${err}`);
+      }
+      if (data && data.error) {
+        throw new Error(String(data.error));
+      }
       const items = (data && data.items) || [];
 
       if (pick) pick.innerHTML = '';

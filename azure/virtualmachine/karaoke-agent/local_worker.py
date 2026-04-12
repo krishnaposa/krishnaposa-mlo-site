@@ -1,16 +1,85 @@
 # local_worker.py
-import os, sys, json, time, tempfile, subprocess, pathlib, logging
+import os, sys, json, time, tempfile, subprocess, pathlib, logging, threading, traceback
 from typing import Tuple, Optional, Any
-from azure.storage.queue import QueueClient
-from azure.storage.blob import BlobServiceClient
 
-# -------------------- LOGGING --------------------
+# -------------------- LOGGING (before azure imports so root handlers get wire filters) ----
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+LOG_FORMAT = "%(asctime)s | %(levelname)-7s | %(message)s"
+
+# Azure SDK can emit full HTTP request/response text (noisy). Opt in with AZURE_HTTP_LOG=1.
+def _azure_sdk_http_logging_enabled() -> bool:
+    return os.environ.get("AZURE_HTTP_LOG", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+class _DropAzureHttpWireLogs(logging.Filter):
+    """Strip HttpLoggingPolicy output (handles per-line MULTI_RECORD and odd logger wiring)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if _azure_sdk_http_logging_enabled():
+            return True
+        if "http_logging_policy" in record.name:
+            return False
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+        if msg.startswith("Request URL:") or msg.startswith("Response status:"):
+            return False
+        if msg.startswith("Request method:") or msg.startswith("Request headers:"):
+            return False
+        if msg.startswith("Response headers:"):
+            return False
+        # Indented header lines when AZURE_SDK_LOGGING_MULTIRECORD is set
+        s = msg.lstrip()
+        if s.startswith("'") and ("x-ms-" in msg or "azsdk-python-storage" in msg or "Windows-Azure" in msg):
+            return False
+        return True
+
+
+def _install_azure_wire_log_filter() -> None:
+    """basicConfig is a no-op if root already has handlers; still attach filters everywhere."""
+    _wire_f = _DropAzureHttpWireLogs()
+    root = logging.getLogger()
+    if not root.handlers:
+        _h = logging.StreamHandler(sys.stderr)
+        _h.setFormatter(logging.Formatter(LOG_FORMAT))
+        _h.addFilter(_wire_f)
+        root.addHandler(_h)
+        root.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+    else:
+        for _h in root.handlers:
+            _h.addFilter(_wire_f)
+    _hp = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
+    _hp.addFilter(_wire_f)
+    _hp.handlers.clear()
+    _hp.setLevel(logging.NOTSET)
+    _hp.propagate = True
+    root.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+
+
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format="%(asctime)s | %(levelname)-7s | %(message)s",
+    format=LOG_FORMAT,
 )
+_install_azure_wire_log_filter()
+
+if not _azure_sdk_http_logging_enabled():
+    for _log_name in (
+        "azure",
+        "azure.core",
+        "azure.core.pipeline",
+        "azure.core.pipeline.policies",
+        "azure.storage",
+        "azure.storage.queue",
+        "azure.storage.blob",
+        "urllib3",
+    ):
+        logging.getLogger(_log_name).setLevel(logging.WARNING)
+
 log = logging.getLogger("karaoke-worker")
+
+from azure.storage.queue import QueueClient
+from azure.storage.blob import BlobServiceClient
 
 def jlog(job_id: Optional[str], msg: str, **extra: Any):
     prefix = f"[job {job_id}] " if job_id else ""
@@ -37,6 +106,8 @@ OUTPUT_CONTAINER  = os.environ.get("OUTPUT_CONTAINER", "karaoke-output")
 STATUS_CONTAINER  = os.environ.get("STATUS_CONTAINER", "karaoke-status")
 QUEUE_NAME        = os.environ.get("QUEUE_NAME",       "karaoke-jobs")
 POISON_QUEUE_NAME = os.environ.get("POISON_QUEUE",     f"{QUEUE_NAME}-poison")
+# Azure Queue visibility must cover worst-case separate+upload time or another worker may dequeue the same message.
+QUEUE_VISIBILITY  = int(os.environ.get("QUEUE_VISIBILITY_TIMEOUT", "60"))
 
 # Separator selection: 'spleeter' (fast, default) or 'demucs' (slower, higher quality)
 SEPARATOR         = os.environ.get("SEPARATOR",        "spleeter").lower()
@@ -53,10 +124,21 @@ MAX_DELAY_SEC     = int(os.environ.get("MAX_DELAY_SEC", "900"))  # cap
 # ffmpeg path (Windows)
 FFMPEG_DIR        = os.environ.get("FFMPEG_DIR", r"C:\pers\ffmpeg\bin")
 
+# Log "still running" this often while a subprocess (spleeter/demucs) is in flight (seconds).
+WORKER_HEARTBEAT_SEC = float(os.environ.get("WORKER_HEARTBEAT_SEC", "30"))
+# Log approximate queue depth when idle at least this often (poll interval is 2s).
+IDLE_LOG_EVERY_POLLS = max(1, int(os.environ.get("IDLE_LOG_EVERY_POLLS", "15")))
+
 # -------------------- CLIENTS --------------------
-BLOB   = BlobServiceClient.from_connection_string(STORAGE_CONN)
-QCLI   = QueueClient.from_connection_string(STORAGE_CONN, QUEUE_NAME)
-PCLI   = QueueClient.from_connection_string(STORAGE_CONN, POISON_QUEUE_NAME)
+_sdk_log = _azure_sdk_http_logging_enabled()
+try:
+    BLOB = BlobServiceClient.from_connection_string(STORAGE_CONN, logging_enable=_sdk_log)
+    QCLI = QueueClient.from_connection_string(STORAGE_CONN, QUEUE_NAME, logging_enable=_sdk_log)
+    PCLI = QueueClient.from_connection_string(STORAGE_CONN, POISON_QUEUE_NAME, logging_enable=_sdk_log)
+except TypeError:
+    BLOB = BlobServiceClient.from_connection_string(STORAGE_CONN)
+    QCLI = QueueClient.from_connection_string(STORAGE_CONN, QUEUE_NAME)
+    PCLI = QueueClient.from_connection_string(STORAGE_CONN, POISON_QUEUE_NAME)
 
 # Ensure containers/queues exist
 for cname in (INPUT_CONTAINER, OUTPUT_CONTAINER, STATUS_CONTAINER):
@@ -100,6 +182,14 @@ def run_cmd(cmd: list, job_id: Optional[str], desc: str, cwd: Optional[str] = No
     """Run a subprocess and log stdout/stderr on error. Returns CompletedProcess."""
     jlog(job_id, f"run {desc} start", cmd=" ".join(cmd))
     t0 = time.time()
+    stop_hb = threading.Event()
+
+    def _heartbeat():
+        while not stop_hb.wait(WORKER_HEARTBEAT_SEC):
+            jlog(job_id, f"{desc} still running", elapsed_s=f"{time.time() - t0:.0f}")
+
+    hb_thread = threading.Thread(target=_heartbeat, name="worker-hb", daemon=True)
+    hb_thread.start()
     try:
         cp = subprocess.run(
             cmd, cwd=cwd, env=env, check=True,
@@ -118,21 +208,69 @@ def run_cmd(cmd: list, job_id: Optional[str], desc: str, cwd: Optional[str] = No
         if e.stderr:
             log.error("[job %s] %s stderr:\n%s", job_id, desc, e.stderr[:8000])
         raise
+    finally:
+        stop_hb.set()
+        hb_thread.join(timeout=2.0)
+
+def _approx_queue_depth() -> int:
+    try:
+        return int(QCLI.get_queue_properties().approximate_message_count or 0)
+    except Exception:
+        return -1
+
 
 def download_input_from_blob(blob_key: str, dest_dir: str, job_id: Optional[str]) -> str:
     """Download input from INPUT_CONTAINER/<blob_key> to dest_dir and return local path."""
     t0 = time.time()
-    jlog(job_id, "download input blob start", blob=blob_key)
-    data = (
-        BLOB.get_container_client(INPUT_CONTAINER)
-        .download_blob(blob_key)
-        .readall()
+    cc = BLOB.get_container_client(INPUT_CONTAINER)
+    bc = cc.get_blob_client(blob_key)
+    try:
+        props = bc.get_blob_properties()
+        total = int(props.size)
+    except Exception:
+        total = -1
+    jlog(
+        job_id,
+        "download input blob start",
+        blob=blob_key,
+        bytes=total if total >= 0 else "?",
+        mb_approx=(f"{total / 1e6:.1f} MB" if total >= 0 else "?"),
     )
     fn = os.path.join(dest_dir, pathlib.Path(blob_key).name)
+    progress_every = 8 * 1024 * 1024  # log every 8 MiB for large files
+    written = 0
+    next_log = progress_every
     with open(fn, "wb") as f:
-        f.write(data)
-    jlog(job_id, "download input blob ok",
-         bytes=len(data), seconds=f"{time.time()-t0:.2f}", path=fn)
+        stream = bc.download_blob()
+        chunk_iter = stream.chunks() if hasattr(stream, "chunks") else None
+        if chunk_iter is not None:
+            for chunk in chunk_iter:
+                if not chunk:
+                    continue
+                f.write(chunk)
+                written += len(chunk)
+                if total > 0 and written >= next_log:
+                    pct = min(100, int(100 * written / total))
+                    jlog(
+                        job_id,
+                        "download progress",
+                        bytes_written=written,
+                        total=total,
+                        pct=pct,
+                        seconds=f"{time.time() - t0:.1f}",
+                    )
+                    next_log = written + progress_every
+        else:
+            data = stream.readall()
+            f.write(data)
+            written = len(data)
+    jlog(
+        job_id,
+        "download input blob ok",
+        bytes=written,
+        seconds=f"{time.time() - t0:.2f}",
+        path=fn,
+    )
     return fn
 
 # -------------------- SEPARATORS --------------------
@@ -225,7 +363,7 @@ def upload_outputs(job_id: str, vocals: str, bandlike: str) -> dict:
 
 # -------------------- MAIN LOOP --------------------
 def process_one_message() -> bool:
-    msg = QCLI.receive_message(visibility_timeout=60)
+    msg = QCLI.receive_message(visibility_timeout=QUEUE_VISIBILITY)
     if not msg:
         log.debug("queue empty")
         return False
@@ -344,13 +482,25 @@ def _handle_failure(msg, body, job_id, err_text) -> bool:
 
 def main():
     processed = 0
+    idle_polls = 0
     while True:
         got = process_one_message()
         if got:
+            idle_polls = 0
             processed += 1
             if JOBS_PER_RUN and processed >= JOBS_PER_RUN:
                 break
         else:
+            idle_polls += 1
+            if idle_polls == 1 or idle_polls % IDLE_LOG_EVERY_POLLS == 0:
+                depth = _approx_queue_depth()
+                log.info(
+                    "Idle | waiting on queue=%s | approx_messages=%s | poll=%s (next summary every %s polls)",
+                    QUEUE_NAME,
+                    depth,
+                    idle_polls,
+                    IDLE_LOG_EVERY_POLLS,
+                )
             time.sleep(2)
 
 if __name__ == "__main__":

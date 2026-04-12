@@ -13,6 +13,7 @@
     submitUrl : withCode(`${API_BASE}/api/submit`),
     statusUrl : (jobId) => withCode(`${API_BASE}/api/status/${encodeURIComponent(jobId)}`),
     lyricsUrl : withCode(`${API_BASE}/api/lyrics`),
+    listUrl   : withCode(`${API_BASE}/api/list`),
   };
 
   // --- Utilities ---
