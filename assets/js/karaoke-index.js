@@ -1,5 +1,5 @@
 /* ===== karaoke-index.js =====
-   Handles upload + polling. Uses shared playback + lyrics helpers (karaoke-common.js).
+   Upload + poll jobs; when done, dual playback for vocals→Bluetooth / band→speakers (karaoke-common.js).
 */
 (function (w) {
   const K = w.KARAOKE;

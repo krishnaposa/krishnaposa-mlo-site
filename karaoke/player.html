@@ -10,7 +10,7 @@
 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Karaoke Player – Route Vocals, Band & Lyrics</title>
+  <title>Karaoke Player – Bluetooth vocals, speaker music</title>
 
   <!-- site styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
@@ -31,7 +31,7 @@
   <!-- Song picker -->
   <section class="card">
     <h1>Karaoke Player</h1>
-    <p class="help">Choose a processed song from storage. We’ll auto-load secure (SAS) links for vocals & band.</p>
+    <p class="help">Pick a processed song, then route <strong>vocals → Bluetooth</strong> and <strong>band → the room speaker</strong> so you hear a clear reference in-ear while the backing plays for everyone else. Links load automatically when you choose a track.</p>
 
     <div class="grid-2">
       <div class="field">
@@ -56,7 +56,7 @@
   <!-- Route outputs -->
   <section class="card">
     <h2>Route outputs</h2>
-    <p class="help">Click “Enable device list” first (Chrome/Edge desktop) to pick Bluetooth or other outputs.</p>
+    <p class="help">This is the core setup: <strong>vocals</strong> to your <strong>Bluetooth</strong> headset, <strong>band</strong> to the <strong>speaker</strong> the audience hears. Click “Enable device list” first (Chrome/Edge desktop), then choose each output.</p>
 
     <div class="grid-2">
       <div class="field">
@@ -80,6 +80,7 @@
   <!-- Playback -->
   <section class="card">
     <h2>Play</h2>
+    <p class="help" style="margin-top:0">After routing outputs above, start here. Use offset if Bluetooth adds latency.</p>
     <div class="row" style="margin-bottom:.5rem">
       <button id="play"    class="btn btn-blue"    type="button">Play</button>
       <button id="pause"   class="btn btn-outline" type="button">Pause</button>

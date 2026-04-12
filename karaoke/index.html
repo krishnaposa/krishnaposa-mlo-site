@@ -10,7 +10,7 @@
 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Karaoke Split – Vocals to Buds, Band to Speakers</title>
+  <title>Karaoke Split – Vocals in Bluetooth, music on the speaker</title>
 
   <!-- Base styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
@@ -29,7 +29,7 @@
   <!-- Upload + polling -->
   <section class="card">
     <h1>Karaoke Split</h1>
-    <p class="help">Upload a song (mp3/wav/m4a/flac/aac). We’ll process asynchronously—keep this page open; it will auto-refresh the status.</p>
+    <p class="help"><strong>Why split?</strong> Route the track’s <strong>vocals</strong> to your <strong>Bluetooth</strong> earbuds (your pitch/timing reference) and the <strong>instrumental</strong> to the <strong>room speakers</strong> so you can sing karaoke more confidently. Upload a song (mp3/wav/m4a/flac/aac); processing runs in the background—keep this page open for status updates.</p>
 
     <div class="field">
       <label for="file">Upload file</label>
@@ -56,8 +56,8 @@
 
   <!-- Player -->
   <section id="playerCard" class="card hide">
-    <h2>Play & Route Audio</h2>
-    <p class="help">On Chrome/Edge (desktop), choose different outputs per track. Safari/iOS doesn’t allow per-element output selection.</p>
+    <h2>Play & route audio</h2>
+    <p class="help">Typical setup: <strong>vocals → Bluetooth</strong>, <strong>band → speakers</strong>. On Chrome/Edge (desktop), pick a device for each stream. Safari/iOS doesn’t support separate outputs per element.</p>
 
     <div class="now-playing" style="margin-bottom:.5rem">
       <strong>Now Playing:</strong> <span id="trackTitle">—</span>
@@ -93,9 +93,9 @@
       <span class="help">Adjust if Bluetooth lags (positive delays vocals; negative delays band).</span>
     </div>
 
-    <!-- Hidden players -->
-    <audio id="vocalsEl" crossorigin="anonymous" preload="auto"></audio>
-    <audio id="bandEl" crossorigin="anonymous" preload="auto"></audio>
+    <!-- Hidden players (no crossorigin: blob SAS often lacks CORS for this site) -->
+    <audio id="vocalsEl" preload="auto" playsinline></audio>
+    <audio id="bandEl" preload="auto" playsinline></audio>
   </section>
 
   <!-- Lyrics editor (no preview) -->

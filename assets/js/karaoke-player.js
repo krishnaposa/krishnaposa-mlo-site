@@ -1,5 +1,5 @@
 /* ===== karaoke-player.js =====
-   Song picker + playback + load lyrics (read-only).
+   List finished splits, route vocals vs band to different devices, lyrics (read-only).
 */
 (function (w) {
   const K = w.KARAOKE;

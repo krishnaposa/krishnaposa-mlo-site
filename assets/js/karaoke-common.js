@@ -1,5 +1,6 @@
 /* ===== karaoke-common.js =====
-   Shared helpers (state, endpoints, playback, lyrics).
+   Shared helpers for karaoke split: dual audio so the singer can send
+   vocals to Bluetooth (reference in-ear) and the instrumental to speakers.
 */
 (function (w) {
   const API_BASE = 'https://karaoke-func-f34hnamn2t2os.azurewebsites.net';
