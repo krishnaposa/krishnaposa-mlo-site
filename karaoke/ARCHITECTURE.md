@@ -83,9 +83,11 @@ flowchart LR
 |--------|------|
 | `karaoke/index.html` | Uploader UI, progress, links when done, lyrics section; loads `karaoke-common.js` then `karaoke-index.js`. |
 | `karaoke/player.html` | Picker for finished jobs, dual-audio playback, sync/offset; optional `meta[name="karaoke-list"]` to override list URL; loads `karaoke-common.js` then `karaoke-player.js`. |
+| `karaoke/player-local.html` | Local stems only (folder or two files); no cloud list; loads `karaoke-common.js` + `karaoke-player-local.js`. |
 | `assets/js/karaoke-common.js` | **`KARAOKE` namespace**: `API_BASE`, `K.endpoints` (`submit`, `status`, `lyrics`, `list`), `initPlaybackControls()`, `loadLyrics()`, LRC parser, playback callbacks. |
 | `assets/js/karaoke-index.js` | Submit `FormData` to `/api/submit`, poll `/api/status/{id}`, render SAS links, wire lyrics buttons, `initPlaybackControls()`. |
 | `assets/js/karaoke-player.js` | `fetch` `/api/list`, populate `<select>`, **Load selection** → `PB.setSources(vocals_url, band_url)`, lyrics + sync wiring. |
+| `assets/js/karaoke-player-local.js` | Local file pairing (`vocals.*` + `no_vocals.*` / `accompaniment.*`), `URL.createObjectURL`, optional same-folder routing hints. |
 | `assets/css/karaoke.css`, `assets/css/dark-surface.css` | Layout and theme for karaoke pages. |
 
 Scripts are referenced from production with absolute URLs under `https://www.krishposa.com/assets/...` (see each HTML file).
@@ -194,7 +196,93 @@ sequenceDiagram
 
 ---
 
-## 7. Sequence: list and play (player page)
+## 7. Audio processing implementation
+
+This section describes **where** stems are produced (worker) versus **where** they are only decoded and routed (browser).
+
+### 7.1 Worker-side separation (`local_worker.py`)
+
+All heavy **source separation** runs on the worker VM or Container Apps image, not in Azure Functions and not in the browser.
+
+| Stage | What happens |
+|--------|----------------|
+| **Input** | Queue message `src.type == "blob"` with `src.blob` = key under `karaoke-input` (e.g. `{job_id}/song.mp3`). The worker downloads the blob into a **temp directory** (`tempfile.TemporaryDirectory`). *The current worker implementation requires blob uploads; if the Function enqueues other source types, the worker must be extended to match.* |
+| **Separator choice** | Environment variable **`SEPARATOR`**: `spleeter` (default, faster) or `demucs` (typically higher quality, slower). **`DEMUCS_MODEL`** (e.g. `htdemucs_ft`) applies when using Demucs. |
+| **Spleeter** | `python -m spleeter separate -p spleeter:2stems -o {OUTPUT_BASE}/spleeter <input>`. Produces a folder `{OUTPUT_BASE}/spleeter/{basename}/` containing **`vocals.wav`** and **`accompaniment.wav`**. |
+| **Demucs** | `python -m demucs --two-stems vocals -n <DEMUCS_MODEL> -j 2 <input> -o <OUTPUT_BASE>`. Produces **`{OUTPUT_BASE}/{model}/{basename}/vocals.wav`** and **`no_vocals.wav`**. |
+| **Discovery** | `find_outputs_spleeter` / `find_outputs_demucs` locate the two WAV paths (with filesystem walk fallbacks if layout differs). |
+| **Publish** | `upload_outputs` reads both files and uploads to **`karaoke-output`** as **`{job_id}/vocals.wav`** and **`{job_id}/no_vocals.wav`** always—Spleeter’s `accompaniment.wav` is stored under the **`no_vocals.wav`** blob name for a single consistent contract for the list API and players. |
+| **ffmpeg** | `FFMPEG_DIR` can be prepended to `PATH` (Windows). Demucs/Spleeter may invoke ffmpeg internally for decode/encode; the worker does not run a separate custom ffmpeg step for splitting in the snippet above. |
+| **Subprocess** | `run_cmd` wraps `subprocess.run` with logging and a heartbeat thread for long runs. Failures can trigger **retry** with backoff (`update_message` visibility) or **poison queue** after `MAX_ATTEMPTS`. |
+
+```mermaid
+flowchart LR
+  subgraph Input
+    B["Blob karaoke-input"]
+    L["Local file in temp dir"]
+  end
+  subgraph Sep["Separator"]
+    SP["Spleeter 2-stems"]
+    DM["Demucs two-stems vocals"]
+  end
+  subgraph Files["On-disk WAVs"]
+    V["vocals.wav"]
+    NV["accompaniment.wav or no_vocals.wav"]
+  end
+  subgraph Out
+    OB["karaoke-output job_id/vocals.wav + job_id/no_vocals.wav"]
+  end
+  B --> L
+  L --> SP
+  L --> DM
+  SP --> V
+  SP --> NV
+  DM --> V
+  DM --> NV
+  V --> OB
+  NV --> OB
+```
+
+**Operational env (worker)** — see `local_worker.py` for defaults: `OUTPUT_BASE`, `QUEUE_VISIBILITY`, `MAX_ATTEMPTS`, `WORKER_HEARTBEAT_SEC`, etc.
+
+### 7.2 Browser-side audio (playback only)
+
+The web app does **not** run Demucs/Spleeter. It only:
+
+1. **Loads** finished stems via HTTPS **SAS URLs** (cloud player) or **`blob:` URLs** from `File` objects (`player-local.html` + `karaoke-player-local.js`).
+2. **Decodes** with two hidden `<audio>` elements (`#vocalsEl`, `#bandEl`) in `karaoke-common.js` → `initPlaybackControls()`.
+3. **Routes** output devices with **`HTMLMediaElement.setSinkId`** where the browser supports it (Chrome/Edge desktop). Implementation details that matter in practice:
+   - **`load()`** on an element can reset the chosen sink; sinks are applied **after** `canplay` (or immediately before `play()`), not only before `load()`.
+   - **`applySinks()`** re-runs when output `<select>`s change and when resuming playback so dropdown changes take effect.
+4. **Timing** — optional **offset (ms)** between stems and a simple **drift correction** loop (`playbackRate` nudges) while both are playing.
+
+```mermaid
+flowchart TB
+  subgraph Browser
+    A1["audio#vocalsEl"]
+    A2["audio#bandEl"]
+    SINK["setSinkId per element"]
+    OUT["Bluetooth vs speakers etc."]
+  end
+  A1 --> SINK
+  A2 --> SINK
+  SINK --> OUT
+```
+
+### 7.3 Repository touchpoints
+
+| Component | File(s) |
+|-----------|---------|
+| Separation + upload | `azure/virtualmachine/karaoke-agent/local_worker.py` |
+| Worker dependencies | `azure/virtualmachine/karaoke-agent/requirements.txt` |
+| Container image | `azure/container-apps/karaoke-worker/Dockerfile` |
+| Dual-audio + sinks | `assets/js/karaoke-common.js` (`initPlaybackControls`, `applySinks`, `preloadIfNeeded`, play/restart) |
+| Cloud list player | `karaoke/player.html`, `assets/js/karaoke-player.js` |
+| Local-files-only player | `karaoke/player-local.html`, `assets/js/karaoke-player-local.js` |
+
+---
+
+## 8. Sequence: list and play (player page)
 
 ```mermaid
 sequenceDiagram
@@ -223,7 +311,7 @@ sequenceDiagram
 
 ---
 
-## 8. Lyrics flow
+## 9. Lyrics flow
 
 ```mermaid
 flowchart LR
@@ -243,7 +331,7 @@ flowchart LR
 
 ---
 
-## 9. VM lifecycle (optional cost control)
+## 10. VM lifecycle (optional cost control)
 
 ```mermaid
 stateDiagram-v2
@@ -258,7 +346,7 @@ When `WORKER_VM_ENABLED` is false (e.g. laptop worker), Functions skip start/dea
 
 ---
 
-## 10. Cross-cutting concerns
+## 11. Cross-cutting concerns
 
 | Topic | Where handled |
 |--------|----------------|
@@ -269,7 +357,7 @@ When `WORKER_VM_ENABLED` is false (e.g. laptop worker), Functions skip start/dea
 
 ---
 
-## 11. Related operational docs
+## 12. Related operational docs
 
 - `karaoke/instructions.txt` — deploy steps, Container Apps path, environment hints.
 - `azure/functions/karaoke-func/infra/deploy.ps1` — Function App + optional storage deployment.
@@ -279,3 +367,4 @@ When `WORKER_VM_ENABLED` is false (e.g. laptop worker), Functions skip start/dea
 ## Document history
 
 - Created to align HTML, JavaScript, and Azure components with end-to-end flow diagrams for onboarding and reviews.
+- Added §7 audio processing implementation (worker separation vs browser playback, `setSinkId` / `applySinks` behavior) and local player in repository map.
