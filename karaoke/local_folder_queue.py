@@ -374,12 +374,17 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, json.dumps({"error": f"Bad upload: {e}"}).encode())
             return
 
-        up = fs["file"] if "file" in fs else None
-        if not up or not getattr(up, "filename", None):
+        # FieldStorage forbids `if not up` (__bool__ raises TypeError); test explicitly.
+        if "file" not in fs:
+            self._send(400, json.dumps({"error": "Provide a file field"}).encode())
+            return
+        up = fs["file"]
+        raw_fn = getattr(up, "filename", None)
+        if not raw_fn:
             self._send(400, json.dumps({"error": "Provide a file field"}).encode())
             return
 
-        fname = safe_name(up.filename)
+        fname = safe_name(raw_fn)
         job_id = job_id_for(fname)
         dest = INPUT_DIR / f"{job_id}_{fname}"
 
