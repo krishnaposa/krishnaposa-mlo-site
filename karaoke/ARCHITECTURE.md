@@ -24,7 +24,7 @@ flowchart LR
   subgraph Browser["Browser (www.krishposa.com)"]
     IDX["index.html + karaoke-index.js"]
     PLR["player.html + karaoke-player.js"]
-    COM["karaoke-common.js"]
+    COM["karaoke-core.js + karaoke-azure.js"]
   end
 
   subgraph AzureFunctions["Azure Functions — karaoke-func"]
@@ -81,13 +81,16 @@ flowchart LR
 
 | Asset | Role |
 |--------|------|
-| `karaoke/index.html` | Uploader UI, progress, links when done, lyrics section; loads `karaoke-common.js` then `karaoke-index.js`. |
-| `karaoke/player.html` | Picker for finished jobs, dual-audio playback, sync/offset; optional `meta[name="karaoke-list"]` to override list URL; loads `karaoke-common.js` then `karaoke-player.js`. |
-| `karaoke/player-local.html` | Local stems only (folder or two files); no cloud list; loads `karaoke-common.js` + `karaoke-player-local.js`. |
-| `assets/js/karaoke-common.js` | **`KARAOKE` namespace**: `API_BASE`, `K.endpoints` (`submit`, `status`, `lyrics`, `list`), `initPlaybackControls()`, `loadLyrics()`, LRC parser, playback callbacks. |
+| `karaoke/index.html` | Uploader UI, progress, links when done, lyrics section; loads **`karaoke-core.js`** then **`karaoke-azure.js`** (Azure) then `karaoke-index.js`. |
+| `karaoke/player.html` | Cloud list player; **`karaoke-core.js`** + **`karaoke-azure.js`** + `karaoke-player.js`. |
+| `karaoke/player-local.html` | Local stems on the hosted site; **`karaoke-core.js`** + `karaoke-player-local.js` only (no Azure). |
+| `karaoke/player-standalone.html` | Fully offline playback page; **`karaoke-core.js`** + `karaoke-player-standalone.js` only; documents `input/` + `output/` folder layout. |
+| `assets/js/karaoke-core.js` | **Shared playback**: `K.$`, `initPlaybackControls()` (dual `<audio>`, `setSinkId`, drift), `parseLRC`, stub `loadLyrics`; **no** Azure or `fetch`. |
+| `assets/js/karaoke-azure.js` | **Azure extension** (requires `karaoke-core.js` first): `K.endpoints`, real `loadLyrics` → `/api/lyrics`. |
 | `assets/js/karaoke-index.js` | Submit `FormData` to `/api/submit`, poll `/api/status/{id}`, render SAS links, wire lyrics buttons, `initPlaybackControls()`. |
 | `assets/js/karaoke-player.js` | `fetch` `/api/list`, populate `<select>`, **Load selection** → `PB.setSources(vocals_url, band_url)`, lyrics + sync wiring. |
-| `assets/js/karaoke-player-local.js` | Local file pairing (`vocals.*` + `no_vocals.*` / `accompaniment.*`), `URL.createObjectURL`, optional same-folder routing hints. |
+| `assets/js/karaoke-player-local.js` | Local file pairing for `player-local.html`; blob URLs + `setSources`. |
+| `assets/js/karaoke-player-standalone.js` | Same as local plus optional **input folder** listing and **output/stems** path preference when multiple stem pairs exist. |
 | `assets/css/karaoke.css`, `assets/css/dark-surface.css` | Layout and theme for karaoke pages. |
 
 Scripts are referenced from production with absolute URLs under `https://www.krishposa.com/assets/...` (see each HTML file).
@@ -145,7 +148,7 @@ Environment variables (typical): `STORAGE_CONN`, `INPUT_CONTAINER`, `OUTPUT_CONT
 sequenceDiagram
   participant U as User
   participant I as karaoke-index.js
-  participant C as karaoke-common.js
+  participant C as karaoke-azure.js
   participant F as Function submit
   participant S as Blob status + input
   participant Q as Queue
@@ -250,7 +253,7 @@ flowchart LR
 The web app does **not** run Demucs/Spleeter. It only:
 
 1. **Loads** finished stems via HTTPS **SAS URLs** (cloud player) or **`blob:` URLs** from `File` objects (`player-local.html` + `karaoke-player-local.js`).
-2. **Decodes** with two hidden `<audio>` elements (`#vocalsEl`, `#bandEl`) in `karaoke-common.js` → `initPlaybackControls()`.
+2. **Decodes** with two hidden `<audio>` elements (`#vocalsEl`, `#bandEl`) via `karaoke-core.js` → `initPlaybackControls()`.
 3. **Routes** output devices with **`HTMLMediaElement.setSinkId`** where the browser supports it (Chrome/Edge desktop). Implementation details that matter in practice:
    - **`load()`** on an element can reset the chosen sink; sinks are applied **after** `canplay` (or immediately before `play()`), not only before `load()`.
    - **`applySinks()`** re-runs when output `<select>`s change and when resuming playback so dropdown changes take effect.
@@ -276,9 +279,10 @@ flowchart TB
 | Separation + upload | `azure/virtualmachine/karaoke-agent/local_worker.py` |
 | Worker dependencies | `azure/virtualmachine/karaoke-agent/requirements.txt` |
 | Container image | `azure/container-apps/karaoke-worker/Dockerfile` |
-| Dual-audio + sinks | `assets/js/karaoke-common.js` (`initPlaybackControls`, `applySinks`, `preloadIfNeeded`, play/restart) |
-| Cloud list player | `karaoke/player.html`, `assets/js/karaoke-player.js` |
-| Local-files-only player | `karaoke/player-local.html`, `assets/js/karaoke-player-local.js` |
+| Dual-audio + sinks | `assets/js/karaoke-core.js` (`initPlaybackControls`, `applySinks`, `preloadIfNeeded`, play/restart) |
+| Cloud list player | `karaoke/player.html`, `karaoke-azure.js`, `karaoke-player.js` |
+| Local-files-only (hosted) | `karaoke/player-local.html`, `karaoke-player-local.js` |
+| Offline (no Azure scripts) | `karaoke/player-standalone.html`, `karaoke-player-standalone.js` |
 
 ---
 
@@ -288,7 +292,7 @@ flowchart TB
 sequenceDiagram
   participant U as User
   participant P as karaoke-player.js
-  participant C as karaoke-common.js
+  participant C as karaoke-azure.js
   participant L as Function list
   participant AZ as Blob output SAS
 
@@ -316,7 +320,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
   UI["index.html / player.html"]
-  JS["karaoke-common.js<br/>K.loadLyrics"]
+  JS["karaoke-azure.js<br/>K.loadLyrics"]
   API["GET /api/lyrics?job_id&title&artist&duration"]
   BLOB["karaoke-lyrics by-job/{id}.json"]
   EXT["lrclib.net"]
@@ -351,7 +355,7 @@ When `WORKER_VM_ENABLED` is false (e.g. laptop worker), Functions skip start/dea
 | Topic | Where handled |
 |--------|----------------|
 | **CORS** | Functions add `Access-Control-Allow-Origin` (often `*`) on HTTP responses; browser `fetch(..., { mode: 'cors' })` from the site. |
-| **Auth to Functions** | Optional `?code=` via `FUNCTION_CODE` in `karaoke-common.js`. |
+| **Auth to Functions** | Optional `?code=` via `FUNCTION_CODE` in `karaoke-azure.js`. |
 | **Secrets** | `STORAGE_CONN`, subscription/RG/VM name in Function App settings; not committed to git in real deployments. |
 | **Idempotency / retries** | Worker uses visibility timeout and status updates; failed jobs should be visible in status JSON (see worker error paths). |
 
