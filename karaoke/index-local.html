@@ -10,7 +10,7 @@
 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Karaoke Split (local stems) – Vocals in Bluetooth, music on the speaker</title>
+  <title>Karaoke Split (local folder queue) – Vocals in Bluetooth, music on the speaker</title>
 
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
@@ -25,29 +25,30 @@
 <main class="container">
 
   <section class="card">
-    <h1>Karaoke Split — local stems</h1>
-    <p class="help"><strong>Why split?</strong> Route <strong>vocals</strong> to <strong>Bluetooth</strong> and the <strong>instrumental</strong> to <strong>room speakers</strong>. This page does <strong>not</strong> upload or poll Azure—load stems from your disk (e.g. Demucs <code>vocals.*</code> + <code>no_vocals.*</code> in the same folder). For cloud processing, use <a href="index.html">Karaoke Split (cloud)</a>.</p>
+    <h1>Karaoke Split — local folder queue</h1>
+    <p class="help"><strong>Same flow as the main page:</strong> upload one <strong>mixed</strong> audio file (vocals + band together). This page talks to a <strong>small Python server</strong> in this repo—<strong>not</strong> Azure Functions on your machine (<code>func start</code> is not used). Your file is saved into an <strong>input folder</strong> as the queue; a background thread runs Spleeter/Demucs and writes stems under an <strong>output folder</strong>; the player loads those files over HTTP.</p>
+    <p class="help"><strong>Run:</strong> <code>python karaoke/local_folder_queue.py</code> (defaults: <code>KARAOKE_LOCAL_ROOT</code> = <code>~/.karaoke-local</code>, port <strong>8787</strong>, <code>SEPARATOR=spleeter</code>). Override base URL: <code>?api=http://127.0.0.1:8787</code> or set <code>window.KARAOKE_API_BASE</code> before scripts load. For the hosted cloud pipeline, use <a href="index.html">Karaoke Split (cloud)</a>.</p>
 
-    <h2 style="margin-top:1rem; font-size:1.1rem">Load stems</h2>
-    <p class="help">Pick the folder that contains both stems (e.g. <code>…/htdemucs/YourTrack/</code>), or choose the two files explicitly.</p>
-    <div class="row" style="flex-wrap:wrap; gap:.5rem; align-items:center">
-      <input type="file" id="localSplitFolder" webkitdirectory directory multiple style="display:none" aria-hidden="true">
-      <button type="button" id="pickLocalFolder" class="btn btn-outline">Choose folder…</button>
-      <span id="localStemsStatus" class="help" aria-live="polite"></span>
+    <div class="field">
+      <label for="file">Upload file</label>
+      <input id="file" name="file" type="file" accept=".mp3,.wav,.flac,.m4a,.aac" />
     </div>
-    <div class="grid-2" style="margin-top:.75rem">
-      <div class="field">
-        <label for="localVocalsFile">Vocals file</label>
-        <input type="file" id="localVocalsFile" accept="audio/*,.wav,.mp3,.flac,.m4a,.aac">
-      </div>
-      <div class="field">
-        <label for="localBandFile">Band file</label>
-        <input type="file" id="localBandFile" accept="audio/*,.wav,.mp3,.flac,.m4a,.aac">
-      </div>
+
+    <div class="row">
+      <button id="go" class="btn btn-blue" type="button">Submit</button>
+      <button id="clear" class="btn btn-outline" type="button">Clear</button>
+      <span id="status" class="help" aria-live="polite"></span>
     </div>
-    <div class="row" style="margin-top:.5rem">
-      <button type="button" id="loadLocalPair" class="btn btn-blue">Load chosen files</button>
-      <button type="button" id="clear" class="btn btn-outline">Clear</button>
+
+    <div class="progress" id="prog" hidden>
+      <div class="bar" id="bar"></div>
+    </div>
+
+    <div id="alert" class="error hide" role="alert"></div>
+
+    <div id="done" class="success hide">
+      <div><strong>Ready!</strong> Download:</div>
+      <ul id="links"></ul>
     </div>
   </section>
 
@@ -95,11 +96,17 @@
 
   <section class="card">
     <h2>Lyrics</h2>
-    <p class="help">Load a <code>.txt</code> file into the box, edit, then save as a download. No Job ID—everything stays on your machine.</p>
+    <p class="help">
+      Enter a <strong>Job ID</strong> to load/save lyrics for a processed track. If you just uploaded a song, the Job ID is already set. (Lyrics API must exist at the same base URL; the folder-queue server does not implement lyrics—use the cloud page or extend the local server.)
+    </p>
 
-    <div class="row" style="flex-wrap:wrap; gap:.5rem; align-items:center">
-      <input type="file" id="loadLyricsFile" accept=".txt,text/plain" style="display:none" aria-hidden="true">
-      <button type="button" id="pickLyricsFile" class="btn btn-outline">Load lyrics from file…</button>
+    <div class="field">
+      <label for="lyrJobId">Job ID</label>
+      <input id="lyrJobId" type="text" placeholder="Paste job ID (optional if you just uploaded)">
+    </div>
+
+    <div class="row">
+      <button id="loadLyrics" class="btn btn-outline" type="button">Load Lyrics</button>
     </div>
 
     <div class="field" style="margin-top:.5rem">
@@ -108,7 +115,7 @@
     </div>
 
     <div class="row">
-      <button id="saveLyrics" class="btn btn-blue" type="button">Save lyrics (download)</button>
+      <button id="saveLyrics" class="btn btn-blue" type="button">Save Lyrics</button>
       <span id="lyricsMsg" class="help" aria-live="polite"></span>
     </div>
   </section>
@@ -125,8 +132,17 @@
 <div id="footer"></div>
 <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
+<script>
+(function () {
+  var q = new URLSearchParams(window.location.search);
+  var api = q.get('api');
+  if (api) window.KARAOKE_API_BASE = api;
+  else window.KARAOKE_API_BASE = 'http://127.0.0.1:8787';
+})();
+</script>
 <script src="https://www.krishposa.com/assets/js/karaoke-core.js"></script>
-<script src="https://www.krishposa.com/assets/js/karaoke-index-local.js"></script>
+<script src="https://www.krishposa.com/assets/js/karaoke-azure.js"></script>
+<script src="https://www.krishposa.com/assets/js/karaoke-index.js"></script>
 
 </body>
 </html>
