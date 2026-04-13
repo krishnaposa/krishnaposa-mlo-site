@@ -154,7 +154,17 @@
       setStatus('Queued. Processing…');
       startPolling(jobId);
     } catch (e) {
-      showError(e.message || String(e));
+      let msg = e.message || String(e);
+      const submitUrl = (K.endpoints && K.endpoints.submitUrl) || '';
+      const localHttp = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(submitUrl);
+      if (localHttp && /failed to fetch|networkerror|load failed/i.test(msg)) {
+        msg = 'Could not reach the local queue server at ' + submitUrl + '. ';
+        if (location.protocol === 'https:') {
+          msg += 'This page is on HTTPS; browsers block calls to http://127.0.0.1 (mixed content). Serve this page over http:// (e.g. python -m http.server from the repo) or use file://. ';
+        }
+        msg += 'Confirm python karaoke/local_folder_queue.py is running and the port matches ?api= or KARAOKE_API_BASE.';
+      }
+      showError(msg);
       setStatus(''); els.prog && (els.prog.hidden=true); els.bar && (els.bar.style.width='0%');
     }
   });
