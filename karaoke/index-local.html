@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <!-- GTM -->
   <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
   new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
   j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
@@ -9,7 +10,7 @@
 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Karaoke Player (local stems)</title>
+  <title>Karaoke Split (local stems) – Vocals in Bluetooth, music on the speaker</title>
 
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
@@ -24,15 +25,15 @@
 <main class="container">
 
   <section class="card">
-    <h1>Karaoke Player — local files only</h1>
-    <p class="help">No cloud list: load <strong>vocals</strong> and <strong>band</strong> stems from your disk (e.g. Demucs <code>vocals.wav</code> + <code>no_vocals.wav</code>, or Spleeter <code>accompaniment.wav</code>). Then route <strong>vocals → Bluetooth</strong> and <strong>band → speakers</strong>. Works offline after this page is cached.</p>
+    <h1>Karaoke Split — local stems</h1>
+    <p class="help"><strong>Why split?</strong> Route <strong>vocals</strong> to <strong>Bluetooth</strong> and the <strong>instrumental</strong> to <strong>room speakers</strong>. This page does <strong>not</strong> upload or poll Azure—load stems from your disk (e.g. Demucs <code>vocals.*</code> + <code>no_vocals.*</code> in the same folder). For cloud processing, use <a href="index.html">Karaoke Split (cloud)</a>.</p>
 
     <h2 style="margin-top:1rem; font-size:1.1rem">Load stems</h2>
-    <p class="help">Pick the folder that <em>contains</em> your split output (e.g. <code>…/htdemucs/YourTrack/</code>), or choose the two files explicitly.</p>
+    <p class="help">Pick the folder that contains both stems (e.g. <code>…/htdemucs/YourTrack/</code>), or choose the two files explicitly.</p>
     <div class="row" style="flex-wrap:wrap; gap:.5rem; align-items:center">
       <input type="file" id="localSplitFolder" webkitdirectory directory multiple style="display:none" aria-hidden="true">
       <button type="button" id="pickLocalFolder" class="btn btn-outline">Choose folder…</button>
-      <span class="help">Chrome/Edge: folder picker. Prefer the directory that holds both stems together.</span>
+      <span id="localStemsStatus" class="help" aria-live="polite"></span>
     </div>
     <div class="grid-2" style="margin-top:.75rem">
       <div class="field">
@@ -46,17 +47,18 @@
     </div>
     <div class="row" style="margin-top:.5rem">
       <button type="button" id="loadLocalPair" class="btn btn-blue">Load chosen files</button>
-      <span id="localFilesStatus" class="help" aria-live="polite"></span>
-    </div>
-
-    <div class="now-playing" style="margin-top:.75rem">
-      <strong>Now playing:</strong> <span id="trackTitle">—</span>
+      <button type="button" id="clear" class="btn btn-outline">Clear</button>
     </div>
   </section>
 
-  <section class="card">
-    <h2>Route outputs</h2>
-    <p class="help">Click <strong>Enable device list</strong> (Chrome/Edge desktop), then assign vocals vs band to different devices. On Windows, pick the <strong>stereo</strong> AirPods entry for vocals if you see both “Headphones” and “Headset / hands‑free” (the headset profile cannot split streams).</p>
+  <section id="playerCard" class="card hide">
+    <h2>Play & route audio</h2>
+    <p class="help">Typical setup: <strong>vocals → Bluetooth</strong>, <strong>band → speakers</strong>. On Chrome/Edge (desktop), pick a device for each stream. On Windows with AirPods, choose the stereo <strong>Headphones</strong> entry for vocals if both Headphones and Headset appear. Safari/iOS doesn’t support separate outputs per element.</p>
+
+    <div class="now-playing" style="margin-bottom:.5rem">
+      <strong>Now Playing:</strong> <span id="trackTitle">—</span>
+    </div>
+
     <div class="grid-2">
       <div class="field">
         <label for="vocalsOut">Vocals output</label>
@@ -67,44 +69,64 @@
         <select id="bandOut"></select>
       </div>
     </div>
+
     <div class="row" style="margin-top:.5rem">
       <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
       <button id="testVocals" class="btn btn-outline" type="button">Test Vocals</button>
       <button id="testBand" class="btn btn-outline" type="button">Test Band</button>
       <span id="deviceMsg" class="help" style="margin-left:.5rem" aria-live="polite"></span>
     </div>
-  </section>
 
-  <section class="card">
-    <h2>Play</h2>
-    <p class="help" style="margin-top:0">After stems are loaded and outputs chosen, press Play. Adjust offset if Bluetooth lags.</p>
-    <div class="row" style="margin-bottom:.5rem">
+    <div class="row" style="margin-top:.5rem">
       <button id="play" class="btn btn-blue" type="button">Play</button>
       <button id="pause" class="btn btn-outline" type="button">Pause</button>
       <button id="restart" class="btn btn-outline" type="button">Restart</button>
-      <button id="syncNow" class="btn btn-outline" type="button">Sync now</button>
     </div>
+
     <div class="row">
       <label for="offset">Vocals advance/Delay (ms):</label>
-      <input id="offset" type="number" value="0" step="10" style="width:120px">
-      <span class="help">Positive delays vocals; negative delays band.</span>
+      <input id="offset" type="number" value="0" step="10" />
+      <span class="help">Adjust if Bluetooth lags (positive delays vocals; negative delays band).</span>
     </div>
+
     <audio id="vocalsEl" preload="auto" playsinline></audio>
     <audio id="bandEl" preload="auto" playsinline></audio>
   </section>
 
-  <div class="row" style="justify-content:space-between; flex-wrap:wrap; gap:.5rem">
-    <a class="btn btn-outline" href="/karaoke/index.html">← Uploader</a>
-    <a class="btn btn-outline" href="/karaoke/player.html">Cloud list player →</a>
-    <a class="btn btn-outline" href="/karaoke/player-standalone.html">Offline layout player →</a>
-  </div>
+  <section class="card">
+    <h2>Lyrics</h2>
+    <p class="help">Load a <code>.txt</code> file into the box, edit, then save as a download. No Job ID—everything stays on your machine.</p>
+
+    <div class="row" style="flex-wrap:wrap; gap:.5rem; align-items:center">
+      <input type="file" id="loadLyricsFile" accept=".txt,text/plain" style="display:none" aria-hidden="true">
+      <button type="button" id="pickLyricsFile" class="btn btn-outline">Load lyrics from file…</button>
+    </div>
+
+    <div class="field" style="margin-top:.5rem">
+      <label for="lyrText">Lyrics</label>
+      <textarea id="lyrText" class="lyrics-box" rows="10" placeholder="Paste or edit lyrics…"></textarea>
+    </div>
+
+    <div class="row">
+      <button id="saveLyrics" class="btn btn-blue" type="button">Save lyrics (download)</button>
+      <span id="lyricsMsg" class="help" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="card" style="text-align:center; margin-top:1rem">
+    <p class="help" style="margin-bottom:.75rem">Other pages</p>
+    <button class="btn btn-outline" type="button" onclick="window.location.href='index.html'">Cloud upload &amp; split</button>
+    <button class="btn btn-outline" type="button" onclick="window.location.href='player.html'">Player (cloud URLs)</button>
+    <button class="btn btn-outline" type="button" onclick="window.location.href='player-local.html'">Player (local stems)</button>
+    <button class="btn btn-outline" type="button" onclick="window.location.href='player-standalone.html'">Standalone player</button>
+  </section>
 </main>
 
 <div id="footer"></div>
 <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
-<script>window.KARAOKE_MODE = 'player-local';</script>
 <script src="https://www.krishposa.com/assets/js/karaoke-core.js"></script>
-<script src="https://www.krishposa.com/assets/js/karaoke-player-local.js"></script>
+<script src="https://www.krishposa.com/assets/js/karaoke-index-local.js"></script>
+
 </body>
 </html>

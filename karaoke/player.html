@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
 
-  <!-- Optional: override list URL. If empty, karaoke-player.js uses API_BASE from karaoke-common.js + /api/list -->
+  <!-- Optional: override list URL. If empty, karaoke-player.js uses API_BASE from karaoke-azure.js + /api/list -->
   <meta name="karaoke-list" content="">
 </head>
 <body class="dark-surface">
@@ -119,6 +119,7 @@
 
   <div class="row" style="justify-content:space-between; flex-wrap:wrap; gap:.5rem">
     <a class="btn btn-outline" href="/karaoke/player-local.html">Local files player →</a>
+    <a class="btn btn-outline" href="/karaoke/player-standalone.html">Offline (no Azure) →</a>
     <a class="btn btn-outline" href="/karaoke/index.html">← Back to Uploader</a>
   </div>
 
@@ -131,7 +132,8 @@
 <script>window.KARAOKE_MODE = "player";</script>
 
 <!-- Scripts -->
-<script src="https://www.krishposa.com/assets/js/karaoke-common.js"></script>
+<script src="https://www.krishposa.com/assets/js/karaoke-core.js"></script>
+<script src="https://www.krishposa.com/assets/js/karaoke-azure.js"></script>
 <script src="https://www.krishposa.com/assets/js/karaoke-player.js"></script>
 </body>
 </html>

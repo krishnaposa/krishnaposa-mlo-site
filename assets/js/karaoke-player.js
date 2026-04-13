@@ -8,7 +8,7 @@
   w.KARAOKE_MODE = 'player';
 
   const LIST_META = document.querySelector('meta[name="karaoke-list"]');
-  // Prefer API_BASE from karaoke-common.js; meta tag overrides if set (non-empty).
+  // Prefer API_BASE from karaoke-azure.js; meta tag overrides if set (non-empty).
   const LIST_URL = (LIST_META?.content && LIST_META.content.trim())
     ? LIST_META.content.trim()
     : (K.endpoints && K.endpoints.listUrl) || '';
@@ -37,7 +37,7 @@
 
   async function loadList(){
     try{
-      if (!LIST_URL) throw new Error('Missing list URL: set meta name="karaoke-list" or API_BASE in karaoke-common.js.');
+      if (!LIST_URL) throw new Error('Missing list URL: set meta name="karaoke-list" or API_BASE in karaoke-azure.js.');
       setListStatus('Loading songs…');
 
       const res = await fetch(LIST_URL, { mode:'cors' });

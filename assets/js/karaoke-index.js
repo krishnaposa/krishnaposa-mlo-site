@@ -1,5 +1,5 @@
 /* ===== karaoke-index.js =====
-   Upload + poll jobs; when done, dual playback for vocals→Bluetooth / band→speakers (karaoke-common.js).
+   Upload + poll jobs; when done, dual playback (karaoke-core.js + karaoke-azure.js for API).
 */
 (function (w) {
   const K = w.KARAOKE;

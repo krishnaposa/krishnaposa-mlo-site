@@ -1,5 +1,5 @@
 /* ===== karaoke-player-local.js =====
-   Local stems only: folder scan or two file picks → blob URLs → shared playback (karaoke-common.js).
+   Local stems only: folder scan or two file picks → blob URLs → karaoke-core.js playback (no Azure).
 */
 (function (w) {
   const K = w.KARAOKE;
@@ -110,31 +110,14 @@
   const PB = K.initPlaybackControls();
   K.syncNow = PB.hardResync;
 
-  let _blobV = '';
-  let _blobB = '';
-
-  function revokePendingBlobs(){
-    if (_blobV && _blobV.startsWith('blob:')) {
-      try { URL.revokeObjectURL(_blobV); } catch {}
-    }
-    if (_blobB && _blobB.startsWith('blob:')) {
-      try { URL.revokeObjectURL(_blobB); } catch {}
-    }
-    _blobV = '';
-    _blobB = '';
-  }
-
   function applyLocalFiles(vocalsFile, bandFile, meta){
     if (!vocalsFile || !bandFile) return;
     if (vocalsFile === bandFile) {
       setLocalFilesStatus('Vocals and band must be two different files.');
       return;
     }
-    revokePendingBlobs();
     const vUrl = URL.createObjectURL(vocalsFile);
     const bUrl = URL.createObjectURL(bandFile);
-    _blobV = vUrl;
-    _blobB = bUrl;
     PB.setSources(vUrl, bUrl);
     PB.showTitle(titleFromLocalFile(vocalsFile));
     K.setJobId(null);
