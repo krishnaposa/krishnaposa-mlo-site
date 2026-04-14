@@ -49,6 +49,8 @@
     if (els.lyrText)   els.lyrText.value = '';
     if (els.lyricsMsg) els.lyricsMsg.textContent = '';
     if (els.lyrJobId)  els.lyrJobId.value = '';
+    const ljp = K.$('localJobPick');
+    if (ljp) ljp.value = '';
   }
 
   els.clear?.addEventListener('click', () => {
@@ -115,6 +117,13 @@
           const base = (s.original_name || '').split('/').pop() || '—';
           PB.showTitle(base.replace(/\.(wav|mp3|m4a|flac|aac)$/i,'') || '—');
           els.playerCard?.classList.remove('hide');
+        }
+        const ljp = K.$('localJobPick');
+        if (ljp) {
+          loadLocalJobList().then(function () {
+            const pick = K.$('localJobPick');
+            if (pick) pick.value = jobId;
+          });
         }
         return;
       }
@@ -204,5 +213,68 @@
       msgId: 'lyricsMsg'
     });
   });
+
+  // ---- Local folder queue: list completed jobs (index-local.html) ----
+  const localJobPick = K.$('localJobPick');
+  const refreshLocalList = K.$('refreshLocalList');
+  const localListStatus = K.$('localListStatus');
+
+  async function loadLocalJobList() {
+    if (!localJobPick || !K.endpoints || !K.endpoints.listUrl) return;
+    try {
+      if (localListStatus) localListStatus.textContent = 'Loading…';
+      const r = await fetch(K.endpoints.listUrl, { mode: 'cors' });
+      const data = await r.json().catch(function () { return {}; });
+      if (!r.ok) {
+        const err = (data && data.error) ? String(data.error) : r.statusText;
+        throw new Error(err || String(r.status));
+      }
+      const items = (data && data.items) || [];
+      localJobPick.innerHTML = '';
+      const ph = document.createElement('option');
+      ph.value = '';
+      ph.textContent = items.length ? 'Select a completed job…' : 'No completed splits yet';
+      localJobPick.appendChild(ph);
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const opt = document.createElement('option');
+        opt.value = it.job_id;
+        opt.textContent = (it.title || it.job_id) + ' — ' + it.job_id;
+        opt.dataset.vocals = it.vocals_url || '';
+        opt.dataset.band = it.band_url || '';
+        opt.dataset.title = it.title || '';
+        localJobPick.appendChild(opt);
+      }
+      if (localListStatus) localListStatus.textContent = items.length ? (items.length + ' job(s).') : '';
+    } catch (e) {
+      console.warn(e);
+      localJobPick.innerHTML = '';
+      const ph = document.createElement('option');
+      ph.value = '';
+      ph.textContent = 'Could not load list';
+      localJobPick.appendChild(ph);
+      if (localListStatus) localListStatus.textContent = 'List failed.';
+    }
+  }
+
+  localJobPick?.addEventListener('change', function () {
+    const opt = localJobPick.selectedOptions[0];
+    if (!opt || !opt.value) return;
+    const jid = opt.value;
+    K.setJobId(jid);
+    if (els.lyrJobId) els.lyrJobId.value = jid;
+    const v = opt.dataset.vocals;
+    const b = opt.dataset.band;
+    if (v && b) {
+      PB.setSources(v, b);
+      const raw = opt.dataset.title || jid;
+      PB.showTitle(raw.replace(/\.(wav|mp3|m4a|flac|aac)$/i, '') || jid);
+      els.playerCard?.classList.remove('hide');
+    }
+  });
+
+  refreshLocalList?.addEventListener('click', function () { loadLocalJobList(); });
+
+  if (localJobPick) loadLocalJobList();
 
 })(window);

@@ -99,12 +99,23 @@
   <section class="card">
     <h2>Lyrics</h2>
     <p class="help">
-      Enter a <strong>Job ID</strong> to load or save lyrics for a processed track. If you just uploaded a song, the Job ID is already set. Lyrics are stored under <code>KARAOKE_LOCAL_ROOT/lyrics/</code> on the machine running <code>karaoke/local_folder_queue.py</code> (same API base as upload/status).
+      Pick a <strong>completed split</strong> below (or paste a Job ID). Lyrics are stored under <code>KARAOKE_LOCAL_ROOT/lyrics/</code> on the machine running <code>karaoke/local_folder_queue.py</code>.
     </p>
 
     <div class="field">
+      <label for="localJobPick">Completed splits</label>
+      <div class="row" style="align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:.25rem">
+        <select id="localJobPick" style="min-width:12rem;max-width:100%;flex:1">
+          <option value="">Loading…</option>
+        </select>
+        <button type="button" id="refreshLocalList" class="btn btn-outline">Refresh</button>
+      </div>
+      <span id="localListStatus" class="help" aria-live="polite"></span>
+    </div>
+
+    <div class="field">
       <label for="lyrJobId">Job ID</label>
-      <input id="lyrJobId" type="text" placeholder="Paste job ID (optional if you just uploaded)">
+      <input id="lyrJobId" type="text" placeholder="Paste job ID (optional if you pick above or just uploaded)">
     </div>
 
     <div class="row">

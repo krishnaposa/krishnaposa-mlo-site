@@ -13,6 +13,7 @@ Implements the same routes the web UI expects:
   GET  /api/status/{job_id}
   GET  /api/out/{job_id}/vocals.wav|no_vocals.wav — audio for the player
   GET|POST /api/lyrics — load/save lyrics by job_id (JSON; compatible with karaoke-azure.js)
+  GET  /api/list       — { "items": [ { job_id, title, updated, vocals_url, band_url } ] } (like cloud)
 
 Run:
   set SEPARATOR=spleeter   (default; matches repo requirements.txt — pip install -r requirements.txt)
@@ -159,6 +160,44 @@ def get_saved_lyrics(job_id: str) -> Optional[Dict[str, Any]]:
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def list_completed_jobs() -> list[Dict[str, Any]]:
+    """Folders under output/ with both stems; title from status original_name when present."""
+    items: list[Dict[str, Any]] = []
+    if not OUTPUT_DIR.is_dir():
+        return items
+    for sub in OUTPUT_DIR.iterdir():
+        if not sub.is_dir():
+            continue
+        job_id = sub.name
+        if not JOB_ID_ONLY_RE.match(job_id):
+            continue
+        voc = sub / "vocals.wav"
+        band = sub / "no_vocals.wav"
+        if not (voc.is_file() and band.is_file()):
+            continue
+        st = get_status(job_id) or {}
+        orig = (st.get("original_name") or "").strip()
+        title = Path(orig).stem if orig else job_id
+        try:
+            mtime = max(voc.stat().st_mtime, band.stat().st_mtime)
+            updated = (
+                datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+            )
+        except OSError:
+            updated = None
+        items.append(
+            {
+                "job_id": job_id,
+                "title": title,
+                "updated": updated,
+                "vocals_url": f"{PUBLIC_BASE}/api/out/{job_id}/vocals.wav",
+                "band_url": f"{PUBLIC_BASE}/api/out/{job_id}/no_vocals.wav",
+            }
+        )
+    items.sort(key=lambda x: x.get("updated") or "", reverse=True)
+    return items
 
 
 def _lyrics_clean(s: str) -> str:
@@ -593,10 +632,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path.rstrip("/")
+        path_norm = parsed.path.rstrip("/")
 
-        if path == "/api/lyrics":
+        if path_norm == "/api/lyrics":
             self._handle_get_lyrics(parsed)
+            return
+        if path_norm == "/api/list":
+            items = list_completed_jobs()
+            raw = json.dumps({"items": items}, ensure_ascii=False).encode("utf-8")
+            self._send(200, raw)
             return
 
         path = parsed.path
