@@ -1,6 +1,6 @@
 # Karaoke feature — architecture and design
 
-This document describes how the karaoke split pipeline fits together: static site pages (HTML/CSS/JS), Azure Functions (HTTP API), Azure Storage (blobs + queue + optional lyrics), and workers that drain the job queue (VM agent or Container Apps).
+This document describes how the karaoke split pipeline fits together: static site pages (HTML/CSS/JS), Azure Functions (HTTP API), Azure Storage (blobs + queue + optional lyrics), workers that drain the job queue (VM agent or Container Apps), and an optional **local filesystem queue** (`karaoke/local_folder_queue.py`) for development without Azure.
 
 ---
 
@@ -86,8 +86,8 @@ flowchart LR
 | `karaoke/player-local.html` | Local stems on the hosted site; **`karaoke-core.js`** + `karaoke-player-local.js` only (no Azure). |
 | `karaoke/player-standalone.html` | Fully offline playback page; **`karaoke-core.js`** + `karaoke-player-standalone.js` only; documents `input/` + `output/` folder layout. |
 | `assets/js/karaoke-core.js` | **Shared playback**: `K.$`, `initPlaybackControls()` (dual `<audio>`, `setSinkId`, drift), `parseLRC`, stub `loadLyrics`; **no** Azure or `fetch`. |
-| `assets/js/karaoke-azure.js` | **Azure extension** (requires `karaoke-core.js` first): `K.endpoints`, real `loadLyrics` → `/api/lyrics`. |
-| `assets/js/karaoke-index.js` | Submit `FormData` to `/api/submit`, poll `/api/status/{id}`, render SAS links, wire lyrics buttons, `initPlaybackControls()`. |
+| `assets/js/karaoke-azure.js` | **HTTP API wiring** (requires `karaoke-core.js` first): `K.endpoints` (`submitUrl`, `statusUrl`, `lyricsUrl`, `listUrl`). Default base is the hosted Function App; override with **`window.KARAOKE_API_BASE`** for local. Implements **`loadLyrics`** (GET `/api/lyrics`) and **`saveLyrics`** (POST `/api/lyrics`) with the same JSON shape as Azure. |
+| `assets/js/karaoke-index.js` | Submit `FormData` to `/api/submit`, poll `/api/status/{id}`, render download links when `#done` exists, wire lyrics, `initPlaybackControls()`. On **`index-local.html`** only, if **`#localJobPick`** exists: **`GET /api/list`** populates the dropdown, sets job id + player sources on change, refreshes after a job completes. |
 | `assets/js/karaoke-player.js` | `fetch` `/api/list`, populate `<select>`, **Load selection** → `PB.setSources(vocals_url, band_url)`, lyrics + sync wiring. |
 | `assets/js/karaoke-player-local.js` | Local file pairing for `player-local.html`; blob URLs + `setSources`. |
 | `assets/js/karaoke-player-standalone.js` | Same as local plus optional **input folder** listing and **output/stems** path preference when multiple stem pairs exist. |
@@ -117,6 +117,45 @@ Infrastructure as code: `azure/functions/karaoke-func/infra/*.bicep` (+ compiled
 | `azure/virtualmachine/karaoke-agent/requirements.txt` | Python dependencies for the worker. |
 | `azure/container-apps/karaoke-worker/Dockerfile` | Linux image: ffmpeg + `local_worker.py` as **CMD** (same script, different hosting model than the VM). |
 | `azure/container-apps/infra/main.aca-worker.bicep` (+ `.json`) | Container Apps, registry, scaling, env — optional alternative to the VM worker. |
+
+### 3.4 Local development — `karaoke/local_folder_queue.py`
+
+Single-process **HTTP server + background worker thread** (no Azure, no `func start`). The UI contract matches the cloud uploader so the same **`karaoke-azure.js`** + **`karaoke-index.js`** can target either backend via **`KARAOKE_API_BASE`**.
+
+| Topic | Detail |
+|--------|--------|
+| **Root** | `KARAOKE_LOCAL_ROOT` (default `~/.karaoke-local`). Example: `C:\pers\karaoke-local`. |
+| **Layout** | `input/` — queued uploads `{job_id}_{filename}`; `output/{job_id}/vocals.wav` + `no_vocals.wav`; `status/{job_id}.json` (same shape as cloud status blobs); `lyrics/{job_id}.json` (saved lyrics, same fields as cloud `karaoke-lyrics` blobs). |
+| **Separator** | Env **`SEPARATOR`**: `spleeter` (default) or `demucs`; **`DEMUCS_MODEL`**, **`DEMUCS_JOBS`**, **`FFMPEG_DIR`** as in VM worker docs. |
+| **HTTP** | `POST /api/submit` (multipart `file`); `GET /api/status/{job_id}`; `GET /api/out/{job_id}/vocals.wav` \| `no_vocals.wav`; **`GET /api/lyrics?job_id=`** / **`POST /api/lyrics`** (JSON; saved files only — no lrclib fallback); **`GET /api/list`** — `{ "items": [ { job_id, title, updated, vocals_url, band_url } ] }` with **`PUBLIC_BASE`**-relative stem URLs (same JSON shape as Azure `list`). |
+| **Run** | `python karaoke/local_folder_queue.py`; default bind `127.0.0.1:8787`. Open **`karaoke/index-local.html`** over **http** (or `file://`) so the browser can call the local API (HTTPS pages block mixed-content calls to `http://127.0.0.1`). |
+| **CORS** | Handler sets `Access-Control-Allow-Origin: *` on responses (same idea as Functions). |
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    IL["index-local.html"]
+    COM["karaoke-core.js + karaoke-azure.js + karaoke-index.js"]
+  end
+  subgraph Local["local_folder_queue.py"]
+    HTTP["HTTP :8787"]
+    W["Worker thread\nSpleeter/Demucs"]
+  end
+  subgraph FS["KARAOKE_LOCAL_ROOT"]
+    IN2["input/"]
+    OUT2["output/"]
+    ST2["status/"]
+    LY2["lyrics/"]
+  end
+  IL --> COM
+  COM --> HTTP
+  HTTP --> IN2
+  W --> IN2
+  W --> OUT2
+  W --> ST2
+  COM --> HTTP
+  HTTP --> LY2
+```
 
 ---
 
@@ -372,3 +411,4 @@ When `WORKER_VM_ENABLED` is false (e.g. laptop worker), Functions skip start/dea
 
 - Created to align HTML, JavaScript, and Azure components with end-to-end flow diagrams for onboarding and reviews.
 - Added §7 audio processing implementation (worker separation vs browser playback, `setSinkId` / `applySinks` behavior) and local player in repository map.
+- Added §3.4 local filesystem queue (`local_folder_queue.py`): layout, endpoints (`/api/list`, `/api/lyrics`), and `index-local.html` + `karaoke-azure.js` / `karaoke-index.js` behavior; updated repository map for `karaoke-azure.js` and `karaoke-index.js`.
