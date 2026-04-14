@@ -1,0 +1,11 @@
+# Optional stack for local_folder_queue.py when SEPARATOR=demucs.
+# Prefer a dedicated venv: Demucs pulls PyTorch, which often conflicts with
+# the TensorFlow pins used for Spleeter in the repo root requirements.txt.
+#
+#   py -3.10 -m venv .venv-demucs
+#   .venv-demucs\Scripts\activate
+#   pip install -r karaoke/requirements-demucs.txt
+#   set SEPARATOR=demucs
+#   python karaoke/local_folder_queue.py
+
+demucs>=4.0.0

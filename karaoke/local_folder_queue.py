@@ -13,7 +13,9 @@ Implements the same routes the web UI expects:
   GET  /api/out/{job_id}/vocals.wav|no_vocals.wav — audio for the player
 
 Run:
-  set SEPARATOR=spleeter   (or demucs)
+  set SEPARATOR=spleeter   (default; matches repo requirements.txt — pip install -r requirements.txt)
+  set SEPARATOR=demucs    (needs Demucs: pip install -r karaoke/requirements-demucs.txt — use its own venv)
+  set DEMUCS_JOBS=1       (optional; Windows defaults to 1 — avoids many demucs -j2 spawn failures)
   python karaoke/local_folder_queue.py
 
 Then open karaoke/index-local.html (set KARAOKE_API_BASE to match, default http://127.0.0.1:8787).
@@ -24,6 +26,7 @@ import hashlib
 import json
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -51,6 +54,8 @@ PUBLIC_BASE = os.environ.get("KARAOKE_LOCAL_PUBLIC_BASE", f"http://{HOST}:{PORT}
 
 SEPARATOR = os.environ.get("SEPARATOR", "spleeter").lower().strip()
 DEMUCS_MODEL = os.environ.get("DEMUCS_MODEL", "htdemucs_ft")
+# Demucs multiprocessing often fails on Windows with -j 2; override with DEMUCS_JOBS.
+DEMUCS_JOBS = os.environ.get("DEMUCS_JOBS", "1" if platform.system() == "Windows" else "2")
 
 JOB_ID_RE = re.compile(r"^([a-f0-9]{16})_(.+)$", re.I)
 
@@ -99,17 +104,133 @@ def get_status(job_id: str) -> Optional[Dict[str, Any]]:
 
 def run_cmd(cmd: list[str], job_id: str, desc: str) -> subprocess.CompletedProcess[str]:
     LOG.info("[%s] starting %s: %s", job_id, desc, " ".join(cmd))
-    return subprocess.run(
+    try:
+        return subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except subprocess.CalledProcessError as e:
+        err = (e.stderr or "").strip()
+        out = (e.stdout or "").strip()
+        if err:
+            LOG.error("[%s] %s stderr (exit %s):\n%s", job_id, desc, e.returncode, err[-12000:])
+        if out:
+            LOG.error("[%s] %s stdout:\n%s", job_id, desc, out[-6000:])
+        tail = (err or out or "(no output)")[-2500:]
+        raise RuntimeError(f"{desc} failed (exit {e.returncode}): {tail}") from e
+
+
+def _drain_text_stream(stream: Any, chunks: list[str]) -> None:
+    """Read a text PIPE to EOF so the child process cannot deadlock on a full buffer."""
+    if stream is None:
+        return
+    try:
+        for line in iter(stream.readline, ""):
+            chunks.append(line)
+    except Exception:
+        pass
+    try:
+        stream.close()
+    except Exception:
+        pass
+
+
+def run_cmd_with_progress(
+    cmd: list[str],
+    job_id: str,
+    desc: str,
+    original_name: str,
+    prog_lo: int,
+    prog_hi: int,
+) -> subprocess.CompletedProcess[str]:
+    """
+    Run a long subprocess while periodically writing status progress (prog_lo..prog_hi)
+    so the web UI poll sees movement. Demucs/Spleeter do not expose a native % API here.
+
+    Stdout/stderr are drained in background threads (not communicate()) so tqdm-heavy
+    Demucs logs cannot fill the PIPE buffer and freeze the separator on Windows.
+    """
+    LOG.info("[%s] starting %s: %s", job_id, desc, " ".join(cmd))
+    proc = subprocess.Popen(
         cmd,
-        check=True,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         errors="replace",
     )
+    cur = [max(0, min(99, prog_lo))]
+    stop_hb = threading.Event()
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+
+    def heartbeat() -> None:
+        step = max(1, (prog_hi - prog_lo) // 28)
+        while not stop_hb.is_set():
+            if proc.poll() is not None:
+                return
+            if stop_hb.wait(2.0):
+                return
+            if proc.poll() is not None:
+                return
+            nxt = min(prog_hi - 1, cur[0] + step)
+            if nxt <= cur[0]:
+                nxt = min(prog_hi - 1, cur[0] + 1)
+            cur[0] = nxt
+            put_status(
+                job_id,
+                {
+                    "state": "running",
+                    "progress": cur[0],
+                    "original_name": original_name,
+                    "attempt": 0,
+                },
+            )
+
+    t_out = threading.Thread(
+        target=_drain_text_stream,
+        args=(proc.stdout, stdout_chunks),
+        name=f"karaoke-out-{desc}",
+        daemon=True,
+    )
+    t_err = threading.Thread(
+        target=_drain_text_stream,
+        args=(proc.stderr, stderr_chunks),
+        name=f"karaoke-err-{desc}",
+        daemon=True,
+    )
+    t_out.start()
+    t_err.start()
+    hb_thread = threading.Thread(target=heartbeat, name=f"karaoke-hb-{desc}", daemon=True)
+    hb_thread.start()
+    try:
+        rc = proc.wait()
+    finally:
+        stop_hb.set()
+        hb_thread.join(timeout=3.0)
+    t_out.join(timeout=600)
+    t_err.join(timeout=600)
+    out_b = "".join(stdout_chunks)
+    err_b = "".join(stderr_chunks)
+
+    if proc.returncode != 0:
+        err = (err_b or "").strip()
+        out = (out_b or "").strip()
+        if err:
+            LOG.error("[%s] %s stderr (exit %s):\n%s", job_id, desc, proc.returncode, err[-12000:])
+        if out:
+            LOG.error("[%s] %s stdout:\n%s", job_id, desc, out[-6000:])
+        tail = (err or out or "(no output)")[-2500:]
+        raise RuntimeError(f"{desc} failed (exit {proc.returncode}): {tail}")
+
+    return subprocess.CompletedProcess(cmd, proc.returncode, out_b, err_b)
 
 
-def run_spleeter(inp: Path, work_base: Path, job_id: str) -> Path:
+def run_spleeter(inp: Path, work_base: Path, job_id: str, original_name: str) -> Path:
     out_dir = work_base / "spleeter"
     out_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -123,7 +244,7 @@ def run_spleeter(inp: Path, work_base: Path, job_id: str) -> Path:
         str(out_dir),
         str(inp),
     ]
-    run_cmd(cmd, job_id, "spleeter")
+    run_cmd_with_progress(cmd, job_id, "spleeter", original_name, prog_lo=38, prog_hi=88)
     return out_dir
 
 
@@ -135,10 +256,16 @@ def find_spleeter_vocals_band(base: Path, basename: str, job_id: str) -> Tuple[P
     for root, _, files in os.walk(base):
         if "vocals.wav" in files and "accompaniment.wav" in files:
             return Path(root) / "vocals.wav", Path(root) / "accompaniment.wav"
-    raise RuntimeError("Spleeter outputs not found")
+    hint = ""
+    if base.is_dir():
+        try:
+            hint = " under " + str(base) + ": " + ", ".join(x.name for x in base.iterdir())[:400]
+        except OSError:
+            pass
+    raise RuntimeError(f"Spleeter outputs not found (basename={basename!r}).{hint}")
 
 
-def run_demucs(inp: Path, work_base: Path, job_id: str) -> Path:
+def run_demucs(inp: Path, work_base: Path, job_id: str, original_name: str) -> Path:
     work_base.mkdir(parents=True, exist_ok=True)
     cmd = [
         sys.executable,
@@ -149,24 +276,49 @@ def run_demucs(inp: Path, work_base: Path, job_id: str) -> Path:
         "-n",
         DEMUCS_MODEL,
         "-j",
-        "2",
+        DEMUCS_JOBS,
         str(inp),
         "-o",
         str(work_base),
     ]
-    run_cmd(cmd, job_id, "demucs")
+    run_cmd_with_progress(cmd, job_id, "demucs", original_name, prog_lo=38, prog_hi=88)
     return work_base
 
 
 def find_demucs_vocals_band(base: Path, model: str, basename: str, job_id: str) -> Tuple[Path, Path]:
-    p = base / model / basename
-    voc, band = p / "vocals.wav", p / "no_vocals.wav"
-    if voc.is_file() and band.is_file():
-        return voc, band
+    """Locate stems; Demucs may use a slightly different folder name than pathlib stem."""
+    model_dir = base / model
+
+    def try_pair(folder: Path) -> Optional[Tuple[Path, Path]]:
+        voc, band = folder / "vocals.wav", folder / "no_vocals.wav"
+        if voc.is_file() and band.is_file():
+            return voc, band
+        return None
+
+    for folder in (model_dir / basename,):
+        hit = try_pair(folder)
+        if hit:
+            return hit
+
+    if model_dir.is_dir():
+        for sub in sorted(model_dir.iterdir(), key=lambda x: x.name.lower()):
+            if not sub.is_dir():
+                continue
+            hit = try_pair(sub)
+            if hit:
+                LOG.info("[%s] demucs outputs in %s (basename hint was %r)", job_id, sub, basename)
+                return hit
+
     for root, _, files in os.walk(base):
         if "vocals.wav" in files and "no_vocals.wav" in files:
             return Path(root) / "vocals.wav", Path(root) / "no_vocals.wav"
-    raise RuntimeError("Demucs outputs not found")
+
+    sub_hint = ""
+    if model_dir.is_dir():
+        sub_hint = " model_subdirs=" + ",".join(sorted(x.name for x in model_dir.iterdir() if x.is_dir()))[:500]
+    raise RuntimeError(
+        f"Demucs outputs not found (model={model!r}, basename={basename!r}, base={base}).{sub_hint}"
+    )
 
 
 def process_job_file(input_file: Path, job_id: str, original_name: str) -> None:
@@ -198,19 +350,23 @@ def process_job_file(input_file: Path, job_id: str, original_name: str) -> None:
             tdp = Path(td)
             work_audio = tdp / Path(original_name).name
             shutil.copy2(input_file, work_audio)
+            basename = work_audio.stem
             put_status(job_id, {"state": "running", "progress": 35, "original_name": original_name})
+            LOG.info("[%s] separator=%s basename=%r work_audio=%s", job_id, SEPARATOR, basename, work_audio)
 
             if SEPARATOR == "demucs":
-                out_base = run_demucs(work_audio, tdp / "demucs_out", job_id)
-                put_status(job_id, {"state": "running", "progress": 70, "original_name": original_name})
+                out_base = run_demucs(work_audio, tdp / "demucs_out", job_id, original_name)
+                LOG.info("[%s] demucs subprocess finished, scanning outputs under %s", job_id, out_base)
+                put_status(job_id, {"state": "running", "progress": 90, "original_name": original_name})
                 voc, band = find_demucs_vocals_band(out_base, DEMUCS_MODEL, basename, job_id)
             else:
-                sp_out = run_spleeter(work_audio, tdp, job_id)
-                put_status(job_id, {"state": "running", "progress": 70, "original_name": original_name})
+                sp_out = run_spleeter(work_audio, tdp, job_id, original_name)
+                put_status(job_id, {"state": "running", "progress": 90, "original_name": original_name})
                 voc, band = find_spleeter_vocals_band(sp_out, basename, job_id)
 
             out_job = OUTPUT_DIR / job_id
             out_job.mkdir(parents=True, exist_ok=True)
+            put_status(job_id, {"state": "running", "progress": 94, "original_name": original_name})
             shutil.copy2(voc, out_job / "vocals.wav")
             shutil.copy2(band, out_job / "no_vocals.wav")
 
@@ -415,7 +571,9 @@ def main() -> None:
     _ensure_dirs()
     _ffmpeg_path_prep()
     LOG.info("KARAOKE_LOCAL_ROOT=%s", ROOT)
-    LOG.info("SEPARATOR=%s (set SEPARATOR=demucs for Demucs)", SEPARATOR)
+    LOG.info("SEPARATOR=%s", SEPARATOR)
+    if SEPARATOR == "demucs":
+        LOG.info("DEMUCS_MODEL=%s DEMUCS_JOBS=%s", DEMUCS_MODEL, DEMUCS_JOBS)
     LOG.info("Serving %s — submit/status compatible with karaoke/index-local.html", PUBLIC_BASE)
 
     t = threading.Thread(target=worker_loop, name="karaoke-worker", daemon=True)
