@@ -97,3 +97,13 @@ cd C:\pers\krishnaposa-mlo-site\azure\functions\karaoke-func\infra
 # Or deploy only the app when the image already exists in that RG's ACR:
 # .\deploy.ps1 -ResourceGroupName karaoke-rg -Location eastus2 -ContainerWorker -ContainerImage YOUR_ACR.azurecr.io/karaoke-worker:latest
 # Bicep: azure/container-apps/infra/main.aca-worker.bicep  Dockerfile: azure/container-apps/karaoke-worker/Dockerfile
+
+
+Same flow as the main page: upload one mixed audio file (vocals + band together). 
+This page talks to a small Python server in this repo—not Azure Functions on your machine 
+(func start is not used). 
+Your file is saved into an input folder as the queue; a background thread runs Spleeter/Demucs 
+and writes stems under an output folder; the player loads those files over HTTP.
+Run:python karaoke/local_folder_queue.py (defaults: KARAOKE_LOCAL_ROOT = ~/.karaoke-local, port 8787, 
+SEPARATOR=spleeter). Override base URL: ?api=http://127.0.0.1:8787 or set window.KARAOKE_API_BASE 
+before scripts load. For the hosted cloud pipeline, use <a href="index.html">Karaoke Split (cloud).

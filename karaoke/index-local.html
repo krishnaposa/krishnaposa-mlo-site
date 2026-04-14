@@ -26,9 +26,7 @@
 
   <section class="card">
     <h1>Karaoke Split — local folder queue</h1>
-    <p class="help"><strong>Same flow as the main page:</strong> upload one <strong>mixed</strong> audio file (vocals + band together). This page talks to a <strong>small Python server</strong> in this repo—<strong>not</strong> Azure Functions on your machine (<code>func start</code> is not used). Your file is saved into an <strong>input folder</strong> as the queue; a background thread runs Spleeter/Demucs and writes stems under an <strong>output folder</strong>; the player loads those files over HTTP.</p>
-    <p class="help"><strong>Run:</strong> <code>python karaoke/local_folder_queue.py</code> (defaults: <code>KARAOKE_LOCAL_ROOT</code> = <code>~/.karaoke-local</code>, port <strong>8787</strong>, <code>SEPARATOR=spleeter</code>). Override base URL: <code>?api=http://127.0.0.1:8787</code> or set <code>window.KARAOKE_API_BASE</code> before scripts load. For the hosted cloud pipeline, use <a href="index.html">Karaoke Split (cloud)</a>.</p>
-
+  
     <div id="httpsLocalBarrier" class="error hide" role="alert">
       <strong>HTTPS blocks local submit.</strong> This page is loaded over <code>https://</code>, so the browser will not call <code>http://127.0.0.1:8787</code> (mixed content)—Submit will show “Failed to fetch”. Open this file over <strong>http://</strong> instead, for example: from the repo root run <code>python -m http.server 8765</code>, then go to <code>http://localhost:8765/karaoke/index-local.html</code> (adjust path if needed). Or open <code>index-local.html</code> via <code>file://</code> from disk.
     </div>
