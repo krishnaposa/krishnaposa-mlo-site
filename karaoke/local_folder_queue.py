@@ -6,11 +6,13 @@ Layout under KARAOKE_LOCAL_ROOT (default: ~/.karaoke-local):
   input/   — uploads land here as {job_id}_{original_name} (queue)
   output/  — {job_id}/vocals.wav and {job_id}/no_vocals.wav
   status/  — {job_id}.json (same shape as cloud status blobs)
+  lyrics/  — {job_id}.json (saved lyrics; same shape as cloud karaoke-lyrics blobs)
 
 Implements the same routes the web UI expects:
   POST /api/submit     — multipart field "file" (combined mp3/wav/…)
   GET  /api/status/{job_id}
   GET  /api/out/{job_id}/vocals.wav|no_vocals.wav — audio for the player
+  GET|POST /api/lyrics — load/save lyrics by job_id (JSON; compatible with karaoke-azure.js)
 
 Run:
   set SEPARATOR=spleeter   (default; matches repo requirements.txt — pip install -r requirements.txt)
@@ -23,6 +25,7 @@ Then open karaoke/index-local.html (set KARAOKE_API_BASE to match, default http:
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import logging
 import os
@@ -35,6 +38,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from socketserver import ThreadingMixIn
@@ -47,6 +51,7 @@ ROOT = Path(os.environ.get("KARAOKE_LOCAL_ROOT", Path.home() / ".karaoke-local")
 INPUT_DIR = ROOT / "input"
 OUTPUT_DIR = ROOT / "output"
 STATUS_DIR = ROOT / "status"
+LYRICS_DIR = ROOT / "lyrics"
 
 HOST = os.environ.get("KARAOKE_LOCAL_HOST", "127.0.0.1")
 PORT = int(os.environ.get("KARAOKE_LOCAL_PORT", "8787"))
@@ -58,13 +63,53 @@ DEMUCS_MODEL = os.environ.get("DEMUCS_MODEL", "htdemucs_ft")
 DEMUCS_JOBS = os.environ.get("DEMUCS_JOBS", "1" if platform.system() == "Windows" else "2")
 
 JOB_ID_RE = re.compile(r"^([a-f0-9]{16})_(.+)$", re.I)
+JOB_ID_ONLY_RE = re.compile(r"^[a-f0-9]{16}$", re.I)
 
 _processing: set[str] = set()
 _lock = threading.Lock()
 
 
+def _module_available(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
+def resolve_separator() -> str:
+    """
+    Select an available separator.
+    - Prefer configured SEPARATOR when installed.
+    - Fallback to the other supported separator when available.
+    - Raise a clear actionable error when none are installed.
+    """
+    requested = SEPARATOR
+    if requested == "spleeter":
+        if _module_available("spleeter"):
+            return "spleeter"
+        if _module_available("demucs"):
+            LOG.warning("SEPARATOR=spleeter requested but module missing; falling back to demucs")
+            return "demucs"
+    elif requested == "demucs":
+        if _module_available("demucs"):
+            return "demucs"
+        if _module_available("spleeter"):
+            LOG.warning("SEPARATOR=demucs requested but module missing; falling back to spleeter")
+            return "spleeter"
+    else:
+        LOG.warning("Unknown SEPARATOR=%r; trying available separator", requested)
+        if _module_available("spleeter"):
+            return "spleeter"
+        if _module_available("demucs"):
+            return "demucs"
+
+    raise RuntimeError(
+        "No supported separator module is installed. "
+        "Install one of: `pip install -r requirements.txt` (spleeter) or "
+        "`pip install -r karaoke/requirements-demucs.txt` (demucs), "
+        "then restart karaoke/local_folder_queue.py."
+    )
+
+
 def _ensure_dirs() -> None:
-    for d in (INPUT_DIR, OUTPUT_DIR, STATUS_DIR):
+    for d in (INPUT_DIR, OUTPUT_DIR, STATUS_DIR, LYRICS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -100,6 +145,32 @@ def get_status(job_id: str) -> Optional[Dict[str, Any]]:
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def lyrics_disk_path(job_id: str) -> Path:
+    return LYRICS_DIR / f"{job_id}.json"
+
+
+def get_saved_lyrics(job_id: str) -> Optional[Dict[str, Any]]:
+    p = lyrics_disk_path(job_id)
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _lyrics_clean(s: str) -> str:
+    if not s:
+        return ""
+    s = re.sub(
+        r"\s*\((official|audio|video|lyrics?|hd|4k|remastered)[^)]*\)\s*$",
+        "",
+        s,
+        flags=re.I,
+    ).strip()
+    return re.sub(r"\s+", " ", s)
 
 
 def run_cmd(cmd: list[str], job_id: str, desc: str) -> subprocess.CompletedProcess[str]:
@@ -352,9 +423,10 @@ def process_job_file(input_file: Path, job_id: str, original_name: str) -> None:
             shutil.copy2(input_file, work_audio)
             basename = work_audio.stem
             put_status(job_id, {"state": "running", "progress": 35, "original_name": original_name})
-            LOG.info("[%s] separator=%s basename=%r work_audio=%s", job_id, SEPARATOR, basename, work_audio)
+            separator = resolve_separator()
+            LOG.info("[%s] separator=%s basename=%r work_audio=%s", job_id, separator, basename, work_audio)
 
-            if SEPARATOR == "demucs":
+            if separator == "demucs":
                 out_base = run_demucs(work_audio, tdp / "demucs_out", job_id, original_name)
                 LOG.info("[%s] demucs subprocess finished, scanning outputs under %s", job_id, out_base)
                 put_status(job_id, {"state": "running", "progress": 90, "original_name": original_name})
@@ -456,8 +528,77 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:
         self._send(204, None)
 
+    def _handle_get_lyrics(self, parsed: urllib.parse.ParseResult) -> None:
+        qs = urllib.parse.parse_qs(parsed.query)
+
+        def qp(name: str) -> str:
+            vals = qs.get(name)
+            if not vals or not vals[0]:
+                return ""
+            return (vals[0] or "").strip()
+
+        job_id = qp("job_id")
+        if not job_id or not JOB_ID_ONLY_RE.match(job_id):
+            self._send(200, json.dumps({"found": False}).encode("utf-8"))
+            return
+        saved = get_saved_lyrics(job_id)
+        if saved:
+            out = {
+                "found": True,
+                "title": saved.get("title") or "",
+                "artist": saved.get("artist") or "",
+                "synced": bool(saved.get("synced")),
+                "lrc": saved.get("lrc") or "",
+                "text": saved.get("text") or "",
+                "source": "by-job",
+            }
+            self._send(200, json.dumps(out, ensure_ascii=False).encode("utf-8"))
+            return
+        self._send(200, json.dumps({"found": False}).encode("utf-8"))
+
+    def _handle_post_lyrics(self) -> None:
+        ctype = (self.headers.get("Content-Type") or "").lower()
+        if "application/json" not in ctype and "json" not in ctype:
+            self._send(400, json.dumps({"error": "Expected application/json"}).encode())
+            return
+        try:
+            length = int(self.headers["Content-Length"])
+        except (KeyError, ValueError):
+            self._send(400, json.dumps({"error": "Missing Content-Length"}).encode())
+            return
+        raw_b = self.rfile.read(length)
+        try:
+            body = json.loads(raw_b.decode("utf-8"))
+        except Exception as e:
+            self._send(400, json.dumps({"error": f"Invalid JSON: {e}"}).encode())
+            return
+        job_id = (body.get("job_id") or "").strip()
+        if not job_id or not JOB_ID_ONLY_RE.match(job_id):
+            self._send(400, json.dumps({"error": "job_id required"}).encode())
+            return
+        text = (body.get("text") or "").strip()
+        lrc = (body.get("lrc") or "").strip()
+        synced = bool(body.get("synced", bool(lrc)))
+        payload = {
+            "job_id": job_id,
+            "title": _lyrics_clean(body.get("title") or ""),
+            "artist": _lyrics_clean(body.get("artist") or ""),
+            "synced": synced,
+            "lrc": lrc if synced else "",
+            "text": "" if synced else text,
+            "saved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        }
+        lyrics_disk_path(job_id).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        self._send(200, json.dumps({"ok": True, "saved": f"by-job/{job_id}.json"}).encode())
+
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path.rstrip("/")
+
+        if path == "/api/lyrics":
+            self._handle_get_lyrics(parsed)
+            return
+
         path = parsed.path
 
         if path.startswith("/api/status/"):
@@ -499,7 +640,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path.rstrip("/") != "/api/submit":
+        route = parsed.path.rstrip("/")
+        if route == "/api/lyrics":
+            self._handle_post_lyrics()
+            return
+        if route != "/api/submit":
             self.send_error(404)
             return
 
@@ -574,7 +719,12 @@ def main() -> None:
     LOG.info("SEPARATOR=%s", SEPARATOR)
     if SEPARATOR == "demucs":
         LOG.info("DEMUCS_MODEL=%s DEMUCS_JOBS=%s", DEMUCS_MODEL, DEMUCS_JOBS)
-    LOG.info("Serving %s — submit/status compatible with karaoke/index-local.html", PUBLIC_BASE)
+    try:
+        selected = resolve_separator()
+        LOG.info("Resolved separator=%s", selected)
+    except Exception as e:
+        LOG.error("Separator check failed: %s", e)
+    LOG.info("Serving %s — submit/status/lyrics compatible with karaoke/index-local.html", PUBLIC_BASE)
 
     t = threading.Thread(target=worker_loop, name="karaoke-worker", daemon=True)
     t.start()

@@ -24,32 +24,94 @@
     listUrl   : withCode(`${API_BASE}/api/list`),
   };
 
-  K.loadLyrics = async function loadLyrics({ jobId, title, artist, duration, lyricsBoxId='lyricsBox', msgId }){
-    const box = K.$(lyricsBoxId);
+  K.loadLyrics = async function loadLyrics(opts) {
+    const jobId = opts.jobId;
+    const title = opts.title;
+    const artist = opts.artist;
+    const duration = opts.duration;
+    const lyricsBoxId = opts.lyricsBoxId != null ? opts.lyricsBoxId : 'lyricsBox';
+    const textId = opts.textId;
+    const msgId = opts.msgId;
+    const box = lyricsBoxId ? K.$(lyricsBoxId) : null;
+    const textEl = textId ? K.$(textId) : null;
     const msg = msgId ? K.$(msgId) : null;
-    try{
+    try {
       const url = new URL(K.endpoints.lyricsUrl);
       if (jobId) url.searchParams.set('job_id', jobId);
       if (title) url.searchParams.set('title', title);
       if (artist) url.searchParams.set('artist', artist);
       if (duration) url.searchParams.set('duration', String(duration));
       if (msg) msg.textContent = 'Fetching lyrics…';
-      const r = await fetch(url.toString(), { mode:'cors' });
+      const r = await fetch(url.toString(), { mode: 'cors' });
       const data = await r.json();
       if (!data || data.found === false) {
         if (box) box.textContent = 'No lyrics found.';
+        if (textEl) textEl.value = '';
         if (msg) msg.textContent = '';
         return;
       }
       if (data.synced && data.lrc) {
+        if (textEl) textEl.value = data.lrc;
         if (box) box.textContent = 'Synced lyrics loaded.';
       } else {
-        if (box) box.textContent = data.text || 'No lyrics text available.';
+        const plain = data.text || '';
+        if (textEl) textEl.value = plain;
+        if (box) box.textContent = plain ? 'Lyrics loaded.' : 'No lyrics text available.';
       }
       if (msg) msg.textContent = 'Loaded.';
-    }catch(e){
+    } catch (e) {
       console.warn(e);
       if (msg) msg.textContent = 'Failed to fetch lyrics.';
+    }
+  };
+
+  K.saveLyrics = async function saveLyrics(opts) {
+    const jobId = (opts.job_id || opts.jobId || '').trim();
+    const msgId = opts.msgId;
+    const msg = msgId ? K.$(msgId) : null;
+    if (!jobId) {
+      if (msg) msg.textContent = 'Job ID required.';
+      return;
+    }
+    let text = (opts.text ?? '').toString();
+    let lrc = (opts.lrc ?? '').toString();
+    let synced = opts.synced;
+    if (synced === undefined) {
+      const t = text.trim();
+      synced = /^\[\d{1,2}:\d{2}/m.test(t);
+      if (synced) {
+        lrc = t;
+        text = '';
+      }
+    }
+    try {
+      if (msg) msg.textContent = 'Saving…';
+      const body = {
+        job_id: jobId,
+        text: text.trim(),
+        lrc: lrc.trim(),
+        synced: !!synced,
+        title: (opts.title || '').trim(),
+        artist: (opts.artist || '').trim(),
+      };
+      const r = await fetch(K.endpoints.lyricsUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(body),
+        mode: 'cors',
+      });
+      let data = null;
+      try {
+        data = await r.json();
+      } catch (_) {}
+      if (!r.ok) {
+        const err = (data && (data.error || data.message)) || r.statusText;
+        throw new Error(err || 'Save failed (' + r.status + ')');
+      }
+      if (msg) msg.textContent = 'Saved.';
+    } catch (e) {
+      console.warn(e);
+      if (msg) msg.textContent = 'Failed to save lyrics.';
     }
   };
 
