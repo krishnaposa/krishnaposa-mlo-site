@@ -282,7 +282,6 @@ html, body { overflow-x: hidden; }
   .hero .cta a{ flex:1 1 100%; }
 }
 .help {
-  width:18px; height:18px; margin-left:6px; border-radius:50%;
   border:1px solid rgba(148,163,184,.5); font-size:12px; cursor:help;
 }
 .help:hover { background:rgba(148,163,184,.15); }
