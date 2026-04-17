@@ -128,35 +128,44 @@
 
   function isJsonInLyricsOrStatusFolder(rel){
     const parts = String(rel).replace(/\\/g, '/').split('/').filter(Boolean);
-    return parts.some((p) => {
-      const pl = p.toLowerCase();
-      return pl === 'lyrics' || pl === 'lyric' || pl === 'status';
-    });
+    if (
+      parts.some((p) => {
+        const pl = p.toLowerCase();
+        return pl === 'lyrics' || pl === 'lyric' || pl === 'status';
+      })
+    ) {
+      return true;
+    }
+    // Some browsers only expose the file name (no parent folders) for directory picks.
+    if (parts.length === 1 && /\.json$/i.test(parts[0])) return true;
+    return false;
   }
 
-  /**
-   * JSON that carries original_name for a job — do not use findLyricsFile() here:
-   * that can prefer lyrics.lrc in the stem folder over lyrics/<jobId>.json.
-   */
-  function findJobMetadataJson(files, jid){
-    if (!jid) return null;
-    const jn = jid.toLowerCase();
-    let lyrics = null;
-    let status = null;
-    for (const f of files) {
-      const rel = normPath(f).replace(/\\/g, '/');
-      const leaf = (f.name || '').trim();
-      if (!/\.json$/i.test(leaf)) continue;
-      if (!isJsonInLyricsOrStatusFolder(rel)) continue;
-      const base = leaf.replace(/\.json$/i, '');
-      if (base.toLowerCase() !== jn) continue;
-      const parts = rel.split('/').filter(Boolean);
-      const inLyrics = parts.some((p) => p.toLowerCase() === 'lyrics' || p.toLowerCase() === 'lyric');
-      const inStatus = parts.some((p) => p.toLowerCase() === 'status');
-      if (inLyrics) lyrics = f;
-      else if (inStatus) status = f;
+  /** JSON sidecars we may read for titles: lyrics/status/metadata/input, or basename-only. */
+  function isJsonMetadataCandidate(rel){
+    const n = String(rel).replace(/\\/g, '/');
+    if (/(^|\/)(lyrics|lyric|status|state|metadata|meta|input|config)(\/|$)/i.test(n)) return true;
+    const parts = n.split('/').filter(Boolean);
+    if (parts.length === 1 && /\.json$/i.test(parts[0])) return true;
+    return false;
+  }
+
+  function isStatusJsonPath(rel){
+    const n = String(rel).replace(/\\/g, '/');
+    return /(^|\/)(status|state)(\/|$)/i.test(n);
+  }
+
+  /** Prefer original_name (status/*.json uses this for dropdown titles). */
+  function extractDisplayNameForIndex(data, statusFile){
+    if (!data || typeof data !== 'object') return '';
+    if (statusFile) {
+      if (typeof data.original_name === 'string' && data.original_name.trim()) return data.original_name.trim();
+      if (typeof data.originalName === 'string' && data.originalName.trim()) return data.originalName.trim();
+      const nested = extractOriginalNameDeep(data, 0);
+      if (nested) return nested;
+      return '';
     }
-    return lyrics || status;
+    return extractOriginalNameFromJson(data, 0) || extractOriginalNameDeep(data, 0);
   }
 
   /** Deep search: prefer nested original_* before shallow title. */
@@ -236,65 +245,94 @@
     return '';
   }
 
-  /** True if parsed JSON references this job id (filename may not match folder name). */
-  function jsonReferencesJobId(data, jid){
-    if (!data || typeof data !== 'object' || !jid) return false;
-    const jn = String(jid).toLowerCase();
-    const checkVal = (v) => v != null && String(v).toLowerCase() === jn;
+  const ID_KEYS = new Set([
+    'job_id', 'jobid', 'id', 'hash', 'job_hash', 'jobhash', 'execution_id', 'executionid',
+    'batch_id', 'batchid', 'track_id', 'trackid', 'song_id', 'songid', 'request_id', 'requestid',
+    'split_id', 'splitid', 'demucs_id', 'uuid', 'basename', 'folder', 'run_id', 'runid',
+  ]);
 
-    function walk(o, depth){
-      if (depth > 12 || o == null || typeof o !== 'object') return false;
-      if (Array.isArray(o)) {
-        return o.some((x) => walk(x, depth + 1));
-      }
-      for (const k of Object.keys(o)) {
-        const kl = k.toLowerCase();
-        if (
-          /^(job_id|jobid|execution_id|executionid|batch_id|batchid|track_id|trackid|hash|job_hash|jobhash)$/i.test(
-            kl
-          ) ||
-          (kl === 'id' && /job|track|batch|exec/i.test(k))
-        ) {
-          if (checkVal(o[k])) return true;
-        }
-      }
-      for (const k of Object.keys(o)) {
-        const v = o[k];
-        if (typeof v === 'object' && v && walk(v, depth + 1)) return true;
-      }
-      return false;
+  function collectIdsFromJsonForIndex(obj, depth){
+    const ids = [];
+    if (depth > 12 || obj == null || typeof obj !== 'object') return ids;
+    if (Array.isArray(obj)) {
+      obj.forEach((e) => ids.push(...collectIdsFromJsonForIndex(e, depth + 1)));
+      return ids;
     }
-    return walk(data, 0);
+    for (const [k, v] of Object.entries(obj)) {
+      const kl = k.toLowerCase().replace(/-/g, '_');
+      if (ID_KEYS.has(kl)) {
+        if (typeof v === 'string' && v.trim()) ids.push(v.trim());
+        else if (typeof v === 'number' && Number.isFinite(v)) ids.push(String(v));
+      } else if (
+        typeof v === 'string' &&
+        v.trim().length >= 6 &&
+        /(^|_)(id|hash)$/i.test(k)
+      ) {
+        ids.push(v.trim());
+      }
+    }
+    for (const k of Object.keys(obj)) {
+      const v = obj[k];
+      if (typeof v === 'object' && v) ids.push(...collectIdsFromJsonForIndex(v, depth + 1));
+    }
+    return ids;
   }
 
-  async function findOriginalNameByScanningJobJson(files, jid){
-    if (!jid) return '';
-    const candidates = files.filter((f) => {
-      if (!/\.json$/i.test(f.name)) return false;
-      return isJsonInLyricsOrStatusFolder(normPath(f));
-    });
-    candidates.sort((a, b) => {
-      const na = normPath(a).toLowerCase();
-      const nb = normPath(b).toLowerCase();
-      const la = /\/lyrics\//.test(na) || na.startsWith('lyrics/') ? 0 : 1;
-      const lb = /\/lyrics\//.test(nb) || nb.startsWith('lyrics/') ? 0 : 1;
-      return la - lb;
-    });
-    for (const f of candidates) {
+  /**
+   * status/*.json (and state/) first — they carry authoritative original_name for the dropdown.
+   * Other JSON (lyrics, etc.) fills ids only when that key is still missing.
+   */
+  async function buildOriginalNameIndex(files){
+    const byId = new Map();
+
+    async function ingestFile(f, opts){
+      const onlyIfMissing = opts && opts.onlyIfMissing;
+      const statusFile = opts && opts.statusFile;
+      const rel = normPath(f);
+      const leaf = (f.name || '').trim();
+      if (!/\.json$/i.test(leaf)) return;
+      if (!isJsonMetadataCandidate(rel)) return;
       let data;
       try {
-        const raw = await f.text();
+        const raw = (await f.text()).replace(/^\uFEFF/, '');
         data = JSON.parse(raw);
       } catch {
-        continue;
+        return;
       }
-      if (!jsonReferencesJobId(data, jid)) continue;
-      const name =
-        extractOriginalNameFromJson(data, 0) ||
-        extractOriginalNameDeep(data, 0);
-      if (name) return name;
+      const name = extractDisplayNameForIndex(data, statusFile);
+      if (!name) return;
+
+      function setKey(k){
+        if (!k) return;
+        const kk = String(k).toLowerCase();
+        if (onlyIfMissing && byId.has(kk)) return;
+        byId.set(kk, name);
+      }
+
+      const base = leaf.replace(/\.json$/i, '').toLowerCase();
+      setKey(base);
+      for (const rawId of collectIdsFromJsonForIndex(data, 0)) {
+        setKey(rawId);
+      }
     }
-    return '';
+
+    for (const f of files) {
+      const rel = normPath(f);
+      if (!/\.json$/i.test(f.name)) continue;
+      if (!isJsonMetadataCandidate(rel)) continue;
+      if (!isStatusJsonPath(rel)) continue;
+      await ingestFile(f, { statusFile: true, onlyIfMissing: false });
+    }
+
+    for (const f of files) {
+      const rel = normPath(f);
+      if (!/\.json$/i.test(f.name)) continue;
+      if (!isJsonMetadataCandidate(rel)) continue;
+      if (isStatusJsonPath(rel)) continue;
+      await ingestFile(f, { statusFile: false, onlyIfMissing: true });
+    }
+
+    return byId;
   }
 
   /**
@@ -369,7 +407,9 @@
           (leaf.toLowerCase().endsWith('.json') ||
             leaf.toLowerCase().endsWith('.lrc') ||
             leaf.toLowerCase().endsWith('.txt'));
-        return nameOk && /(^|\/)lyrics\//i.test(n);
+        const pathOk =
+          /(^|\/)lyrics\//i.test(n) || /^lyrics\//i.test(n) || n.split('/').filter(Boolean).length === 1;
+        return nameOk && pathOk;
       });
       if (byJob) return byJob.f;
     }
@@ -402,27 +442,19 @@
   }
 
   async function enrichPairsWithLyricsMeta(files, pairs){
-    const out = [];
-    for (const p of pairs) {
+    const index = await buildOriginalNameIndex(files);
+    const out = pairs.map((p) => {
       let originalName = '';
       const jids = jobIdCandidatesFromStemDir(p.dir);
       for (const jid of jids) {
-        const metaFile = findJobMetadataJson(files, jid);
-        if (metaFile) {
-          try {
-            const raw = await metaFile.text();
-            const data = JSON.parse(raw);
-            originalName =
-              extractOriginalNameFromJson(data, 0) ||
-              extractOriginalNameDeep(data, 0);
-          } catch (_) {}
+        const k = String(jid).toLowerCase();
+        if (k && index.has(k)) {
+          originalName = index.get(k);
+          break;
         }
-        if (originalName) break;
-        originalName = await findOriginalNameByScanningJobJson(files, jid);
-        if (originalName) break;
       }
-      out.push({ ...p, originalName });
-    }
+      return { ...p, originalName };
+    });
     out.sort((a, b) =>
       displayLabel(a).localeCompare(displayLabel(b), undefined, { sensitivity: 'base' })
     );
