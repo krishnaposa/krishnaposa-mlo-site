@@ -101,6 +101,55 @@
   }
 
   /**
+   * JSON that carries original_name for a job — do not use findLyricsFile() here:
+   * that can prefer lyrics.lrc in the stem folder over lyrics/<jobId>.json.
+   */
+  function findJobMetadataJson(files, jid){
+    if (!jid) return null;
+    const jn = jid.toLowerCase();
+    let lyrics = null;
+    let status = null;
+    for (const f of files) {
+      const rel = normPath(f).replace(/\\/g, '/');
+      const leaf = (f.name || '').trim();
+      if (!/\.json$/i.test(leaf)) continue;
+      const base = leaf.replace(/\.json$/i, '');
+      if (base.toLowerCase() !== jn) continue;
+      if (/(^|\/)lyrics\//i.test(rel)) lyrics = f;
+      else if (/(^|\/)status\//i.test(rel)) status = f;
+    }
+    return lyrics || status;
+  }
+
+  function extractOriginalNameFromJson(data, depth){
+    const d = depth == null ? 0 : depth;
+    if (d > 10 || data == null) return '';
+    if (typeof data === 'string') return '';
+    if (typeof data !== 'object') return '';
+    const keys = [
+      'original_name', 'originalName', 'original_title', 'originalTitle',
+      'title', 'song_title', 'songTitle', 'track_title', 'trackTitle', 'name',
+    ];
+    for (const k of keys) {
+      const v = data[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    if (data.song && typeof data.song === 'object') {
+      const s = extractOriginalNameFromJson(data.song, d + 1);
+      if (s) return s;
+    }
+    if (data.metadata && typeof data.metadata === 'object') {
+      const s = extractOriginalNameFromJson(data.metadata, d + 1);
+      if (s) return s;
+    }
+    if (data.track && typeof data.track === 'object') {
+      const s = extractOriginalNameFromJson(data.track, d + 1);
+      if (s) return s;
+    }
+    return '';
+  }
+
+  /**
    * Collect every directory that has both vocals + band stems.
    * Uses the path’s final segment for matching (not only `File.name`), which fixes
    * some browsers / layouts where names alone don’t pair correctly.
@@ -162,13 +211,17 @@
     const sd = (stemDir || '').replace(/\\/g, '/');
     const jid = jobIdFromStemDir(sd);
     if (jid) {
+      const jn = jid.toLowerCase();
       const byJob = rows.find((r) => {
         const n = r.rel.replace(/\\/g, '/');
         const leaf = (r.f.name || '').trim();
-        return (
-          (leaf === `${jid}.json` || leaf === `${jid}.lrc` || leaf === `${jid}.txt`) &&
-          /(^|\/)lyrics\//i.test(n)
-        );
+        const base = leaf.replace(/\.(json|lrc|txt)$/i, '');
+        const nameOk =
+          base.toLowerCase() === jn &&
+          (leaf.toLowerCase().endsWith('.json') ||
+            leaf.toLowerCase().endsWith('.lrc') ||
+            leaf.toLowerCase().endsWith('.txt'));
+        return nameOk && /(^|\/)lyrics\//i.test(n);
       });
       if (byJob) return byJob.f;
     }
@@ -204,18 +257,13 @@
     const out = [];
     for (const p of pairs) {
       let originalName = '';
-      const lyricsFile = findLyricsFile(files, p.dir);
-      if (lyricsFile && /\.json$/i.test(lyricsFile.name)) {
+      const jid = jobIdFromStemDir(p.dir);
+      const metaFile = findJobMetadataJson(files, jid);
+      if (metaFile) {
         try {
-          const raw = await lyricsFile.text();
+          const raw = await metaFile.text();
           const data = JSON.parse(raw);
-          if (data) {
-            if (typeof data.original_name === 'string' && data.original_name.trim()) {
-              originalName = data.original_name.trim();
-            } else if (typeof data.originalName === 'string' && data.originalName.trim()) {
-              originalName = data.originalName.trim();
-            }
-          }
+          originalName = extractOriginalNameFromJson(data, 0);
         } catch (_) {}
       }
       out.push({ ...p, originalName });
