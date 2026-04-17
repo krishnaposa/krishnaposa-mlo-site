@@ -50,7 +50,7 @@
 
   <section class="card">
     <h1>Karaoke Player — project folder</h1>
-    <p class="help">Choose the <strong>project folder</strong> that contains your split output <em>and</em> optional sidecar files. The player looks for <code>vocals.*</code> + <code>no_vocals.*</code> / <code>accompaniment.*</code>, plus <code>status.json</code>, <code>job.json</code>, or <code>status.txt</code>, and <code>lyrics.lrc</code> / <code>lyrics.txt</code> (or other <code>.lrc</code> near the stems).</p>
+    <p class="help">Choose a <strong>folder</strong> that contains one or more songs. Each song is a directory with <code>vocals.*</code> and <code>no_vocals.*</code> / <code>accompaniment.*</code>. Optional per-song files: <code>status.json</code> / <code>job.json</code> / <code>status.txt</code>, and <code>lyrics.lrc</code> / <code>lyrics.txt</code> (or another <code>.lrc</code> next to the stems).</p>
 
     <div class="row" style="flex-wrap:wrap; gap:.5rem; align-items:center">
       <input type="file" id="projectFolder" webkitdirectory directory multiple style="display:none" aria-hidden="true">
@@ -58,18 +58,11 @@
       <span id="folderScanSummary" class="help" aria-live="polite"></span>
     </div>
 
-    <div class="grid-2" style="margin-top:.75rem">
-      <div class="field">
-        <label for="folderVocalsFile">Vocals file (override)</label>
-        <input type="file" id="folderVocalsFile" accept="audio/*,.wav,.mp3,.flac,.m4a,.aac">
-      </div>
-      <div class="field">
-        <label for="folderBandFile">Band file (override)</label>
-        <input type="file" id="folderBandFile" accept="audio/*,.wav,.mp3,.flac,.m4a,.aac">
-      </div>
+    <div class="field" id="songPickWrap" style="margin-top:.75rem" hidden>
+      <label for="folderSongPick">Song</label>
+      <select id="folderSongPick"></select>
     </div>
     <div class="row" style="margin-top:.5rem">
-      <button type="button" id="folderLoadPair" class="btn btn-outline">Load chosen files instead</button>
       <span id="folderLoadStatus" class="help" aria-live="polite"></span>
     </div>
 
@@ -79,8 +72,8 @@
   </section>
 
   <section class="card">
-    <h2>Job status (from folder)</h2>
-    <p class="help">Detected from <code>status.json</code>, <code>job.json</code>, <code>state.json</code>, or <code>status.txt</code>.</p>
+    <h2>Job status</h2>
+    <p class="help">For the selected song, looks next to those stems (or a parent folder), then falls back to a root <code>status.json</code> / <code>job.json</code> if present.</p>
     <pre id="folderStatusText" class="help" style="white-space:pre-wrap; margin-top:.5rem">—</pre>
   </section>
 

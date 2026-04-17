@@ -1,5 +1,5 @@
 /* ===== karaoke-player-folder.js =====
-   One folder pick: stems + status (json/txt) + lyrics (txt/lrc), playback via karaoke-core.js.
+   Folder pick → list songs (stem pairs) → pick one → stems + per-song status/lyrics.
 */
 (function (w) {
   const K = w.KARAOKE;
@@ -9,12 +9,16 @@
   const pickProjectBtn = K.$('pickProjectFolder');
   const folderScanSummary = K.$('folderScanSummary');
   const folderLoadStatus = K.$('folderLoadStatus');
-  const vocOverride = K.$('folderVocalsFile');
-  const bandOverride = K.$('folderBandFile');
-  const loadPairBtn = K.$('folderLoadPair');
+  const songPick = K.$('folderSongPick');
+  const songPickWrap = K.$('songPickWrap');
 
   const VOC_LEAF = /^vocals\.(wav|mp3|flac|m4a|aac)$/i;
   const BAND_LEAF = /^(no_vocals|accompaniment)\.(wav|mp3|flac|m4a|aac)$/i;
+
+  /** @type {File[]|null} */
+  let folderFiles = null;
+  /** @type {{ dir: string, vocals: File, band: File }[]} */
+  let folderPairs = [];
 
   function parentDirKey(f){
     const rel = (f.webkitRelativePath || f.name || '').replace(/\\/g, '/');
@@ -38,10 +42,39 @@
     return 2;
   }
 
-  function findStemsInFileList(fileList){
-    const files = [...fileList];
+  function normPath(f){
+    return (f.webkitRelativePath || f.name || '').replace(/\\/g, '/');
+  }
+
+  function titleFromLocalFile(f){
+    if (!f) return 'Local';
+    const rel = normPath(f);
+    const parts = rel.split('/').filter(Boolean);
+    if (parts.length >= 2) return parts[parts.length - 2];
+    const leaf = parts[0] || 'Local';
+    return leaf.replace(/\.[^.]+$/i, '') || 'Local';
+  }
+
+  /** Human-readable song name from the stem directory path. */
+  function titleFromPair(pair){
+    const { dir, vocals } = pair;
+    if (dir) {
+      const parts = String(dir).split('/').filter(Boolean);
+      const last = parts[parts.length - 1] || '';
+      if (last && !/^(output|stems|htdemucs|vocals|no_vocals)$/i.test(last)) return last;
+      if (parts.length >= 2) return parts[parts.length - 2];
+      return last || dir;
+    }
+    return titleFromLocalFile(vocals);
+  }
+
+  /**
+   * Collect every directory that has both vocals + band stems.
+   */
+  function collectAllStemPairs(files){
+    const arr = [...files];
     const byDir = new Map();
-    for (const f of files) {
+    for (const f of arr) {
       const leaf = (f.name || '').trim();
       if (!VOC_LEAF.test(leaf) && !BAND_LEAF.test(leaf)) continue;
       const dKey = parentDirKey(f);
@@ -63,23 +96,14 @@
         const oa = outputFolderBias(a.dir);
         const ob = outputFolderBias(b.dir);
         if (oa !== ob) return oa - ob;
-        const da = a.dir.split('/').length;
-        const db = b.dir.split('/').length;
-        if (da !== db) return db - da;
-        return a.dir.localeCompare(b.dir);
+        return titleFromPair(a).localeCompare(titleFromPair(b), undefined, { sensitivity: 'base' });
       });
-      return {
-        vocals: pairs[0].vocals,
-        band: pairs[0].band,
-        pairedDir: pairs[0].dir,
-        pairCount: pairs.length,
-        mismatchedDirs: false,
-      };
+      return { pairs, mismatchedDirs: false };
     }
 
     let vocals = null;
     let band = null;
-    for (const f of files) {
+    for (const f of arr) {
       const leaf = (f.name || '').trim();
       if (VOC_LEAF.test(leaf) && !vocals) vocals = f;
       if (BAND_LEAF.test(leaf) && !band) band = f;
@@ -88,31 +112,26 @@
       const dv = parentDirKey(vocals);
       const db = parentDirKey(band);
       if (dv !== db) {
-        return {
-          vocals: null,
-          band: null,
-          pairedDir: null,
-          pairCount: 0,
-          mismatchedDirs: true,
-        };
+        return { pairs: [], mismatchedDirs: true };
       }
-      return {
-        vocals,
-        band,
-        pairedDir: dv || null,
-        pairCount: 1,
-        mismatchedDirs: false,
-      };
+      return { pairs: [{ dir: dv || '', vocals, band }], mismatchedDirs: false };
     }
-    return { vocals: null, band: null, pairedDir: null, pairCount: 0, mismatchedDirs: false };
+    return { pairs: [], mismatchedDirs: false };
   }
 
-  function normPath(f){
-    return (f.webkitRelativePath || f.name || '').replace(/\\/g, '/');
-  }
-
-  function findStatusFile(files){
+  function findStatusFile(files, stemDir){
     const rows = [...files].map(f => ({ f, leaf: (f.name || '').trim(), rel: normPath(f) }));
+    const sd = (stemDir || '').replace(/\\/g, '/');
+    function inScope(rel){
+      if (!sd) return true;
+      let cur = sd;
+      while (cur) {
+        if (rel === cur || rel.startsWith(cur + '/')) return true;
+        if (!cur.includes('/')) break;
+        cur = cur.slice(0, cur.lastIndexOf('/'));
+      }
+      return false;
+    }
     const order = [
       (leaf) => leaf === 'status.json',
       (leaf) => leaf === 'job.json',
@@ -121,11 +140,12 @@
       (leaf) => /\.json$/i.test(leaf) && /status|job|state/i.test(leaf),
     ];
     for (const pred of order) {
-      const hit = rows.filter(r => pred(r.leaf));
+      const hit = rows.filter(r => pred(r.leaf) && inScope(r.rel));
       if (!hit.length) continue;
       hit.sort((a, b) => a.rel.split('/').length - b.rel.split('/').length);
       return hit[0].f;
     }
+    if (sd) return findStatusFile(files, null);
     return null;
   }
 
@@ -155,20 +175,13 @@
     ranked.sort((a, b) => b.sc - a.sc);
     if (ranked.length) return ranked[0].f;
 
+    if (sd) return null;
+
     const fallback = rows.filter(r =>
       r.leaf === 'lyrics.lrc' || r.leaf === 'lyrics.txt' || r.leaf.endsWith('.lrc')
     );
     fallback.sort((a, b) => a.rel.split('/').length - b.rel.split('/').length);
     return fallback[0]?.f || null;
-  }
-
-  function titleFromLocalFile(f){
-    if (!f) return 'Local';
-    const rel = normPath(f);
-    const parts = rel.split('/').filter(Boolean);
-    if (parts.length >= 2) return parts[parts.length - 2];
-    const leaf = parts[0] || 'Local';
-    return leaf.replace(/\.[^.]+$/i, '') || 'Local';
   }
 
   const PB = K.initPlaybackControls();
@@ -234,7 +247,7 @@
     const lyricsPlain = K.$('lyricsBox');
     const lyricsSync = K.$('lyricsSynced');
 
-    const statusFile = findStatusFile(files);
+    const statusFile = findStatusFile(files, stemDir);
     if (statusEl) {
       if (statusFile) {
         try {
@@ -248,7 +261,7 @@
           statusEl.textContent = 'Could not read status file: ' + (e && e.message ? e.message : e);
         }
       } else {
-        statusEl.textContent = '— (no status.json, job.json, state.json, or status.txt found)';
+        statusEl.textContent = '— (no status file next to this song)';
       }
     }
 
@@ -289,7 +302,7 @@
   function setFolderSummary(t){ if (folderScanSummary) folderScanSummary.textContent = t || ''; }
   function setLoadStatus(t){ if (folderLoadStatus) folderLoadStatus.textContent = t || ''; }
 
-  function applyStems(vocalsFile, bandFile, meta, allFiles){
+  function applyStems(vocalsFile, bandFile, pairedDir, allFiles){
     if (!vocalsFile || !bandFile) return;
     if (vocalsFile === bandFile) {
       setLoadStatus('Vocals and band must be two different files.');
@@ -298,19 +311,70 @@
     const vUrl = URL.createObjectURL(vocalsFile);
     const bUrl = URL.createObjectURL(bandFile);
     PB.setSources(vUrl, bUrl);
-    PB.showTitle(titleFromLocalFile(vocalsFile));
     K.setJobId(null);
 
-    let msg = 'Stems loaded. ';
-    if (meta && meta.pairedDir) msg += `Directory: “${meta.pairedDir}”. `;
-    msg += 'Route outputs, then Play.';
-    if (meta && meta.pairCount > 1) {
-      msg += ` (${meta.pairCount} stem pairs found; using best match.)`;
-    }
-    setLoadStatus(msg);
+    const title = titleFromPair({ dir: pairedDir || '', vocals: vocalsFile, band: bandFile });
+    PB.showTitle(title);
+    setLoadStatus(`Loaded “${title}”. Route outputs, then Play.`);
 
     if (allFiles && allFiles.length) {
-      applySidecars(allFiles, meta && meta.pairedDir ? meta.pairedDir : null);
+      applySidecars(allFiles, pairedDir || null);
+    }
+  }
+
+  function loadSongAtIndex(idx){
+    if (!folderFiles || !folderPairs.length) return;
+    const pair = folderPairs[idx];
+    if (!pair) return;
+    applyStems(pair.vocals, pair.band, pair.dir, folderFiles);
+  }
+
+  function populateSongList(pairs){
+    folderPairs = pairs;
+    if (!songPick || !songPickWrap) return;
+
+    songPick.innerHTML = '';
+    if (pairs.length === 0) {
+      songPickWrap.hidden = true;
+      return;
+    }
+
+    songPickWrap.hidden = false;
+
+    if (pairs.length > 1) {
+      const opt0 = document.createElement('option');
+      opt0.value = '';
+      opt0.textContent = '— Select a song —';
+      songPick.appendChild(opt0);
+    }
+
+    pairs.forEach((p, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      let label = titleFromPair(p);
+      const dup = pairs.filter((q) => titleFromPair(q) === label).length;
+      if (dup > 1) label = `${label} (${p.dir || 'root'})`;
+      opt.textContent = label;
+      songPick.appendChild(opt);
+    });
+
+    if (pairs.length === 1) {
+      songPick.value = '0';
+      loadSongAtIndex(0);
+    } else {
+      songPick.value = '';
+      PB.showTitle('—');
+      setLoadStatus('Select a song from the list.');
+      const st = K.$('folderStatusText');
+      if (st) st.textContent = '—';
+      const lyricsPlain = K.$('lyricsBox');
+      const lyricsSync = K.$('lyricsSynced');
+      if (lyricsPlain) {
+        lyricsPlain.hidden = false;
+        lyricsPlain.textContent = '—';
+      }
+      if (lyricsSync) lyricsSync.hidden = true;
+      stopLrcSync();
     }
   }
 
@@ -325,40 +389,47 @@
   projectFolderInput?.addEventListener('change', () => {
     const files = projectFolderInput.files;
     if (!files || !files.length) return;
-    setFolderSummary(`Scanned ${files.length} file(s).`);
 
-    const found = findStemsInFileList(files);
-    const { vocals, band, pairedDir, pairCount, mismatchedDirs } = found;
+    folderFiles = [...files];
+    setFolderSummary(`Scanned ${folderFiles.length} file(s).`);
+
+    const { pairs, mismatchedDirs } = collectAllStemPairs(folderFiles);
+
     if (mismatchedDirs) {
-      setLoadStatus('Vocals and band are in different folders — select the folder that contains both stems (e.g. …/output/).');
-      applySidecars(files, null);
-    } else if (!vocals || !band) {
-      setLoadStatus('No stem pair found. Need vocals.* and no_vocals.* or accompaniment.* in the same directory.');
-      applySidecars(files, null);
+      folderPairs = [];
+      if (songPickWrap) songPickWrap.hidden = true;
+      setLoadStatus('Vocals and band are in different folders — select a parent folder that contains each song’s stems together.');
+      applySidecars(folderFiles, null);
+    } else if (!pairs.length) {
+      folderPairs = [];
+      if (songPickWrap) songPickWrap.hidden = true;
+      setLoadStatus('No songs found. Each song needs vocals.* and no_vocals.* or accompaniment.* in the same directory.');
+      applySidecars(folderFiles, null);
     } else {
-      applyStems(vocals, band, { pairedDir, pairCount: pairCount || 1 }, files);
+      setLoadStatus(`Found ${pairs.length} song(s).`);
+      populateSongList(pairs);
     }
+
     projectFolderInput.value = '';
   });
 
-  loadPairBtn?.addEventListener('click', () => {
-    setLoadStatus('');
-    const vf = vocOverride?.files?.[0];
-    const bf = bandOverride?.files?.[0];
-    if (!vf || !bf) {
-      setLoadStatus('Choose both vocal and band files, then click “Load chosen files instead”.');
+  songPick?.addEventListener('change', () => {
+    const v = songPick.value;
+    if (v === '') {
+      setLoadStatus('Select a song to load stems and lyrics.');
+      PB.showTitle('—');
+      const st = K.$('folderStatusText');
+      if (st) st.textContent = '—';
+      const lyricsPlain = K.$('lyricsBox');
+      const lyricsSync = K.$('lyricsSynced');
+      if (lyricsPlain) {
+        lyricsPlain.hidden = false;
+        lyricsPlain.textContent = '—';
+      }
+      if (lyricsSync) lyricsSync.hidden = true;
+      stopLrcSync();
       return;
     }
-    applyStems(vf, bf, { pairedDir: null, pairCount: 1 }, null);
-    const lyricsPlain = K.$('lyricsBox');
-    const lyricsSync = K.$('lyricsSynced');
-    if (lyricsPlain) {
-      lyricsPlain.hidden = false;
-      lyricsPlain.textContent = '— (load a project folder above to pull lyrics/status from disk.)';
-    }
-    if (lyricsSync) lyricsSync.hidden = true;
-    stopLrcSync();
-    const st = K.$('folderStatusText');
-    if (st) st.textContent = '—';
+    loadSongAtIndex(parseInt(v, 10));
   });
 })(window);
