@@ -9,7 +9,7 @@
 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Karaoke Player — folder (status & lyrics)</title>
+  <title>Karaoke Player — folder (lyrics)</title>
 
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
@@ -34,10 +34,6 @@
       font-weight: 600;
       color: #8ec5ff;
     }
-    #folderStatusText {
-      max-height: 220px;
-      overflow: auto;
-    }
   </style>
 </head>
 <body class="dark-surface">
@@ -50,7 +46,7 @@
 
   <section class="card">
     <h1>Karaoke Player — project folder</h1>
-    <p class="help">Choose the <strong>top project folder</strong> (e.g. <code>Karaoke-local</code>) so the picker includes <code>output/&lt;jobId&gt;/vocals.wav</code> and <code>no_vocals.wav</code>, plus optional <code>lyrics/&lt;jobId&gt;.json</code> and <code>status/&lt;jobId&gt;.json</code>. Each job folder under <code>output/</code> is one song in the list.</p>
+    <p class="help">Choose the <strong>top project folder</strong> so the picker includes <code>output/&lt;jobId&gt;/vocals.wav</code> and <code>no_vocals.wav</code>, plus optional <code>lyrics/&lt;jobId&gt;.json</code> (with <code>original_name</code> and <code>text</code>). Each job folder under <code>output/</code> is one song.</p>
 
     <div class="row" style="flex-wrap:wrap; gap:.5rem; align-items:center">
       <input type="file" id="projectFolder" webkitdirectory directory multiple style="display:none" aria-hidden="true">
@@ -72,14 +68,8 @@
   </section>
 
   <section class="card">
-    <h2>Job status</h2>
-    <p class="help">For the selected song, looks next to those stems (or a parent folder), then falls back to a root <code>status.json</code> / <code>job.json</code> if present.</p>
-    <pre id="folderStatusText" class="help" style="white-space:pre-wrap; margin-top:.5rem">—</pre>
-  </section>
-
-  <section class="card">
     <h2>Lyrics</h2>
-    <p class="help">Plain text shows below. <strong>LRC</strong> files sync to the vocals clock while playing.</p>
+    <p class="help">From <code>lyrics/&lt;jobId&gt;.json</code> the <code>text</code> field is shown (with line breaks). <strong>LRC</strong> syncs to the vocals clock when timed lyrics are available.</p>
     <pre id="lyricsBox" class="help" style="white-space:pre-wrap; max-height:260px; overflow:auto; margin-top:.5rem">—</pre>
     <div id="lyricsSynced" hidden></div>
   </section>

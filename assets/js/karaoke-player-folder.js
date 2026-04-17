@@ -1,5 +1,5 @@
 /* ===== karaoke-player-folder.js =====
-   Folder pick → list songs (stem pairs) → pick one → stems + per-song status/lyrics.
+   Folder pick → list songs (stem pairs) → pick one → stems + lyrics (original_name labels).
 */
 (function (w) {
   const K = w.KARAOKE;
@@ -17,7 +17,7 @@
 
   /** @type {File[]|null} */
   let folderFiles = null;
-  /** @type {{ dir: string, vocals: File, band: File }[]} */
+  /** @type {{ dir: string, vocals: File, band: File, originalName?: string }[]} */
   let folderPairs = [];
 
   function demucsDirRank(dir){
@@ -82,7 +82,7 @@
     return leaf.replace(/\.[^.]+$/i, '') || 'Local';
   }
 
-  /** Human-readable song name from the stem directory path. */
+  /** Human-readable song name from the stem directory path (fallback if no original_name). */
   function titleFromPair(pair){
     const { dir, vocals } = pair;
     if (dir) {
@@ -93,6 +93,11 @@
       return last || dir;
     }
     return titleFromLocalFile(vocals);
+  }
+
+  function displayLabel(pair){
+    const on = pair.originalName && String(pair.originalName).trim();
+    return on || titleFromPair(pair);
   }
 
   /**
@@ -148,44 +153,6 @@
     return { pairs: [], mismatchedDirs: false };
   }
 
-  function findStatusFile(files, stemDir){
-    const rows = [...files].map(f => ({ f, leaf: (f.name || '').trim(), rel: normPath(f) }));
-    const sd = (stemDir || '').replace(/\\/g, '/');
-    const jid = jobIdFromStemDir(sd);
-    if (jid) {
-      const byJob = rows.find((r) => {
-        const n = r.rel.replace(/\\/g, '/');
-        return r.leaf === `${jid}.json` && /(^|\/)status\//i.test(n);
-      });
-      if (byJob) return byJob.f;
-    }
-    function inScope(rel){
-      if (!sd) return true;
-      let cur = sd;
-      while (cur) {
-        if (rel === cur || rel.startsWith(cur + '/')) return true;
-        if (!cur.includes('/')) break;
-        cur = cur.slice(0, cur.lastIndexOf('/'));
-      }
-      return false;
-    }
-    const order = [
-      (leaf) => leaf === 'status.json',
-      (leaf) => leaf === 'job.json',
-      (leaf) => leaf === 'state.json',
-      (leaf) => leaf === 'status.txt',
-      (leaf) => /\.json$/i.test(leaf) && /status|job|state/i.test(leaf),
-    ];
-    for (const pred of order) {
-      const hit = rows.filter(r => pred(r.leaf) && inScope(r.rel));
-      if (!hit.length) continue;
-      hit.sort((a, b) => a.rel.split('/').length - b.rel.split('/').length);
-      return hit[0].f;
-    }
-    if (sd) return findStatusFile(files, null);
-    return null;
-  }
-
   function findLyricsFile(files, stemDir){
     const rows = [...files].map(f => ({
       f,
@@ -231,6 +198,32 @@
     );
     fallback.sort((a, b) => a.rel.split('/').length - b.rel.split('/').length);
     return fallback[0]?.f || null;
+  }
+
+  async function enrichPairsWithLyricsMeta(files, pairs){
+    const out = [];
+    for (const p of pairs) {
+      let originalName = '';
+      const lyricsFile = findLyricsFile(files, p.dir);
+      if (lyricsFile && /\.json$/i.test(lyricsFile.name)) {
+        try {
+          const raw = await lyricsFile.text();
+          const data = JSON.parse(raw);
+          if (data) {
+            if (typeof data.original_name === 'string' && data.original_name.trim()) {
+              originalName = data.original_name.trim();
+            } else if (typeof data.originalName === 'string' && data.originalName.trim()) {
+              originalName = data.originalName.trim();
+            }
+          }
+        } catch (_) {}
+      }
+      out.push({ ...p, originalName });
+    }
+    out.sort((a, b) =>
+      displayLabel(a).localeCompare(displayLabel(b), undefined, { sensitivity: 'base' })
+    );
+    return out;
   }
 
   const PB = K.initPlaybackControls();
@@ -291,15 +284,24 @@
     tick();
   }
 
+  function normalizeLyricsBody(s){
+    if (typeof s !== 'string') return '';
+    return s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  }
+
+  /** Prefer top-level `text` for display; timed `lines` / `lrc` only when needed for sync. */
   function tryParseLyricsJson(raw){
     let data;
     try { data = JSON.parse(raw); } catch { return null; }
     if (data == null) return null;
-    if (typeof data === 'string') return { plain: data };
-    if (typeof data.lrc === 'string') return { lrc: data.lrc };
-    if (typeof data.lyrics === 'string') return { plain: data.lyrics };
-    if (typeof data.text === 'string') return { plain: data.text };
-    if (typeof data.content === 'string') return { plain: data.content };
+    if (typeof data === 'string') return { plain: normalizeLyricsBody(data) };
+    if (typeof data.text === 'string') {
+      const t = normalizeLyricsBody(data.text);
+      if (t.trim()) return { plain: t };
+    }
+    if (typeof data.lrc === 'string' && data.lrc.trim()) return { lrc: data.lrc };
+    if (typeof data.lyrics === 'string' && data.lyrics.trim()) return { plain: normalizeLyricsBody(data.lyrics) };
+    if (typeof data.content === 'string' && data.content.trim()) return { plain: normalizeLyricsBody(data.content) };
     if (Array.isArray(data.lines)) {
       const lines = data.lines.map((l) => {
         if (typeof l === 'string') return { t: 0, text: l };
@@ -309,31 +311,12 @@
       }).filter((x) => x.text);
       if (lines.length) return { parsed: lines };
     }
-    return { pretty: JSON.stringify(data, null, 2) };
+    return null;
   }
 
-  async function applySidecars(files, stemDir){
-    const statusEl = K.$('folderStatusText');
+  async function applyLyricsOnly(files, stemDir){
     const lyricsPlain = K.$('lyricsBox');
     const lyricsSync = K.$('lyricsSynced');
-
-    const statusFile = findStatusFile(files, stemDir);
-    if (statusEl) {
-      if (statusFile) {
-        try {
-          const raw = await statusFile.text();
-          try {
-            statusEl.textContent = JSON.stringify(JSON.parse(raw), null, 2);
-          } catch (_) {
-            statusEl.textContent = raw;
-          }
-        } catch (e) {
-          statusEl.textContent = 'Could not read status file: ' + (e && e.message ? e.message : e);
-        }
-      } else {
-        statusEl.textContent = '— (no status file next to this song)';
-      }
-    }
 
     const lyricsFile = findLyricsFile(files, stemDir);
     if (!lyricsPlain || !lyricsSync) return;
@@ -349,36 +332,36 @@
     try {
       const txt = await lyricsFile.text();
       const isJson = /\.json$/i.test(lyricsFile.name);
-      const jsonLyrics = isJson ? tryParseLyricsJson(txt) : null;
 
-      if (jsonLyrics && jsonLyrics.parsed && jsonLyrics.parsed.length) {
-        lyricsPlain.hidden = true;
-        lyricsSync.hidden = false;
-        renderLrcLines(lyricsSync, jsonLyrics.parsed);
-        startLrcSync(jsonLyrics.parsed);
-        return;
-      }
-      if (jsonLyrics && jsonLyrics.lrc) {
-        const parsed = K.parseLRC(jsonLyrics.lrc);
-        if (parsed.length) {
+      if (isJson) {
+        const jsonLyrics = tryParseLyricsJson(txt);
+        if (jsonLyrics && jsonLyrics.parsed && jsonLyrics.parsed.length) {
           lyricsPlain.hidden = true;
           lyricsSync.hidden = false;
-          renderLrcLines(lyricsSync, parsed);
-          startLrcSync(parsed);
+          renderLrcLines(lyricsSync, jsonLyrics.parsed);
+          startLrcSync(jsonLyrics.parsed);
           return;
         }
-      }
-      if (jsonLyrics && jsonLyrics.plain) {
+        if (jsonLyrics && jsonLyrics.lrc) {
+          const parsed = K.parseLRC(jsonLyrics.lrc);
+          if (parsed.length) {
+            lyricsPlain.hidden = true;
+            lyricsSync.hidden = false;
+            renderLrcLines(lyricsSync, parsed);
+            startLrcSync(parsed);
+            return;
+          }
+        }
+        if (jsonLyrics && typeof jsonLyrics.plain === 'string') {
+          lyricsPlain.hidden = false;
+          lyricsSync.hidden = true;
+          lyricsPlain.textContent = jsonLyrics.plain.trim() ? jsonLyrics.plain : '—';
+          stopLrcSync();
+          return;
+        }
         lyricsPlain.hidden = false;
         lyricsSync.hidden = true;
-        lyricsPlain.textContent = jsonLyrics.plain;
-        stopLrcSync();
-        return;
-      }
-      if (jsonLyrics && jsonLyrics.pretty) {
-        lyricsPlain.hidden = false;
-        lyricsSync.hidden = true;
-        lyricsPlain.textContent = jsonLyrics.pretty;
+        lyricsPlain.textContent = '—';
         stopLrcSync();
         return;
       }
@@ -393,7 +376,7 @@
       } else {
         lyricsPlain.hidden = false;
         lyricsSync.hidden = true;
-        lyricsPlain.textContent = txt;
+        lyricsPlain.textContent = normalizeLyricsBody(txt);
         stopLrcSync();
       }
     } catch (e) {
@@ -407,7 +390,7 @@
   function setFolderSummary(t){ if (folderScanSummary) folderScanSummary.textContent = t || ''; }
   function setLoadStatus(t){ if (folderLoadStatus) folderLoadStatus.textContent = t || ''; }
 
-  function applyStems(vocalsFile, bandFile, pairedDir, allFiles){
+  function applyStems(vocalsFile, bandFile, pairedDir, allFiles, displayTitle){
     if (!vocalsFile || !bandFile) return;
     if (vocalsFile === bandFile) {
       setLoadStatus('Vocals and band must be two different files.');
@@ -418,12 +401,14 @@
     PB.setSources(vUrl, bUrl);
     K.setJobId(null);
 
-    const title = titleFromPair({ dir: pairedDir || '', vocals: vocalsFile, band: bandFile });
+    const title =
+      (displayTitle && String(displayTitle).trim()) ||
+      titleFromPair({ dir: pairedDir || '', vocals: vocalsFile, band: bandFile });
     PB.showTitle(title);
     setLoadStatus(`Loaded “${title}”. Route outputs, then Play.`);
 
     if (allFiles && allFiles.length) {
-      applySidecars(allFiles, pairedDir || null);
+      applyLyricsOnly(allFiles, pairedDir || null);
     }
   }
 
@@ -431,7 +416,10 @@
     if (!folderFiles || !folderPairs.length) return;
     const pair = folderPairs[idx];
     if (!pair) return;
-    applyStems(pair.vocals, pair.band, pair.dir, folderFiles);
+    const displayTitle = pair.originalName && pair.originalName.trim()
+      ? pair.originalName.trim()
+      : null;
+    applyStems(pair.vocals, pair.band, pair.dir, folderFiles, displayTitle);
   }
 
   function populateSongList(pairs){
@@ -456,8 +444,8 @@
     pairs.forEach((p, i) => {
       const opt = document.createElement('option');
       opt.value = String(i);
-      let label = titleFromPair(p);
-      const dup = pairs.filter((q) => titleFromPair(q) === label).length;
+      let label = displayLabel(p);
+      const dup = pairs.filter((q) => displayLabel(q) === label).length;
       if (dup > 1) label = `${label} (${p.dir || 'root'})`;
       opt.textContent = label;
       songPick.appendChild(opt);
@@ -470,8 +458,6 @@
       songPick.value = '';
       PB.showTitle('—');
       setLoadStatus('Select a song from the list.');
-      const st = K.$('folderStatusText');
-      if (st) st.textContent = '—';
       const lyricsPlain = K.$('lyricsBox');
       const lyricsSync = K.$('lyricsSynced');
       if (lyricsPlain) {
@@ -491,7 +477,7 @@
     projectFolderInput?.click();
   });
 
-  projectFolderInput?.addEventListener('change', () => {
+  projectFolderInput?.addEventListener('change', async () => {
     const files = projectFolderInput.files;
     if (!files || !files.length) return;
 
@@ -504,7 +490,7 @@
       folderPairs = [];
       if (songPickWrap) songPickWrap.hidden = true;
       setLoadStatus('Vocals and band are in different folders — select a parent folder that contains each song’s stems together.');
-      applySidecars(folderFiles, null);
+      applyLyricsOnly(folderFiles, null);
     } else if (!pairs.length) {
       folderPairs = [];
       if (songPickWrap) songPickWrap.hidden = true;
@@ -520,12 +506,14 @@
       setLoadStatus(
         `No songs found. Expected vocals.* and no_vocals.* (or accompaniment.*) in the same folder. ` +
         `Scan: ${nVoc} vocal stem file(s), ${nBand} band stem file(s), ${nWav} .wav file(s). ` +
-        `Pick the parent folder that includes output/… (and lyrics/, status/).`
+        `Pick the parent folder that includes output/… and lyrics/.`
       );
-      applySidecars(folderFiles, null);
+      applyLyricsOnly(folderFiles, null);
     } else {
-      setLoadStatus(`Found ${pairs.length} song(s).`);
-      populateSongList(pairs);
+      setLoadStatus(`Loading song names…`);
+      const enriched = await enrichPairsWithLyricsMeta(folderFiles, pairs);
+      setLoadStatus(`Found ${enriched.length} song(s).`);
+      populateSongList(enriched);
     }
 
     projectFolderInput.value = '';
@@ -536,8 +524,6 @@
     if (v === '') {
       setLoadStatus('Select a song to load stems and lyrics.');
       PB.showTitle('—');
-      const st = K.$('folderStatusText');
-      if (st) st.textContent = '—';
       const lyricsPlain = K.$('lyricsBox');
       const lyricsSync = K.$('lyricsSynced');
       if (lyricsPlain) {
