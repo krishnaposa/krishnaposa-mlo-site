@@ -50,7 +50,7 @@
 
   <section class="card">
     <h1>Karaoke Player — project folder</h1>
-    <p class="help">Choose a <strong>folder</strong> that contains one or more songs. Each song is a directory with <code>vocals.*</code> and <code>no_vocals.*</code> / <code>accompaniment.*</code>. Optional per-song files: <code>status.json</code> / <code>job.json</code> / <code>status.txt</code>, and <code>lyrics.lrc</code> / <code>lyrics.txt</code> (or another <code>.lrc</code> next to the stems).</p>
+    <p class="help">Choose the <strong>top project folder</strong> (e.g. <code>Karaoke-local</code>) so the picker includes <code>output/&lt;jobId&gt;/vocals.wav</code> and <code>no_vocals.wav</code>, plus optional <code>lyrics/&lt;jobId&gt;.json</code> and <code>status/&lt;jobId&gt;.json</code>. Each job folder under <code>output/</code> is one song in the list.</p>
 
     <div class="row" style="flex-wrap:wrap; gap:.5rem; align-items:center">
       <input type="file" id="projectFolder" webkitdirectory directory multiple style="display:none" aria-hidden="true">

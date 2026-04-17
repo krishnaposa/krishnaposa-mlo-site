@@ -12,20 +12,13 @@
   const songPick = K.$('folderSongPick');
   const songPickWrap = K.$('songPickWrap');
 
-  const VOC_LEAF = /^vocals\.(wav|mp3|flac|m4a|aac)$/i;
-  const BAND_LEAF = /^(no_vocals|accompaniment)\.(wav|mp3|flac|m4a|aac)$/i;
+  const VOC_LEAF = /^vocals\.(wav|mp3|flac|m4a|aac|ogg)$/i;
+  const BAND_LEAF = /^(no_vocals|accompaniment|instrumental)\.(wav|mp3|flac|m4a|aac|ogg)$/i;
 
   /** @type {File[]|null} */
   let folderFiles = null;
   /** @type {{ dir: string, vocals: File, band: File }[]} */
   let folderPairs = [];
-
-  function parentDirKey(f){
-    const rel = (f.webkitRelativePath || f.name || '').replace(/\\/g, '/');
-    const parts = rel.split('/').filter(Boolean);
-    if (parts.length < 2) return '';
-    return parts.slice(0, -1).join('/');
-  }
 
   function demucsDirRank(dir){
     const d = (dir || '').toLowerCase();
@@ -43,7 +36,41 @@
   }
 
   function normPath(f){
-    return (f.webkitRelativePath || f.name || '').replace(/\\/g, '/');
+    return String(f.webkitRelativePath || f.name || '')
+      .replace(/\\/g, '/')
+      .replace(/\/+/g, '/');
+  }
+
+  /** Leaf name from relative path (more reliable than `File.name` alone). */
+  function stemLeafFromFile(f){
+    const rel = normPath(f);
+    const parts = rel.split('/').filter(Boolean);
+    if (parts.length >= 2) return parts[parts.length - 1];
+    return (f.name || '').trim();
+  }
+
+  function stemDirFromFile(f){
+    const rel = normPath(f);
+    const parts = rel.split('/').filter(Boolean);
+    if (parts.length < 2) return '';
+    return parts.slice(0, -1).join('/');
+  }
+
+  /** Last path segment of stem folder (e.g. Demucs job id). */
+  function jobIdFromStemDir(stemDir){
+    if (!stemDir) return '';
+    const parts = String(stemDir).split('/').filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : '';
+  }
+
+  function isVocalStemLeaf(leaf){
+    const s = (leaf || '').trim();
+    return VOC_LEAF.test(s);
+  }
+
+  function isBandStemLeaf(leaf){
+    const s = (leaf || '').trim();
+    return BAND_LEAF.test(s);
   }
 
   function titleFromLocalFile(f){
@@ -70,18 +97,20 @@
 
   /**
    * Collect every directory that has both vocals + band stems.
+   * Uses the path’s final segment for matching (not only `File.name`), which fixes
+   * some browsers / layouts where names alone don’t pair correctly.
    */
   function collectAllStemPairs(files){
     const arr = [...files];
     const byDir = new Map();
     for (const f of arr) {
-      const leaf = (f.name || '').trim();
-      if (!VOC_LEAF.test(leaf) && !BAND_LEAF.test(leaf)) continue;
-      const dKey = parentDirKey(f);
+      const leaf = stemLeafFromFile(f);
+      if (!isVocalStemLeaf(leaf) && !isBandStemLeaf(leaf)) continue;
+      const dKey = stemDirFromFile(f);
       if (!byDir.has(dKey)) byDir.set(dKey, { vocals: null, band: null });
       const slot = byDir.get(dKey);
-      if (VOC_LEAF.test(leaf) && !slot.vocals) slot.vocals = f;
-      if (BAND_LEAF.test(leaf) && !slot.band) slot.band = f;
+      if (isVocalStemLeaf(leaf) && !slot.vocals) slot.vocals = f;
+      if (isBandStemLeaf(leaf) && !slot.band) slot.band = f;
     }
 
     const pairs = [];
@@ -104,13 +133,13 @@
     let vocals = null;
     let band = null;
     for (const f of arr) {
-      const leaf = (f.name || '').trim();
-      if (VOC_LEAF.test(leaf) && !vocals) vocals = f;
-      if (BAND_LEAF.test(leaf) && !band) band = f;
+      const leaf = stemLeafFromFile(f);
+      if (isVocalStemLeaf(leaf) && !vocals) vocals = f;
+      if (isBandStemLeaf(leaf) && !band) band = f;
     }
     if (vocals && band) {
-      const dv = parentDirKey(vocals);
-      const db = parentDirKey(band);
+      const dv = stemDirFromFile(vocals);
+      const db = stemDirFromFile(band);
       if (dv !== db) {
         return { pairs: [], mismatchedDirs: true };
       }
@@ -122,6 +151,14 @@
   function findStatusFile(files, stemDir){
     const rows = [...files].map(f => ({ f, leaf: (f.name || '').trim(), rel: normPath(f) }));
     const sd = (stemDir || '').replace(/\\/g, '/');
+    const jid = jobIdFromStemDir(sd);
+    if (jid) {
+      const byJob = rows.find((r) => {
+        const n = r.rel.replace(/\\/g, '/');
+        return r.leaf === `${jid}.json` && /(^|\/)status\//i.test(n);
+      });
+      if (byJob) return byJob.f;
+    }
     function inScope(rel){
       if (!sd) return true;
       let cur = sd;
@@ -156,6 +193,18 @@
       rel: normPath(f),
     }));
     const sd = (stemDir || '').replace(/\\/g, '/');
+    const jid = jobIdFromStemDir(sd);
+    if (jid) {
+      const byJob = rows.find((r) => {
+        const n = r.rel.replace(/\\/g, '/');
+        const leaf = (r.f.name || '').trim();
+        return (
+          (leaf === `${jid}.json` || leaf === `${jid}.lrc` || leaf === `${jid}.txt`) &&
+          /(^|\/)lyrics\//i.test(n)
+        );
+      });
+      if (byJob) return byJob.f;
+    }
     function inStemTree(rel){
       if (!sd) return true;
       return rel === sd || rel.startsWith(sd + '/');
@@ -242,6 +291,27 @@
     tick();
   }
 
+  function tryParseLyricsJson(raw){
+    let data;
+    try { data = JSON.parse(raw); } catch { return null; }
+    if (data == null) return null;
+    if (typeof data === 'string') return { plain: data };
+    if (typeof data.lrc === 'string') return { lrc: data.lrc };
+    if (typeof data.lyrics === 'string') return { plain: data.lyrics };
+    if (typeof data.text === 'string') return { plain: data.text };
+    if (typeof data.content === 'string') return { plain: data.content };
+    if (Array.isArray(data.lines)) {
+      const lines = data.lines.map((l) => {
+        if (typeof l === 'string') return { t: 0, text: l };
+        const t = Number(l.time != null ? l.time : l.t != null ? l.t : l.start != null ? l.start : 0);
+        const text = String(l.text != null ? l.text : l.line != null ? l.line : '');
+        return { t: Number.isFinite(t) ? t : 0, text };
+      }).filter((x) => x.text);
+      if (lines.length) return { parsed: lines };
+    }
+    return { pretty: JSON.stringify(data, null, 2) };
+  }
+
   async function applySidecars(files, stemDir){
     const statusEl = K.$('folderStatusText');
     const lyricsPlain = K.$('lyricsBox');
@@ -278,6 +348,41 @@
 
     try {
       const txt = await lyricsFile.text();
+      const isJson = /\.json$/i.test(lyricsFile.name);
+      const jsonLyrics = isJson ? tryParseLyricsJson(txt) : null;
+
+      if (jsonLyrics && jsonLyrics.parsed && jsonLyrics.parsed.length) {
+        lyricsPlain.hidden = true;
+        lyricsSync.hidden = false;
+        renderLrcLines(lyricsSync, jsonLyrics.parsed);
+        startLrcSync(jsonLyrics.parsed);
+        return;
+      }
+      if (jsonLyrics && jsonLyrics.lrc) {
+        const parsed = K.parseLRC(jsonLyrics.lrc);
+        if (parsed.length) {
+          lyricsPlain.hidden = true;
+          lyricsSync.hidden = false;
+          renderLrcLines(lyricsSync, parsed);
+          startLrcSync(parsed);
+          return;
+        }
+      }
+      if (jsonLyrics && jsonLyrics.plain) {
+        lyricsPlain.hidden = false;
+        lyricsSync.hidden = true;
+        lyricsPlain.textContent = jsonLyrics.plain;
+        stopLrcSync();
+        return;
+      }
+      if (jsonLyrics && jsonLyrics.pretty) {
+        lyricsPlain.hidden = false;
+        lyricsSync.hidden = true;
+        lyricsPlain.textContent = jsonLyrics.pretty;
+        stopLrcSync();
+        return;
+      }
+
       const looksLrc = /\.lrc$/i.test(lyricsFile.name) || /\[\d{1,2}:\d{2}/.test(txt);
       const parsed = looksLrc ? K.parseLRC(txt) : [];
       if (looksLrc && parsed.length) {
@@ -403,7 +508,20 @@
     } else if (!pairs.length) {
       folderPairs = [];
       if (songPickWrap) songPickWrap.hidden = true;
-      setLoadStatus('No songs found. Each song needs vocals.* and no_vocals.* or accompaniment.* in the same directory.');
+      let nWav = 0;
+      let nVoc = 0;
+      let nBand = 0;
+      for (const f of folderFiles) {
+        const leaf = stemLeafFromFile(f);
+        if (/\.wav$/i.test(leaf)) nWav++;
+        if (isVocalStemLeaf(leaf)) nVoc++;
+        if (isBandStemLeaf(leaf)) nBand++;
+      }
+      setLoadStatus(
+        `No songs found. Expected vocals.* and no_vocals.* (or accompaniment.*) in the same folder. ` +
+        `Scan: ${nVoc} vocal stem file(s), ${nBand} band stem file(s), ${nWav} .wav file(s). ` +
+        `Pick the parent folder that includes output/… (and lyrics/, status/).`
+      );
       applySidecars(folderFiles, null);
     } else {
       setLoadStatus(`Found ${pairs.length} song(s).`);
