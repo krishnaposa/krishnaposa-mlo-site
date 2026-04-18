@@ -107,3 +107,30 @@ and writes stems under an output folder; the player loads those files over HTTP.
 Run:python karaoke/local_folder_queue.py (defaults: KARAOKE_LOCAL_ROOT = ~/.karaoke-local, port 8787, 
 SEPARATOR=spleeter). Override base URL: ?api=http://127.0.0.1:8787 or set window.KARAOKE_API_BASE 
 before scripts load. For the hosted cloud pipeline, use <a href="index.html">Karaoke Split (cloud).
+
+cd c:/pers/krishnaposa-mlo-site
+. .venv/Scripts/activate
+export  KARAOKE_LOCAL_ROOT=/c/pers/karaoke-local
+export SEPARATOR=demucs
+faster:
+export SEPARATOR=spleeter
+
+export DEMUCS_MODEL=htdemucs
+Install PyTorch with CUDA in the same venv. Demucs uses cuda 
+automatically when it’s available. If needed you can force:
+export DEMUCS_DEVICE=cuda  -- only if nvidia gpu
+
+# Demucs is slow by default (htdemucs_ft). Faster: htdemucs — export DEMUCS_MODEL=htdemucs
+# GPU: install PyTorch with CUDA; Demucs uses it automatically. Force: export DEMUCS_DEVICE=cuda
+# -j 1 on Windows is intentional (spawn issues); for one song, model+GPU matter more than -j.
+# Fastest stem path: export SEPARATOR=spleeter (different quality vs Demucs).
+# Advanced: export DEMUCS_EXTRA_ARGS='--shifts 1'  (quality/speed tradeoff; see demucs --help)
+export KARAOKE_LOCAL_PORT=8787
+
+python karaoke/local_folder_queue.py
+
+  another window
+  cd c:/pers/krishnaposa-mlo-site
+python -m http.server 8765
+http://localhost:8765/karaoke/index-local.html 
+use above to save lyrics

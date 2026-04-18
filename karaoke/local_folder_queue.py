@@ -19,6 +19,8 @@ Run:
   set SEPARATOR=spleeter   (default; matches repo requirements.txt — pip install -r requirements.txt)
   set SEPARATOR=demucs    (needs Demucs: pip install -r karaoke/requirements-demucs.txt — use its own venv)
   set DEMUCS_JOBS=1       (optional; Windows defaults to 1 — avoids many demucs -j2 spawn failures)
+  Demucs speed: DEMUCS_MODEL=htdemucs (faster than default htdemucs_ft); install PyTorch with CUDA for GPU;
+    optional DEMUCS_DEVICE=cuda, DEMUCS_EXTRA_ARGS e.g. --shifts 1; for fastest splits use SEPARATOR=spleeter.
   python karaoke/local_folder_queue.py
 
 Then open karaoke/index-local.html (set KARAOKE_API_BASE to match, default http://127.0.0.1:8787).
@@ -32,6 +34,7 @@ import logging
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -59,9 +62,22 @@ PORT = int(os.environ.get("KARAOKE_LOCAL_PORT", "8787"))
 PUBLIC_BASE = os.environ.get("KARAOKE_LOCAL_PUBLIC_BASE", f"http://{HOST}:{PORT}").rstrip("/")
 
 SEPARATOR = os.environ.get("SEPARATOR", "spleeter").lower().strip()
+# htdemucs_ft = higher quality, slower. Use DEMUCS_MODEL=htdemucs for a noticeable speed-up (still good stems).
 DEMUCS_MODEL = os.environ.get("DEMUCS_MODEL", "htdemucs_ft")
 # Demucs multiprocessing often fails on Windows with -j 2; override with DEMUCS_JOBS.
+# For a *single* track, -j mostly affects batching multiple files; model + CPU/GPU dominate runtime.
 DEMUCS_JOBS = os.environ.get("DEMUCS_JOBS", "1" if platform.system() == "Windows" else "2")
+# Optional: force device, e.g. cuda or cpu (Demucs defaults to cuda when PyTorch has CUDA).
+DEMUCS_DEVICE = os.environ.get("DEMUCS_DEVICE", "").strip()
+# Optional: extra CLI args (quoted segments), e.g. --segment 7  or  --shifts 1
+DEMUCS_EXTRA_ARGS = os.environ.get("DEMUCS_EXTRA_ARGS", "").strip()
+
+
+def _split_demucs_extra_args(extra: str):
+    if not (extra or "").strip():
+        return []
+    # Windows paths in args are rare; posix=False handles cmd-style quoting on Windows.
+    return shlex.split(extra, posix=os.name != "nt")
 
 JOB_ID_RE = re.compile(r"^([a-f0-9]{16})_(.+)$", re.I)
 JOB_ID_ONLY_RE = re.compile(r"^[a-f0-9]{16}$", re.I)
@@ -387,10 +403,11 @@ def run_demucs(inp: Path, work_base: Path, job_id: str, original_name: str) -> P
         DEMUCS_MODEL,
         "-j",
         DEMUCS_JOBS,
-        str(inp),
-        "-o",
-        str(work_base),
     ]
+    if DEMUCS_DEVICE:
+        cmd.extend(["-d", DEMUCS_DEVICE])
+    cmd.extend(_split_demucs_extra_args(DEMUCS_EXTRA_ARGS))
+    cmd.extend([str(inp), "-o", str(work_base)])
     run_cmd_with_progress(cmd, job_id, "demucs", original_name, prog_lo=38, prog_hi=88)
     return work_base
 
