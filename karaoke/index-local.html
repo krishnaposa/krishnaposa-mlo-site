@@ -140,6 +140,7 @@
     <button class="btn btn-outline" type="button" onclick="window.location.href='player.html'">Player (cloud URLs)</button>
     <button class="btn btn-outline" type="button" onclick="window.location.href='player-local.html'">Player (local stems)</button>
     <button class="btn btn-outline" type="button" onclick="window.location.href='player-standalone.html'">Standalone player</button>
+    <button class="btn btn-outline" type="button" onclick="window.location.href='player-folder-local-root.html'">Folder player (local API / KARAOKE_LOCAL_ROOT)</button>
   </section>
 </main>
 
@@ -150,11 +151,20 @@
 (function () {
   var q = new URLSearchParams(window.location.search);
   var api = q.get('api');
-  if (api) window.KARAOKE_API_BASE = api;
-  else window.KARAOKE_API_BASE = 'http://127.0.0.1:8787';
-  if (location.protocol === 'https:') {
-    var b = document.getElementById('httpsLocalBarrier');
-    if (b) b.classList.remove('hide');
+  if (api) {
+    window.KARAOKE_API_BASE = api;
+  } else {
+    var h = (location.hostname || '').toLowerCase();
+    var tunnelish = h.indexOf('ngrok') !== -1 || h.indexOf('loca.lt') !== -1;
+    if (tunnelish) {
+      window.KARAOKE_API_BASE = location.origin;
+    } else {
+      window.KARAOKE_API_BASE = 'http://127.0.0.1:8787';
+    }
+  }
+  var b = document.getElementById('httpsLocalBarrier');
+  if (b && location.protocol === 'https:' && String(window.KARAOKE_API_BASE || '').indexOf('http:') === 0) {
+    b.classList.remove('hide');
   }
 })();
 </script>

@@ -134,3 +134,23 @@ python karaoke/local_folder_queue.py
 python -m http.server 8765
 http://localhost:8765/karaoke/index-local.html 
 use above to save lyrics
+
+
+ngrok.yaml
+
+version: "3"
+endpoints:
+  - name: restricted-path-tunnel
+    url: https://untrained-chase-slinky.ngrok-free.dev/
+    upstream:
+      url: 8787
+    traffic_policy:
+      on_http_request:
+        - expressions:
+            - "!req.url.path.startsWith('/karaoke')"
+          actions:
+            - type: deny
+              config:
+                status_code: 404
+agent:
+    authtoken: <token>

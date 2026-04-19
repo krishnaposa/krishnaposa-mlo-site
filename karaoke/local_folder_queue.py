@@ -15,6 +15,13 @@ Implements the same routes the web UI expects:
   GET|POST /api/lyrics — load/save lyrics by job_id (JSON; compatible with karaoke-azure.js)
   GET  /api/list       — { "items": [ { job_id, title, updated, vocals_url, band_url } ] } (like cloud)
 
+  Optional static (default on): GET / → redirect; GET /karaoke/*.html|*.htm|*.txt and GET /assets/* from the
+  repo next to this file — so one ngrok tunnel to KARAOKE_LOCAL_PORT can serve both API and pages.
+  Disable with KARAOKE_SERVE_REPO_STATIC=0.
+  Narrow which repo files are served under assets/: KARAOKE_STATIC_ASSETS_SCOPE=karaoke — only karaoke*.js,
+  header.js, footer.js under assets/js/ and styles.css, karaoke.css, dark-surface.css under assets/css/.
+  (Ngrok itself cannot path-filter a tunnel; use this env or a local reverse proxy if you need that.)
+
 Run:
   set SEPARATOR=spleeter   (default; matches repo requirements.txt — pip install -r requirements.txt)
   set SEPARATOR=demucs    (needs Demucs: pip install -r karaoke/requirements-demucs.txt — use its own venv)
@@ -31,6 +38,7 @@ import hashlib
 import importlib.util
 import json
 import logging
+import mimetypes
 import os
 import platform
 import re
@@ -50,6 +58,9 @@ from typing import Any, Dict, Optional, Tuple
 
 # --- config ---
 LOG = logging.getLogger("karaoke-local")
+
+# Repository root (parent of karaoke/) — used to serve a few static paths for “one ngrok → one port”.
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 ROOT = Path(os.environ.get("KARAOKE_LOCAL_ROOT", Path.home() / ".karaoke-local")).expanduser()
 INPUT_DIR = ROOT / "input"
@@ -84,6 +95,62 @@ JOB_ID_ONLY_RE = re.compile(r"^[a-f0-9]{16}$", re.I)
 
 _processing: set[str] = set()
 _lock = threading.Lock()
+
+
+def _serve_repo_static_enabled() -> bool:
+    v = (os.environ.get("KARAOKE_SERVE_REPO_STATIC") or "1").strip().lower()
+    return v not in ("0", "false", "no", "off")
+
+
+def _static_assets_scope() -> str:
+    """all = any file under assets/; karaoke = only scripts/styles used by karaoke pages."""
+    return (os.environ.get("KARAOKE_STATIC_ASSETS_SCOPE") or "all").strip().lower()
+
+
+def _static_asset_repo_rel_allowed(rel: str) -> bool:
+    if _static_assets_scope() in ("all", "*", ""):
+        return True
+    if _static_assets_scope() not in ("karaoke", "minimal"):
+        return True
+    r = rel.replace("\\", "/")
+    rl = r.lower()
+    if rl.startswith("assets/js/"):
+        leaf = rl.rsplit("/", 1)[-1]
+        return leaf.startswith("karaoke") or leaf in ("header.js", "footer.js")
+    if rl.startswith("assets/css/"):
+        leaf = rl.rsplit("/", 1)[-1]
+        return leaf in ("styles.css", "karaoke.css", "dark-surface.css")
+    return False
+
+
+def _static_file_for_url(url_path: str) -> Optional[Path]:
+    """Only karaoke/*.html|*.htm|*.txt and assets/* files under REPO_ROOT (no path traversal)."""
+    if not _serve_repo_static_enabled():
+        return None
+    try:
+        path = urllib.parse.unquote(urllib.parse.urlparse(url_path).path)
+    except Exception:
+        return None
+    if not path or path.startswith("//") or ".." in path:
+        return None
+    rel = path.lstrip("/")
+    if rel.startswith("karaoke/"):
+        low = rel.lower()
+        if not (low.endswith(".html") or low.endswith(".htm") or low.endswith(".txt")):
+            return None
+    elif rel.startswith("assets/"):
+        if not _static_asset_repo_rel_allowed(rel):
+            return None
+    else:
+        return None
+    fp = (REPO_ROOT / rel).resolve()
+    try:
+        fp.relative_to(REPO_ROOT.resolve())
+    except ValueError:
+        return None
+    if not fp.is_file():
+        return None
+    return fp
 
 
 def _module_available(module_name: str) -> bool:
@@ -191,7 +258,10 @@ def list_completed_jobs() -> list[Dict[str, Any]]:
             continue
         voc = sub / "vocals.wav"
         band = sub / "no_vocals.wav"
-        if not (voc.is_file() and band.is_file()):
+        band_alt = sub / "accompaniment.wav"
+        if not voc.is_file():
+            continue
+        if not band.is_file() and not band_alt.is_file():
             continue
         st = get_status(job_id) or {}
         orig = (st.get("original_name") or "").strip()
@@ -567,7 +637,7 @@ class Handler(BaseHTTPRequestHandler):
         return {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, ngrok-skip-browser-warning",
         }
 
     def _send(self, code: int, body: bytes | None, ctype: str = "application/json") -> None:
@@ -611,6 +681,40 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(out, ensure_ascii=False).encode("utf-8"))
             return
         self._send(200, json.dumps({"found": False}).encode("utf-8"))
+
+    def _maybe_serve_repo_static(self) -> bool:
+        """Serve a small slice of the repo for one public URL (ngrok) → queue port only."""
+        parsed = urllib.parse.urlparse(self.path)
+        p = parsed.path or ""
+        if p in ("/", ""):
+            if not _serve_repo_static_enabled():
+                return False
+            self.send_response(302)
+            self.send_header("Location", "/karaoke/player-folder-local-root.html")
+            for k, v in self._cors().items():
+                self.send_header(k, v)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return True
+        fp = _static_file_for_url(self.path)
+        if not fp:
+            return False
+        try:
+            data = fp.read_bytes()
+        except OSError:
+            self.send_error(500)
+            return True
+        ctype = mimetypes.guess_type(str(fp))[0] or "application/octet-stream"
+        self.send_response(200)
+        for k, v in self._cors().items():
+            self.send_header(k, v)
+        if ctype.startswith("text/"):
+            self.send_header("Cache-Control", "no-cache")
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+        return True
 
     def _handle_post_lyrics(self) -> None:
         ctype = (self.headers.get("Content-Type") or "").lower()
@@ -656,6 +760,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path_norm == "/api/list":
             items = list_completed_jobs()
+            n_sub = sum(1 for _ in OUTPUT_DIR.iterdir()) if OUTPUT_DIR.is_dir() else 0
+            LOG.info(
+                "GET /api/list -> %d completed job(s) (KARAOKE_LOCAL_ROOT=%s output/ sub-entries=%s)",
+                len(items),
+                ROOT,
+                n_sub,
+            )
             raw = json.dumps({"items": items}, ensure_ascii=False).encode("utf-8")
             self._send(200, raw)
             return
@@ -683,6 +794,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(404)
                 return
             fp = OUTPUT_DIR / job_id / fname
+            if fname == "no_vocals.wav" and not fp.is_file():
+                alt = OUTPUT_DIR / job_id / "accompaniment.wav"
+                if alt.is_file():
+                    fp = alt
             if not fp.is_file():
                 self.send_error(404)
                 return
@@ -695,6 +810,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Accept-Ranges", "bytes")
             self.end_headers()
             self.wfile.write(data)
+            return
+
+        if self._maybe_serve_repo_static():
             return
 
         self.send_error(404)
@@ -786,6 +904,13 @@ def main() -> None:
     except Exception as e:
         LOG.error("Separator check failed: %s", e)
     LOG.info("Serving %s — submit/status/lyrics compatible with karaoke/index-local.html", PUBLIC_BASE)
+    if _serve_repo_static_enabled():
+        LOG.info(
+            "Repo static files enabled — e.g. %s/karaoke/player-folder-local-root.html (single ngrok → this port). "
+            "Set KARAOKE_SERVE_REPO_STATIC=0 to disable. Static under assets/: scope=%s (set KARAOKE_STATIC_ASSETS_SCOPE=karaoke to limit).",
+            PUBLIC_BASE,
+            _static_assets_scope(),
+        )
 
     t = threading.Thread(target=worker_loop, name="karaoke-worker", daemon=True)
     t.start()

@@ -9,11 +9,11 @@
 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Karaoke Player — folder (lyrics)</title>
+  <title>Karaoke Player — local root (API)</title>
 
-  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
-  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
-  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
+  <link rel="stylesheet" href="../assets/css/styles.css">
+  <link rel="stylesheet" href="../assets/css/karaoke.css">
+  <link rel="stylesheet" href="../assets/css/dark-surface.css">
   <style>
     #lyricsSynced {
       max-height: 320px;
@@ -45,12 +45,15 @@
 <main class="container">
 
   <section class="card">
-    <h1>Karaoke Player — project folder</h1>
-    <p class="help">Choose the <strong>top project folder</strong> so the picker includes <code>output/&lt;jobId&gt;/vocals.wav</code> and <code>no_vocals.wav</code>, plus optional <code>lyrics/&lt;jobId&gt;.json</code> (with <code>original_name</code> and <code>text</code>). Each job folder under <code>output/</code> is one song.</p>
+    <h1>Karaoke Player — local queue folder</h1>
+    <p class="help">Stems and lyrics come from the same tree the local queue uses: set <code>KARAOKE_LOCAL_ROOT</code> on the machine running <code>python karaoke/local_folder_queue.py</code> (default <code>~/.karaoke-local</code>). This page does <strong>not</strong> read that path in the browser; it calls the server’s <code>GET /api/list</code> and <code>GET /api/lyrics</code> and streams <code>/api/out/&lt;job_id&gt;/…</code>.</p>
+    <p class="help"><strong>One ngrok tunnel:</strong> point ngrok at the queue port (default <strong>8787</strong>), set <code>KARAOKE_LOCAL_PUBLIC_BASE</code> to your ngrok HTTPS origin, restart <code>local_folder_queue.py</code>, then open <code>https://YOUR-TUNNEL/karaoke/player-folder-local-root.html</code> (same host serves API + this page). <strong>Two tunnels not required.</strong> Otherwise API base: <code>?api=http://127.0.0.1:8787</code> or <code>?api=https://…</code>.</p>
+    <div id="httpsLocalBarrier" class="error hide" role="alert">
+      <strong>Mixed content:</strong> this page is HTTPS but the API base is plain <code>http://…</code>, so the browser will block requests. Use the one-tunnel setup above, or add <code>?api=https://…</code> pointing at an HTTPS API, or open the player over <code>http://</code>.
+    </div>
 
     <div class="row" style="flex-wrap:wrap; gap:.5rem; align-items:center">
-      <input type="file" id="projectFolder" webkitdirectory directory multiple style="display:none" aria-hidden="true">
-      <button type="button" id="pickProjectFolder" class="btn btn-blue">Choose folder…</button>
+      <button type="button" id="refreshList" class="btn btn-blue">Refresh list</button>
       <span id="folderScanSummary" class="help" aria-live="polite"></span>
     </div>
 
@@ -69,7 +72,7 @@
 
   <section class="card">
     <h2>Lyrics</h2>
-    <p class="help">From <code>lyrics/&lt;jobId&gt;.json</code> the <code>text</code> field is shown (with line breaks). <strong>LRC</strong> syncs to the vocals clock when timed lyrics are available.</p>
+    <p class="help">From <code>lyrics/&lt;jobId&gt;.json</code> on the server (saved text or synced LRC).</p>
     <pre id="lyricsBox" class="help" style="white-space:pre-wrap; max-height:260px; overflow:auto; margin-top:.5rem">—</pre>
     <div id="lyricsSynced" hidden></div>
   </section>
@@ -114,9 +117,8 @@
   </section>
 
   <div class="row" style="justify-content:space-between; flex-wrap:wrap; gap:.5rem">
-    <a class="btn btn-outline" href="/karaoke/index.html">← Uploader</a>
-    <a class="btn btn-outline" href="/karaoke/player-folder-local-root.html">Same stems via local API →</a>
-    <a class="btn btn-outline" href="/karaoke/player-local.html">Local stems only →</a>
+    <a class="btn btn-outline" href="/karaoke/index-local.html">← Local uploader</a>
+    <a class="btn btn-outline" href="/karaoke/player-folder.html">Folder picker player →</a>
     <a class="btn btn-outline" href="/karaoke/player.html">Cloud list player →</a>
   </div>
 </main>
@@ -124,8 +126,30 @@
 <div id="footer"></div>
 <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
-<script>window.KARAOKE_MODE = 'player-folder';</script>
-<script src="https://www.krishposa.com/assets/js/karaoke-core.js"></script>
-<script src="https://www.krishposa.com/assets/js/karaoke-player-folder.js"></script>
+<script>
+(function () {
+  var q = new URLSearchParams(window.location.search);
+  var api = q.get('api');
+  if (api) {
+    window.KARAOKE_API_BASE = api;
+  } else {
+    var h = (location.hostname || '').toLowerCase();
+    var tunnelish = h.indexOf('ngrok') !== -1 || h.indexOf('loca.lt') !== -1;
+    if (tunnelish) {
+      window.KARAOKE_API_BASE = location.origin;
+    } else {
+      window.KARAOKE_API_BASE = 'http://127.0.0.1:8787';
+    }
+  }
+  var b = document.getElementById('httpsLocalBarrier');
+  if (b && location.protocol === 'https:' && String(window.KARAOKE_API_BASE || '').indexOf('http:') === 0) {
+    b.classList.remove('hide');
+  }
+})();
+</script>
+<script>window.KARAOKE_MODE = 'player-folder-local-root';</script>
+<script src="../assets/js/karaoke-core.js"></script>
+<script src="../assets/js/karaoke-azure.js"></script>
+<script src="../assets/js/karaoke-player-folder-local-root.js"></script>
 </body>
 </html>
