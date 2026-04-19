@@ -72,7 +72,7 @@
 
   <section class="card">
     <h2>Lyrics</h2>
-    <p class="help">From <code>lyrics/&lt;jobId&gt;.json</code> on the server (saved text or synced LRC).</p>
+    <p class="help">Read-only: loaded from <code>lyrics/&lt;jobId&gt;.json</code> on the server (plain text or synced LRC). This page does not save lyrics.</p>
     <pre id="lyricsBox" class="help" style="white-space:pre-wrap; max-height:260px; overflow:auto; margin-top:.5rem">—</pre>
     <div id="lyricsSynced" hidden></div>
   </section>
@@ -150,6 +150,16 @@
 <script>window.KARAOKE_MODE = 'player-folder-local-root';</script>
 <script src="../assets/js/karaoke-core.js"></script>
 <script src="../assets/js/karaoke-azure.js"></script>
+<script>
+(function () {
+  var K = window.KARAOKE;
+  if (K && typeof K.saveLyrics === 'function') {
+    K.saveLyrics = async function saveLyricsDisabled() {
+      return;
+    };
+  }
+})();
+</script>
 <script src="../assets/js/karaoke-player-folder-local-root.js"></script>
 </body>
 </html>
