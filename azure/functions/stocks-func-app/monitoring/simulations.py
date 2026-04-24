@@ -6,6 +6,10 @@ import logging
 
 # ----------------------------- Monte Carlo -----------------------------
 
+def _neutral_prob(value: float = 0.50) -> float:
+    return float(value)
+
+
 def mc_paths_prob_up(
     last_price: float,
     mu_d: float,
@@ -33,14 +37,17 @@ def mc_paths_prob_up(
     """
     if not np.isfinite(last_price) or last_price <= 0:
         return np.nan
-    if not np.isfinite(mu_d) or not np.isfinite(sigma_d) or sigma_d < 1e-10:
+    if not np.isfinite(mu_d) or not np.isfinite(sigma_d) or sigma_d < 0:
         return np.nan
     if horizon_days <= 0 or n_paths <= 0:
         return np.nan
+    if sigma_d < 1e-10:
+        deterministic_ret = np.expm1(float(mu_d) * int(horizon_days))
+        return float(deterministic_ret >= up_threshold)
 
     rng = np.random.default_rng(seed)
-    mu_T = float(mu_d) * horizon_days
-    sigma_T = float(sigma_d) * np.sqrt(horizon_days)
+    mu_T = float(mu_d) * int(horizon_days)
+    sigma_T = float(sigma_d) * np.sqrt(int(horizon_days))
     z = rng.standard_normal(n_paths)
     # GBM closed form
     ST = last_price * np.exp((mu_T - 0.5 * sigma_T**2) + sigma_T * z)
@@ -86,13 +93,16 @@ def fit_hmm_regime(
 
     # Library check
     if not _HMM_AVAILABLE:
-        return -1, 0.50
+        return -1, _neutral_prob()
 
     try:
+        if int(n_states) < 2:
+            return -1, _neutral_prob()
+
         # Convert & clean
         r = pd.Series(daily_ret, dtype="float64").replace([np.inf, -np.inf], np.nan).dropna()
         if r.empty:
-            return -1, 0.50
+            return -1, _neutral_prob()
 
         # Clip extreme daily moves to improve numerical stability
         if np.isfinite(clip_abs) and clip_abs > 0:
@@ -100,7 +110,10 @@ def fit_hmm_regime(
 
         if r.shape[0] < int(min_len):
             # Not enough history → neutral
-            return -1, 0.50
+            return -1, _neutral_prob()
+
+        if float(r.std(ddof=0)) < 1e-10:
+            return -1, _neutral_prob()
 
         X = r.values.reshape(-1, 1)
 
@@ -126,4 +139,4 @@ def fit_hmm_regime(
 
     except Exception as e:
         logger.debug(f"[HMM] fit failed, using neutral fallback: {e}")
-        return -1, 0.50
+        return -1, _neutral_prob()

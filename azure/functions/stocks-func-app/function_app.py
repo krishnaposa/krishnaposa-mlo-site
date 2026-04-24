@@ -4,7 +4,7 @@
 # {
 #   "logging": { "logLevel": { "default": "Warning" } }
 # }
-import os, json, sys, subprocess, logging, pathlib, importlib.util, datetime, shlex
+import os, json, sys, subprocess, logging, pathlib, importlib.util, datetime
 import azure.functions as func
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
@@ -47,6 +47,7 @@ UNIVERSE_TTL_MIN     = int(os.getenv("UNIVERSE_TTL_MIN", "720"))
 UNIVERSE_MAX_SECONDS = int(os.getenv("UNIVERSE_MAX_SECONDS", "60"))
 
 REFRESH_SHARED_KEY = os.getenv("REFRESH_SHARED_KEY")
+RANK_SHARED_KEY = os.getenv("RANK_SHARED_KEY")
 
 AZURE_OPENAI_API_VER = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")  # used by ai_utils via env
 
@@ -55,11 +56,7 @@ MIN_DOLLAR_VOL    = int(os.getenv("MIN_DOLLAR_VOL", "1000000"))
 PENNY_PRICE       = float(os.getenv("PENNY_PRICE", "5"))
 AI_TOPK           = int(os.getenv("AI_TOPK", "10"))
 
-# IMPORTANT: disable per-client logging so headers/bodies aren’t dumped
-_BLOB_SVC = BlobServiceClient.from_connection_string(
-    os.getenv("MONITOR_STORAGE"),
-    logging_enable=False
-)
+_BLOB_SVC: BlobServiceClient | None = None
 
 # ---------- Small utils ----------
 def _parse_json_body(req: func.HttpRequest) -> dict:
@@ -68,8 +65,18 @@ def _parse_json_body(req: func.HttpRequest) -> dict:
     except ValueError:
         return {}
 
+def _blob_service() -> BlobServiceClient:
+    global _BLOB_SVC
+    if _BLOB_SVC is None:
+        conn = os.getenv("MONITOR_STORAGE")
+        if not conn:
+            raise RuntimeError("MONITOR_STORAGE is not set")
+        # IMPORTANT: disable per-client logging so headers/bodies are not dumped.
+        _BLOB_SVC = BlobServiceClient.from_connection_string(conn, logging_enable=False)
+    return _BLOB_SVC
+
 def _blob_container():
-    cont = _BLOB_SVC.get_container_client(UNIVERSE_CONTAINER)
+    cont = _blob_service().get_container_client(UNIVERSE_CONTAINER)
     try:
         cont.create_container(logging_enable=False)
     except Exception:
@@ -77,7 +84,7 @@ def _blob_container():
     return cont
 
 def _signals_container():
-    cont = _BLOB_SVC.get_container_client(SIGNALS_CONTAINER)
+    cont = _blob_service().get_container_client(SIGNALS_CONTAINER)
     try:
         cont.create_container(logging_enable=False)
     except Exception:
@@ -140,14 +147,21 @@ def _compute_universe_budgeted(max_seconds: int) -> list[str]:
     except Exception as e:
         logging.info(f"[universe] import path skipped: {e}")
 
-    cmd = f"{shlex.quote(sys.executable)} {shlex.quote(str(script_path))} --max-seconds {int(max_seconds)}"
-    proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=max_seconds+5)
+    proc = subprocess.run(
+        [sys.executable, str(script_path), "--max-seconds", str(int(max_seconds))],
+        capture_output=True,
+        text=True,
+        timeout=max_seconds + 5,
+    )
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip()
+        raise RuntimeError(f"Universe script failed with exit code {proc.returncode}: {err[:500]}")
     out = (proc.stdout or "").strip()
 
     try:
         tickers = json.loads(out)
-    except json.JSONDecodeError:
-        tickers = eval(out, {"__builtins__": {}}, {})
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Entry script must print a JSON array, got: {out[:200]}") from exc
 
     if not isinstance(tickers, (list, tuple)):
         raise ValueError("Entry script must print a list/JSON array")
@@ -305,6 +319,11 @@ def manual_refresh(req: func.HttpRequest) -> func.HttpResponse:
 def rank(req: func.HttpRequest) -> func.HttpResponse:
     from ai_utils import score_with_azure_openai  # local import to avoid any tool load order issues
     try:
+        if RANK_SHARED_KEY:
+            supplied = req.headers.get("x-rank-key") or req.params.get("key")
+            if supplied != RANK_SHARED_KEY:
+                return func.HttpResponse(json.dumps({"ok": False, "error": "Forbidden"}), status_code=403, mimetype="application/json")
+
         body = _parse_json_body(req)
         tickers = body.get("tickers")
         if not tickers:

@@ -80,13 +80,12 @@ def _train_matrix(frames: Dict[str, pd.DataFrame], horizon_days: int
         # target from price
         px = df["Adj Close"].astype(float)
         fwd = (px.shift(-horizon_days) / px - 1.0)
-        y = (fwd >= 0).astype(int)
+        y = pd.Series(np.where(fwd.notna(), (fwd >= 0).astype(int), np.nan), index=fwd.index)
 
         # align X and y
         dd = d[feat_cols].copy()
         dd["y"] = y
-        dd = dd.dropna()
-        dd = dd.iloc[:-horizon_days]  # drop tail w/ no fwd return
+        dd = dd.replace([np.inf, -np.inf], np.nan).dropna()
 
         if len(dd) < 200:
             continue
@@ -162,7 +161,7 @@ def predict_up_probability_for_latest(frames: Dict[str, pd.DataFrame], model_tup
     for t, df in frames.items():
         try:
             f_all = _feat_frame(df)
-            f = f_all.tail(1)[feat_cols].astype(float)
+            f = f_all[feat_cols].replace([np.inf, -np.inf], np.nan).dropna().tail(1).astype(float)
             if f.isna().any(axis=None) or f.shape[0] != 1:
                 out[t] = np.nan
                 continue

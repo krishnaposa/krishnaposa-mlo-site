@@ -94,6 +94,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         d["ret_5d"]  = d["CloseAdj"].pct_change(5)
         d["ret_20"]  = d["CloseAdj"].pct_change(20)
         d["ret_21d"] = d["CloseAdj"].pct_change(21)
+        d["ret_60"]  = d["CloseAdj"].pct_change(60)
         d["ret_63"]  = d["CloseAdj"].pct_change(63)
         d["ret_120"] = d["CloseAdj"].pct_change(120)
         d["ret_252"] = d["CloseAdj"].pct_change(252)
@@ -124,11 +125,9 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
         # momentum z-scores
         for col in ["ret_20", "ret_60", "ret_120"]:
-           if col not in d.columns:
-              d[col] = np.nan  # ensure column exists even if data is short
-           mu = d[col].rolling(180).mean()
-           sd = d[col].rolling(180).std()
-           d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
+            mu = d[col].rolling(180).mean()
+            sd = d[col].rolling(180).std()
+            d[f"{col}_z"] = (d[col] - mu) / sd.replace(0, np.nan)
         
         eps_sig = eps_surprise_trend(t)
 
@@ -180,8 +179,8 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     # ---- ML 30-day probability ----
     try:
-        mdl, _, _ = train_direction_model(enriched_frames, horizon_days=30)
-        ml_prob_map = predict_up_probability_for_latest(enriched_frames, mdl)
+        model_tuple = train_direction_model(enriched_frames, horizon_days=30)
+        ml_prob_map = predict_up_probability_for_latest(enriched_frames, model_tuple)
     except Exception as e:
         logger.warning(f"[ML] training/predict failed: {e}")
         ml_prob_map = {}
