@@ -15,17 +15,17 @@ elif [[ -f ".venv/bin/activate" ]]; then
 fi
 
 # Email settings. Use a Gmail app password, not your normal Gmail password.
-export SEND_EMAIL="${SEND_EMAIL:-1}"
-export EMAIL_FROM="${EMAIL_FROM:-<your-gmail-address>}"
+export SEND_EMAIL="1"
+export EMAIL_FROM="krishna.posa@gmail.com"
 export EMAIL_PASSWORD="${EMAIL_PASSWORD:-<gmail-app-password>}"
-export EMAIL_TO="${EMAIL_TO:-<recipient@example.com>}"
-export EMAIL_SUBJECT_PREFIX="${EMAIL_SUBJECT_PREFIX:-Adhoc Stock Picks}"
+export EMAIL_TO="krishnaposa@gmail.com"
+export EMAIL_SUBJECT_PREFIX="Adhoc Stock Picks"
 
 # Required for universe/local-list Blob access.
 export MONITOR_STORAGE="${MONITOR_STORAGE:-<azure-storage-connection-string>}"
 
 # Optional wheel strategy knobs.
-export WHEEL_ENABLED="${WHEEL_ENABLED:-1}"
-export WHEEL_TOPK="${WHEEL_TOPK:-8}"
+export WHEEL_ENABLED="1"
+export WHEEL_TOPK="8"
 
 python run_daily_monitor.py
