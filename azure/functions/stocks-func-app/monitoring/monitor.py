@@ -13,7 +13,7 @@ from .config import (
     LOCAL_PRUNE_COUNT, LOCAL_MAX_SIZE, LOCAL_ADD_MIN_PRICE, LOCAL_ADD_MIN_STRENGTH_Z,
     ADD_LEADERS_TOPK,
     USE_MC_HMM_FILTER, MC_MIN_PUP, HMM_MIN_BULL,
-    WHEEL_ENABLED, WHEEL_TOPK, WHEEL_PREFILTER_TOPN, WHEEL_MIN_DTE, WHEEL_MAX_DTE,
+    WHEEL_ENABLED, WHEEL_DEBUG, WHEEL_TOPK, WHEEL_PREFILTER_TOPN, WHEEL_MIN_DTE, WHEEL_MAX_DTE,
     WHEEL_PUT_OTM_PCT, WHEEL_MIN_MARKET_CAP, WHEEL_MIN_PRICE, WHEEL_MAX_RSI,
     WHEEL_MIN_REL_VOLUME, WHEEL_MAX_DIST_52W_HIGH, WHEEL_MAX_DEBT_TO_EQUITY,
     WHEEL_MIN_INSIDER_OWNERSHIP, WHEEL_MIN_GROWTH, WHEEL_MIN_OI,
@@ -251,24 +251,64 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     wheel_rows = []
     if WHEEL_ENABLED:
+        def _wheel_log(step: str, mask: pd.Series, prev_count: int | None = None) -> int:
+            count = int(mask.sum())
+            if WHEEL_DEBUG:
+                removed = "" if prev_count is None else f", removed {prev_count - count}"
+                logger.info(f"[wheel] {step}: {count} candidates{removed}")
+            return count
+
+        base_mask = pd.Series(True, index=out.index)
+        prev = _wheel_log("start", base_mask)
+
+        price_mask = base_mask & (out["last_price"].fillna(0.0) > WHEEL_MIN_PRICE)
+        prev = _wheel_log(f"price > {WHEEL_MIN_PRICE:g}", price_mask, prev)
+
+        cap_mask = price_mask & (out["market_cap"].fillna(0.0) >= WHEEL_MIN_MARKET_CAP)
+        prev = _wheel_log(f"market cap >= {WHEEL_MIN_MARKET_CAP:,.0f}", cap_mask, prev)
+
+        rsi_mask = cap_mask & (out["rsi14"].fillna(100.0) < WHEEL_MAX_RSI)
+        prev = _wheel_log(f"RSI < {WHEEL_MAX_RSI:g}", rsi_mask, prev)
+
+        sma20_mask = rsi_mask & (out["close_above_sma20"].fillna(0.0) == 1.0)
+        prev = _wheel_log("above SMA20", sma20_mask, prev)
+
+        sma50_mask = sma20_mask & (out["close_above_sma50"].fillna(0.0) == 1.0)
+        prev = _wheel_log("above SMA50", sma50_mask, prev)
+
+        high_mask = sma50_mask & (out["dist_52w_high"].fillna(-1.0) >= -WHEEL_MAX_DIST_52W_HIGH)
+        prev = _wheel_log(f"within {WHEEL_MAX_DIST_52W_HIGH:.0%} of 52w high", high_mask, prev)
+
+        relvol_mask = high_mask & (out["rel_volume_20"].fillna(0.0) >= WHEEL_MIN_REL_VOLUME)
+        prev = _wheel_log(f"relative volume >= {WHEEL_MIN_REL_VOLUME:g}", relvol_mask, prev)
+
+        debt_mask = relvol_mask & (out["debt_to_equity"].fillna(np.inf) < WHEEL_MAX_DEBT_TO_EQUITY)
+        prev = _wheel_log(f"debt/equity < {WHEEL_MAX_DEBT_TO_EQUITY:g}", debt_mask, prev)
+
+        insider_mask = debt_mask & (out["insider_ownership"].fillna(0.0) >= WHEEL_MIN_INSIDER_OWNERSHIP)
+        prev = _wheel_log(f"insider ownership >= {WHEEL_MIN_INSIDER_OWNERSHIP:.0%}", insider_mask, prev)
+
         growth_ok = (
             (out["rev_growth"].fillna(0.0) >= WHEEL_MIN_GROWTH) |
             (out["earn_growth"].fillna(0.0) >= WHEEL_MIN_GROWTH) |
             (out["growth_streak"].fillna(0.0) == 1.0)
         )
-        wheel_base = out[
-            (out["last_price"].fillna(0.0) > WHEEL_MIN_PRICE) &
-            (out["market_cap"].fillna(0.0) >= WHEEL_MIN_MARKET_CAP) &
-            (out["rsi14"].fillna(100.0) < WHEEL_MAX_RSI) &
-            (out["close_above_sma20"].fillna(0.0) == 1.0) &
-            (out["close_above_sma50"].fillna(0.0) == 1.0) &
-            (out["dist_52w_high"].fillna(-1.0) >= -WHEEL_MAX_DIST_52W_HIGH) &
-            (out["rel_volume_20"].fillna(0.0) >= WHEEL_MIN_REL_VOLUME) &
-            (out["debt_to_equity"].fillna(np.inf) < WHEEL_MAX_DEBT_TO_EQUITY) &
-            (out["insider_ownership"].fillna(0.0) >= WHEEL_MIN_INSIDER_OWNERSHIP) &
-            growth_ok
-        ].copy()
+        final_mask = insider_mask & growth_ok
+        prev = _wheel_log(f"growth >= {WHEEL_MIN_GROWTH:.0%} or growth streak", final_mask, prev)
+
+        if WHEEL_DEBUG:
+            logger.info(
+                "[wheel] missing fundamentals in filtered universe: "
+                f"debt_to_equity={int(out.loc[relvol_mask, 'debt_to_equity'].isna().sum())}, "
+                f"insider_ownership={int(out.loc[debt_mask, 'insider_ownership'].isna().sum())}"
+            )
+
+        wheel_base = out[final_mask].copy()
         wheel_base = wheel_base.sort_values("final_rank", ascending=False).head(WHEEL_PREFILTER_TOPN)
+        if WHEEL_DEBUG:
+            logger.info(f"[wheel] option-chain prefilter topN: {len(wheel_base)} candidates")
+
+        reject_counts: dict[str, int] = {}
         for _, r in wheel_base.iterrows():
             t = str(r["ticker"]).upper()
             try:
@@ -280,15 +320,20 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
                     today=today,
                 )
                 if not opt.get("ok"):
+                    reason = str(opt.get("reason", "option_chain_rejected"))
+                    reject_counts[reason] = reject_counts.get(reason, 0) + 1
                     continue
                 open_interest = float(opt.get("open_interest", 0.0) or 0.0)
                 spread_pct = float(opt.get("spread_pct", np.nan))
                 if open_interest < WHEEL_MIN_OI:
+                    reject_counts["open_interest_too_low"] = reject_counts.get("open_interest_too_low", 0) + 1
                     continue
                 if not np.isfinite(spread_pct) or spread_pct > WHEEL_MAX_SPREAD_PCT:
+                    reject_counts["spread_too_wide"] = reject_counts.get("spread_too_wide", 0) + 1
                     continue
                 dte_earn = opt.get("days_to_earnings")
                 if WHEEL_BLOCK_EARNINGS and dte_earn is not None and 0 <= int(dte_earn) <= EARNINGS_BLOCK_DAYS:
+                    reject_counts["earnings_blocked"] = reject_counts.get("earnings_blocked", 0) + 1
                     continue
                 score = score_wheel_put_row(r, opt)
                 wheel_rows.append({
@@ -316,8 +361,15 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
                     "earn_growth": r.get("earn_growth"),
                 })
             except Exception as e:
+                reject_counts["exception"] = reject_counts.get("exception", 0) + 1
                 logger.debug(f"[wheel] skipped {t}: {e}")
         wheel_rows = sorted(wheel_rows, key=lambda x: x.get("score", 0.0), reverse=True)[:WHEEL_TOPK]
+        if WHEEL_DEBUG:
+            logger.info(f"[wheel] accepted option candidates: {len(wheel_rows)}")
+            if reject_counts:
+                logger.info(f"[wheel] option reject counts: {reject_counts}")
+            if wheel_rows:
+                logger.info("[wheel] selected: " + ", ".join([str(r.get("ticker")) for r in wheel_rows]))
 
     # leaders
     leaders = out[(out.get("ret_5d", 0) > 0) & (out.get("ret_21d", 0) > 0)].copy().sort_values("strength_score", ascending=False)

@@ -48,6 +48,7 @@ OTM_SHORT_PCT      = float(os.getenv("OTM_SHORT_PCT", "0.10"))   # +10% OTM for 
 
 # --- Wheel / cash-secured put candidates ---
 WHEEL_ENABLED = (os.getenv("WHEEL_ENABLED", "1") == "1")
+WHEEL_DEBUG = (os.getenv("WHEEL_DEBUG", "0") == "1")
 WHEEL_TOPK = int(os.getenv("WHEEL_TOPK", "8"))
 WHEEL_PREFILTER_TOPN = int(os.getenv("WHEEL_PREFILTER_TOPN", "40"))
 WHEEL_MIN_DTE = int(os.getenv("WHEEL_MIN_DTE", "35"))
