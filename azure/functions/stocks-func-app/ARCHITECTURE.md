@@ -289,6 +289,26 @@ The daily email renders the result in:
 Wheel Strategy: 45-Day Cash-Secured Puts
 ```
 
+## Dedicated Finviz Email List
+
+The daily email also includes a separate list for the custom Finviz screener:
+
+```text
+Finviz: Strong Buy Large Caps at All-Time High
+```
+
+This list is fetched by `wb4u_main.get_large_strongbuy_alltime_high_symbols` and
+uses the filters from:
+
+```text
+an_recom_strongbuy, cap_largeover, fa_debteq_u1, fa_pe_u50,
+ta_alltime_nh, ta_perf_1wup, ta_sma20_pa, ta_sma50_pa
+```
+
+The screener is sorted by P/E ascending, matching `o=pe` in the Finviz URL.
+It is displayed separately from the main universe, stock picks, and wheel
+candidates so it can be reviewed directly in the email.
+
 ## Azure OpenAI Design
 
 The AI layer lives in `ai_utils.py`. It uses the Azure OpenAI Python SDK and the

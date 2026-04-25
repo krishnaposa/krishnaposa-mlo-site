@@ -195,6 +195,7 @@ def send_email_report_with_sims(*,
     picks_tickers: List[str],
     ai_spreads_list: List[str],
     ai_leaps_list: List[str],
+    alltime_high_value_list: Optional[List[str]] = None,
     sim_rows: Optional[List[Dict]] = None,    # ticker, mc30, hmm_bull, ml_prob
     opt_rows: Optional[List[Dict]] = None,    # ticker, expiry, dte, k1, k2, debit, oi1, oi2, combo_spread
     wheel_rows: Optional[List[Dict]] = None,  # cash-secured put wheel candidates
@@ -218,6 +219,7 @@ def send_email_report_with_sims(*,
 
     html_universe   = _list_html(universe_tickers)
     html_picks   = _list_html(picks_tickers)
+    html_alltime_high_value = _list_html(alltime_high_value_list or [])
     # Disabled for now: LEAPS/debit-spread AI sections are not rendered.
     # html_spreads = _list_html(ai_spreads_list)
     # html_leaps = _list_html(ai_leaps_list)
@@ -241,6 +243,9 @@ def send_email_report_with_sims(*,
 
       <h3>Stock Picks (buy_flag + top leaders)</h3>
       <div>{html_picks}</div>
+
+      <h3>Finviz: Strong Buy Large Caps at All-Time High</h3>
+      <div>{html_alltime_high_value}</div>
 
       <!-- Disabled for now: LEAPS/debit-spread AI sections. -->
       <!--

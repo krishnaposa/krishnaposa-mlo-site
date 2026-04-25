@@ -61,6 +61,7 @@ eps25WeekUpDayUpLarge = ['cap_largeover','fa_epsqoq_high','ta_perf2_13wup','ta_p
 
 stock_from_insta_screener = ['cap_largeover','fa_epsyoy_o10','fa_fpe_u25','fa_peg_u2','fa_quickratio_o1.5','fa_roe_o5','geo_usa','fa_debteq_u1','sh_avgvol_o400','ta_sma200_pa']
 
+stocks_large_strongbuy_alltime_high_value = ['an_recom_strongbuy','cap_largeover','fa_debteq_u1','fa_pe_u50','ta_alltime_nh','ta_perf_1wup','ta_sma20_pa','ta_sma50_pa']
 
 goodFilter = {
     "isCFOIncreasing": [True],
@@ -71,7 +72,39 @@ goodFilter = {
     "profitMargin": 0.2
 }
 
-finviz_options=[stock_from_insta_screener,eps25WeekUpDayUpLarge,stocks_bestROEAndLarge,stocks_bestROE,stocks_posNextYear,stocks_competitiveAdvantage,stocks_HighPerfNearHigh,stocks_wedgeup,stocks_largeNewHighs,stocks_highEarningsGrowth, stocks_hightSalesGrowth, stocks_highRelativeVol, stocks_consistentGrowthBullingTrendAboveMid, largeNotOverboughtEarnRevbeatEPS5yrsPositive, NotOverboughtRisingGood]
+def finviz_query(filters, sortOrder='-change'):
+  return {"filters": filters, "sortOrder": sortOrder}
+
+finviz_options=[
+  finviz_query(stocks_large_strongbuy_alltime_high_value, sortOrder='pe'),
+  stock_from_insta_screener,
+  eps25WeekUpDayUpLarge,
+  stocks_bestROEAndLarge,
+  stocks_bestROE,
+  stocks_posNextYear,
+  stocks_competitiveAdvantage,
+  stocks_HighPerfNearHigh,
+  stocks_wedgeup,
+  stocks_largeNewHighs,
+  stocks_highEarningsGrowth,
+  stocks_hightSalesGrowth,
+  stocks_highRelativeVol,
+  stocks_consistentGrowthBullingTrendAboveMid,
+  largeNotOverboughtEarnRevbeatEPS5yrsPositive,
+  NotOverboughtRisingGood
+]
+
+def get_large_strongbuy_alltime_high_symbols(max_count=25):
+  """
+  Dedicated list for the Finviz query:
+  strong buy, large cap, debt/equity < 1, P/E < 50, all-time new high,
+  1-week up, above SMA20 and SMA50, sorted by P/E ascending.
+  """
+  symbols = wb4u_finviz.getStocksSymbols(
+    stocks_large_strongbuy_alltime_high_value,
+    sortOrder='pe'
+  )
+  return [s.upper() for s in symbols[:max_count]]
 
 BEST_ETF_LIST=['OGIG','PTH','PTF','FXU','DFE','IQIN','SILJ','SGDJ','JKK','ARKW','ARKK','OGIG','ARKQ','BOTZ','IRBO','BLCN','BLOK','KOIN','BUG','CIBR','IHAK','XNTK','QQQ','IGM','HERO','ESPO','BJK','SMH','SOXX','PSI','TAN','PBW','QCLN','MLPX','AMLP','MLPA','QCLN','PBW','TAN','ARKG','PTH','KURE','BTEC','IDNA','XPH','IHE','CARZ','JETS','IYT','FTXR','XTN','IYK','ECON','PSL','VOX','FCOM','IXP','KRE','IAT','KBE','ITB','XHB','PKB','FAN','EDEN','GRID','IFRA','NFRA','TOLZ','YOLO','CNBS','THCX','INDS','XLRE','ICF','PHO','PIO','FIW','PFFD','EPRF','PGF','CHIQ','SPUU','SSO','UPRO','SPXL']
 MID_GROWTH_ETF=['SFYF','CWS','MID','JKH','IVOG','ARKK','IJK','IPO','IWP','KOMP','MDYG','VOT','XMMO']
@@ -110,7 +143,13 @@ def findAllBestStocksWithSymbols(FINVIZ_LIST=finviz_options, sleep_sec=2, max_fi
         break
      try:
         time.sleep(sleep_sec)
-        symList = wb4u_finviz.getStocksSymbols(finviz_scr, sortOrder='-change')
+        if isinstance(finviz_scr, dict):
+          filters = finviz_scr.get("filters", [])
+          sort_order = finviz_scr.get("sortOrder", "-change")
+        else:
+          filters = finviz_scr
+          sort_order = "-change"
+        symList = wb4u_finviz.getStocksSymbols(filters, sortOrder=sort_order)
         symListSmall = symList[0:2]
         if symListSmall:
            symListAll.extend(symListSmall)

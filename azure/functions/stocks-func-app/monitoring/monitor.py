@@ -32,6 +32,7 @@ from .emailer import send_email_report_with_sims  # emailer that shows sims + op
 from universe_utils import read_universe_blob
 from local_list_utils import load_local_list, save_local_list
 # from ai_utils import ai_rank_tickers  # Disabled: LEAPS/debit-spread AI rankings are not currently needed.
+from wb4u_main import get_large_strongbuy_alltime_high_symbols
 
 # 30-day direction ML model
 from .model_predict import train_direction_model, predict_up_probability_for_latest
@@ -343,6 +344,12 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     ai_spreads_list = []
     ai_leaps_list = []
+    alltime_high_value_list = []
+    if os.getenv("SEND_EMAIL", "0") == "1":
+        try:
+            alltime_high_value_list = get_large_strongbuy_alltime_high_symbols()
+        except Exception as e:
+            logger.warning(f"[finviz] all-time-high value list failed: {e}")
 
     sim_df = out[out["ticker"].isin(picks_tickers)][["ticker", "mc_p_up_30d", "hmm_prob_bull", "ml_prob_up_30d"]]
     sim_rows = [
@@ -367,6 +374,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         picks_tickers=picks_tickers,
         ai_spreads_list=ai_spreads_list,
         ai_leaps_list=ai_leaps_list,
+        alltime_high_value_list=alltime_high_value_list,
         sim_rows=sim_rows,
         opt_rows=[],       # placeholder — still valid
         wheel_rows=wheel_rows,
