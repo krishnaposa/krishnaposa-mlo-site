@@ -11,21 +11,27 @@ from .config import (
     DAILY_MONITOR_LOG_LEVEL,
     MIN_DOLLAR_VOL_DEFAULT, PENNY_PRICE,
     LOCAL_PRUNE_COUNT, LOCAL_MAX_SIZE, LOCAL_ADD_MIN_PRICE, LOCAL_ADD_MIN_STRENGTH_Z,
-    AI_EMAIL_TOPK, ADD_LEADERS_TOPK,
+    ADD_LEADERS_TOPK,
     USE_MC_HMM_FILTER, MC_MIN_PUP, HMM_MIN_BULL,
+    WHEEL_ENABLED, WHEEL_TOPK, WHEEL_PREFILTER_TOPN, WHEEL_MIN_DTE, WHEEL_MAX_DTE,
+    WHEEL_PUT_OTM_PCT, WHEEL_MIN_MARKET_CAP, WHEEL_MIN_PRICE, WHEEL_MAX_RSI,
+    WHEEL_MIN_REL_VOLUME, WHEEL_MAX_DIST_52W_HIGH, WHEEL_MAX_DEBT_TO_EQUITY,
+    WHEEL_MIN_INSIDER_OWNERSHIP, WHEEL_MIN_GROWTH, WHEEL_MIN_OI,
+    WHEEL_MAX_SPREAD_PCT, WHEEL_BLOCK_EARNINGS, EARNINGS_BLOCK_DAYS,
 )
 from .indicators import adx, mfi, rsi, macd, true_range, realized_vol, zscore
-from .fundamentals import eps_surprise_trend, compute_quarterly_trends, cap_multiplier
+from .fundamentals import eps_surprise_trend, compute_quarterly_trends, compute_company_profile, cap_multiplier
 from .simulations import mc_paths_prob_up, fit_hmm_regime
 from .data_fetch import fetch_prices_batched
-from .scoring import score_row
+from .options_metrics import cash_secured_put_candidate
+from .scoring import score_row, score_wheel_put_row
 from .local_list_ops import prune_and_replenish_local_list
 from .emailer import send_email_report_with_sims  # emailer that shows sims + options + performance table
 
 # external utils
 from universe_utils import read_universe_blob
 from local_list_utils import load_local_list, save_local_list
-from ai_utils import ai_rank_tickers
+# from ai_utils import ai_rank_tickers  # Disabled: LEAPS/debit-spread AI rankings are not currently needed.
 
 # 30-day direction ML model
 from .model_predict import train_direction_model, predict_up_probability_for_latest
@@ -79,6 +85,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
             pass
 
     fundamentals_map = {}
+    company_profile_map = {}
 
     # ---- per-ticker feature engineering ----
     for t, df in frames.items():
@@ -105,6 +112,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         d["sma200"]  = d["CloseAdj"].rolling(200).mean()
         d["sma50_slope"]  = (d["sma50"].diff(5) / d["sma50"].shift(5)).replace([np.inf, -np.inf], np.nan)
         d["sma200_slope"] = (d["sma200"].diff(10) / d["sma200"].shift(10)).replace([np.inf, -np.inf], np.nan)
+        d["close_above_sma20"]  = (d["CloseAdj"] > d["sma20"]).astype(float)
         d["close_above_sma50"]  = (d["CloseAdj"] > d["sma50"]).astype(float)
         d["close_above_sma200"] = (d["CloseAdj"] > d["sma200"]).astype(float)
 
@@ -118,6 +126,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         d["atr14"] = d["tr"].rolling(14).mean()
         d["vol20"] = realized_vol(d["ret"], 20)
         d["vol60"] = realized_vol(d["ret"], 60)
+        d["rel_volume_20"] = d["Volume"].astype(float) / d["Volume"].astype(float).rolling(20).mean()
 
         # highs / breakouts
         d["hi_252"] = d["CloseAdj"].rolling(252, min_periods=60).max()
@@ -140,6 +149,8 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
         if t not in fundamentals_map:
             fundamentals_map[t] = compute_quarterly_trends(t)
+        if t not in company_profile_map:
+            company_profile_map[t] = compute_company_profile(t)
 
         latest = d.iloc[-1].to_dict()
         latest["ticker"] = t
@@ -154,6 +165,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         latest["hmm_state"]        = state_today
         latest["hmm_prob_bull"]    = prob_bull
         latest.update(fundamentals_map[t])
+        latest.update(company_profile_map[t])
 
         mc_val = latest.get("market_cap")
         try:
@@ -222,6 +234,8 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     ern_growth = np.where(out["fundamentals_quality"] >= 1.0, out["earn_q_yoy"], out["earn_q_qoq"])
     rev_growth = pd.Series(rev_growth, index=out.index).clip(-1.0, 1.0).fillna(0.0)
     ern_growth = pd.Series(ern_growth, index=out.index).clip(-1.0, 1.0).fillna(0.0)
+    out["rev_growth"] = out.get("revenue_growth", pd.Series(np.nan, index=out.index)).fillna(rev_growth)
+    out["earn_growth"] = out.get("earnings_growth", pd.Series(np.nan, index=out.index)).fillna(ern_growth)
 
     out["leap_score"] = (
         0.30 * out["z_ret_63"] +
@@ -234,11 +248,82 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     out["ml_prob_up_30d"] = out["ticker"].map(ml_prob_map).astype(float).fillna(0.5)
 
-    # leaders & leaps
+    wheel_rows = []
+    if WHEEL_ENABLED:
+        growth_ok = (
+            (out["rev_growth"].fillna(0.0) >= WHEEL_MIN_GROWTH) |
+            (out["earn_growth"].fillna(0.0) >= WHEEL_MIN_GROWTH) |
+            (out["growth_streak"].fillna(0.0) == 1.0)
+        )
+        wheel_base = out[
+            (out["last_price"].fillna(0.0) > WHEEL_MIN_PRICE) &
+            (out["market_cap"].fillna(0.0) >= WHEEL_MIN_MARKET_CAP) &
+            (out["rsi14"].fillna(100.0) < WHEEL_MAX_RSI) &
+            (out["close_above_sma20"].fillna(0.0) == 1.0) &
+            (out["close_above_sma50"].fillna(0.0) == 1.0) &
+            (out["dist_52w_high"].fillna(-1.0) >= -WHEEL_MAX_DIST_52W_HIGH) &
+            (out["rel_volume_20"].fillna(0.0) >= WHEEL_MIN_REL_VOLUME) &
+            (out["debt_to_equity"].fillna(np.inf) < WHEEL_MAX_DEBT_TO_EQUITY) &
+            (out["insider_ownership"].fillna(0.0) >= WHEEL_MIN_INSIDER_OWNERSHIP) &
+            growth_ok
+        ].copy()
+        wheel_base = wheel_base.sort_values("final_rank", ascending=False).head(WHEEL_PREFILTER_TOPN)
+        for _, r in wheel_base.iterrows():
+            t = str(r["ticker"]).upper()
+            try:
+                opt = cash_secured_put_candidate(
+                    t,
+                    min_dte=WHEEL_MIN_DTE,
+                    max_dte=WHEEL_MAX_DTE,
+                    pct_otm=WHEEL_PUT_OTM_PCT,
+                    today=today,
+                )
+                if not opt.get("ok"):
+                    continue
+                open_interest = float(opt.get("open_interest", 0.0) or 0.0)
+                spread_pct = float(opt.get("spread_pct", np.nan))
+                if open_interest < WHEEL_MIN_OI:
+                    continue
+                if not np.isfinite(spread_pct) or spread_pct > WHEEL_MAX_SPREAD_PCT:
+                    continue
+                dte_earn = opt.get("days_to_earnings")
+                if WHEEL_BLOCK_EARNINGS and dte_earn is not None and 0 <= int(dte_earn) <= EARNINGS_BLOCK_DAYS:
+                    continue
+                score = score_wheel_put_row(r, opt)
+                wheel_rows.append({
+                    "ticker": t,
+                    "score": score,
+                    "expiry": opt.get("expiry"),
+                    "dte": opt.get("dte"),
+                    "spot": opt.get("spot"),
+                    "strike": opt.get("strike"),
+                    "credit": opt.get("mid_credit"),
+                    "roc": opt.get("return_on_cash"),
+                    "ann_return": opt.get("annualized_return"),
+                    "breakeven": opt.get("break_even"),
+                    "buffer": opt.get("downside_buffer"),
+                    "oi": opt.get("open_interest"),
+                    "volume": opt.get("volume"),
+                    "iv": opt.get("implied_volatility"),
+                    "spread": opt.get("spread_pct"),
+                    "earnings_days": dte_earn,
+                    "rsi": r.get("rsi14"),
+                    "rel_volume": r.get("rel_volume_20"),
+                    "debt_to_equity": r.get("debt_to_equity"),
+                    "insider_ownership": r.get("insider_ownership"),
+                    "rev_growth": r.get("rev_growth"),
+                    "earn_growth": r.get("earn_growth"),
+                })
+            except Exception as e:
+                logger.debug(f"[wheel] skipped {t}: {e}")
+        wheel_rows = sorted(wheel_rows, key=lambda x: x.get("score", 0.0), reverse=True)[:WHEEL_TOPK]
+
+    # leaders
     leaders = out[(out.get("ret_5d", 0) > 0) & (out.get("ret_21d", 0) > 0)].copy().sort_values("strength_score", ascending=False)
 
-    ai_leaps_df = ai_rank_tickers(merged_tickers, strategy="leaps", horizon_text="12–24 months", top_k=AI_EMAIL_TOPK)
-    ai_spreads_df = ai_rank_tickers(merged_tickers, strategy="debit_call_spread", horizon_text="30–40 days", top_k=AI_EMAIL_TOPK)
+    # Disabled for now: LEAPS/debit-spread AI rankings are not needed in the daily email.
+    # ai_leaps_df = ai_rank_tickers(merged_tickers, strategy="leaps", horizon_text="12–24 months", top_k=AI_EMAIL_TOPK)
+    # ai_spreads_df = ai_rank_tickers(merged_tickers, strategy="debit_call_spread", horizon_text="30–40 days", top_k=AI_EMAIL_TOPK)
 
     # ------- Email data -------
     picks = out[out["buy_flag"]].copy()
@@ -247,16 +332,17 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         [*picks["ticker"].astype(str).tolist(), *leaders_top["ticker"].astype(str).tolist()]
     ))
 
-    def _tickers_only(df):
-        if df is None or df.empty:
-            return []
-        d = df.copy()
-        if "ai_score" in d.columns:
-            d = d.sort_values("ai_score", ascending=False)
-        return d["ticker"].astype(str).tolist()
+    # Disabled for now with LEAPS/debit-spread AI rankings.
+    # def _tickers_only(df):
+    #     if df is None or df.empty:
+    #         return []
+    #     d = df.copy()
+    #     if "ai_score" in d.columns:
+    #         d = d.sort_values("ai_score", ascending=False)
+    #     return d["ticker"].astype(str).tolist()
 
-    ai_spreads_list = _tickers_only(ai_spreads_df)[:AI_EMAIL_TOPK]
-    ai_leaps_list = _tickers_only(ai_leaps_df)[:AI_EMAIL_TOPK]
+    ai_spreads_list = []
+    ai_leaps_list = []
 
     sim_df = out[out["ticker"].isin(picks_tickers)][["ticker", "mc_p_up_30d", "hmm_prob_bull", "ml_prob_up_30d"]]
     sim_rows = [
@@ -283,6 +369,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         ai_leaps_list=ai_leaps_list,
         sim_rows=sim_rows,
         opt_rows=[],       # placeholder — still valid
+        wheel_rows=wheel_rows,
         perf_rows=perf_rows,  # new table
         subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),
     )

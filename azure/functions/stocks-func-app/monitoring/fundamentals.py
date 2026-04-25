@@ -66,6 +66,33 @@ def compute_quarterly_trends(ticker: str) -> dict:
     except Exception:
         return out
 
+def compute_company_profile(ticker: str) -> dict:
+    out = {
+        "debt_to_equity": np.nan,
+        "insider_ownership": np.nan,
+        "revenue_growth": np.nan,
+        "earnings_growth": np.nan,
+    }
+    try:
+        info = yf.Ticker(ticker).info or {}
+        debt_to_equity = info.get("debtToEquity")
+        if debt_to_equity is not None:
+            debt_to_equity = float(debt_to_equity)
+            # Yahoo often reports debt/equity as a percentage (e.g. 45.2).
+            out["debt_to_equity"] = debt_to_equity / 100.0 if debt_to_equity > 10 else debt_to_equity
+
+        for src, dest in [
+            ("heldPercentInsiders", "insider_ownership"),
+            ("revenueGrowth", "revenue_growth"),
+            ("earningsGrowth", "earnings_growth"),
+        ]:
+            val = info.get(src)
+            if val is not None:
+                out[dest] = float(val)
+        return out
+    except Exception:
+        return out
+
 def cap_multiplier(mcap: float | None) -> float:
     if mcap is None or (isinstance(mcap, float) and np.isnan(mcap)): return 1.0
     try: m = float(mcap)

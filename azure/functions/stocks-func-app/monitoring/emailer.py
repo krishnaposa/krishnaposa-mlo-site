@@ -128,6 +128,67 @@ def _opt_table_html(rows: Optional[List[Dict]], max_rows: int = 40) -> str:
     return "".join(html)
 
 
+def _wheel_table_html(rows: Optional[List[Dict]], max_rows: int = 20) -> str:
+    if not rows:
+        return "<i>No wheel candidates</i>"
+
+    def _fmt_money(x):
+        try:
+            return f"${float(x):.2f}"
+        except Exception:
+            return "—"
+
+    def _fmt_pct(x):
+        try:
+            return f"{float(x)*100:.1f}%"
+        except Exception:
+            return "—"
+
+    def _fmt_num(x):
+        try:
+            return f"{float(x):.1f}"
+        except Exception:
+            return "—"
+
+    head = rows[:max_rows]
+    html = [
+        "<table border='0' cellspacing='0' cellpadding='4'>",
+        "<thead><tr>",
+        "<th align='left'>Ticker</th>",
+        "<th align='left'>Expiry</th>",
+        "<th align='right'>DTE</th>",
+        "<th align='right'>Spot</th>",
+        "<th align='right'>Put K</th>",
+        "<th align='right'>Credit</th>",
+        "<th align='right'>ROC</th>",
+        "<th align='right'>Ann.</th>",
+        "<th align='right'>B/E</th>",
+        "<th align='right'>Buffer</th>",
+        "<th align='right'>OI</th>",
+        "<th align='right'>Spread</th>",
+        "<th align='right'>Score</th>",
+        "</tr></thead><tbody>",
+    ]
+    for r in head:
+        html.append(
+            f"<tr><td>{r.get('ticker','')}</td>"
+            f"<td>{r.get('expiry','')}</td>"
+            f"<td align='right'>{r.get('dte','')}</td>"
+            f"<td align='right'>{_fmt_money(r.get('spot'))}</td>"
+            f"<td align='right'>{_fmt_money(r.get('strike'))}</td>"
+            f"<td align='right'>{_fmt_money(r.get('credit'))}</td>"
+            f"<td align='right'>{_fmt_pct(r.get('roc'))}</td>"
+            f"<td align='right'>{_fmt_pct(r.get('ann_return'))}</td>"
+            f"<td align='right'>{_fmt_money(r.get('breakeven'))}</td>"
+            f"<td align='right'>{_fmt_pct(r.get('buffer'))}</td>"
+            f"<td align='right'>{_fmt_num(r.get('oi'))}</td>"
+            f"<td align='right'>{_fmt_pct(r.get('spread'))}</td>"
+            f"<td align='right'>{_fmt_num(r.get('score'))}</td></tr>"
+        )
+    html.append("</tbody></table>")
+    return "".join(html)
+
+
 def send_email_report_with_sims(*,
     stamp: str,
     universe_tickers: List[str],
@@ -136,6 +197,7 @@ def send_email_report_with_sims(*,
     ai_leaps_list: List[str],
     sim_rows: Optional[List[Dict]] = None,    # ticker, mc30, hmm_bull, ml_prob
     opt_rows: Optional[List[Dict]] = None,    # ticker, expiry, dte, k1, k2, debit, oi1, oi2, combo_spread
+    wheel_rows: Optional[List[Dict]] = None,  # cash-secured put wheel candidates
     perf_rows: Optional[List[Dict]] = None,   # ticker, perf_5d, perf_1m, perf_6m
     subj_prefix: str = "Daily Stock Picks"
 ):
@@ -148,18 +210,21 @@ def send_email_report_with_sims(*,
     if not (email_from and pwd and tos):
         return
 
-    s_spreads = ", ".join(ai_spreads_list[:2])
-    s_leaps   = ", ".join(ai_leaps_list[:2])
-    subj_tail = f"Spreads: {s_spreads}" + (f" | LEAPS: {s_leaps}" if s_leaps else "")
-    subject = f"{subj_prefix} — {stamp} | {subj_tail}".strip().rstrip(" |")
+    # Disabled for now: LEAPS/debit-spread AI lists are not included in the subject.
+    # s_spreads = ", ".join(ai_spreads_list[:2])
+    # s_leaps = ", ".join(ai_leaps_list[:2])
+    # subj_tail = f"Spreads: {s_spreads}" + (f" | LEAPS: {s_leaps}" if s_leaps else "")
+    subject = f"{subj_prefix} — {stamp}".strip()
 
     html_universe   = _list_html(universe_tickers)
     html_picks   = _list_html(picks_tickers)
-    html_spreads = _list_html(ai_spreads_list)
-    html_leaps   = _list_html(ai_leaps_list)
+    # Disabled for now: LEAPS/debit-spread AI sections are not rendered.
+    # html_spreads = _list_html(ai_spreads_list)
+    # html_leaps = _list_html(ai_leaps_list)
     html_sims    = _sim_table_html(sim_rows)
     html_perf    = _perf_table_html(perf_rows)
     html_opts    = _opt_table_html(opt_rows)
+    html_wheel   = _wheel_table_html(wheel_rows)
 
     eat_note = (
         "<div style='font-size:12px;color:#666;margin-top:8px'>"
@@ -177,11 +242,14 @@ def send_email_report_with_sims(*,
       <h3>Stock Picks (buy_flag + top leaders)</h3>
       <div>{html_picks}</div>
 
+      <!-- Disabled for now: LEAPS/debit-spread AI sections. -->
+      <!--
       <h3>AI: 30–40 Day Debit Call Spreads</h3>
-      <div>{html_spreads}</div>
+      <div>{{html_spreads}}</div>
 
       <h3>AI: LEAPS (12–24 months)</h3>
-      <div>{html_leaps}</div>
+      <div>{{html_leaps}}</div>
+      -->
 
       <h3>Simulators</h3>
       {html_sims}
@@ -191,6 +259,9 @@ def send_email_report_with_sims(*,
 
       <h3>Options (30–45 DTE) Setup</h3>
       {html_opts}
+
+      <h3>Wheel Strategy: 45-Day Cash-Secured Puts</h3>
+      {html_wheel}
 
       {eat_note}
     </body></html>"""

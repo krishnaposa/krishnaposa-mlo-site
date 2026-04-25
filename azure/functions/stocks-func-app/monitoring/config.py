@@ -45,3 +45,22 @@ EARNINGS_BLOCK_DAYS = int(os.getenv("EARNINGS_BLOCK_DAYS", "14"))
 
 OTM_LONG_PCT       = float(os.getenv("OTM_LONG_PCT", "0.05"))    # +5% OTM for the long call
 OTM_SHORT_PCT      = float(os.getenv("OTM_SHORT_PCT", "0.10"))   # +10% OTM for the short call
+
+# --- Wheel / cash-secured put candidates ---
+WHEEL_ENABLED = (os.getenv("WHEEL_ENABLED", "1") == "1")
+WHEEL_TOPK = int(os.getenv("WHEEL_TOPK", "8"))
+WHEEL_PREFILTER_TOPN = int(os.getenv("WHEEL_PREFILTER_TOPN", "40"))
+WHEEL_MIN_DTE = int(os.getenv("WHEEL_MIN_DTE", "35"))
+WHEEL_MAX_DTE = int(os.getenv("WHEEL_MAX_DTE", "55"))
+WHEEL_PUT_OTM_PCT = float(os.getenv("WHEEL_PUT_OTM_PCT", "0.05"))
+WHEEL_MIN_MARKET_CAP = float(os.getenv("WHEEL_MIN_MARKET_CAP", "10000000000"))
+WHEEL_MIN_PRICE = float(os.getenv("WHEEL_MIN_PRICE", "10"))
+WHEEL_MAX_RSI = float(os.getenv("WHEEL_MAX_RSI", "70"))
+WHEEL_MIN_REL_VOLUME = float(os.getenv("WHEEL_MIN_REL_VOLUME", "1.2"))
+WHEEL_MAX_DIST_52W_HIGH = float(os.getenv("WHEEL_MAX_DIST_52W_HIGH", "0.05"))
+WHEEL_MAX_DEBT_TO_EQUITY = float(os.getenv("WHEEL_MAX_DEBT_TO_EQUITY", "1.0"))
+WHEEL_MIN_INSIDER_OWNERSHIP = float(os.getenv("WHEEL_MIN_INSIDER_OWNERSHIP", "0.10"))
+WHEEL_MIN_GROWTH = float(os.getenv("WHEEL_MIN_GROWTH", "0.20"))
+WHEEL_MIN_OI = int(os.getenv("WHEEL_MIN_OI", "500"))
+WHEEL_MAX_SPREAD_PCT = float(os.getenv("WHEEL_MAX_SPREAD_PCT", "0.15"))
+WHEEL_BLOCK_EARNINGS = (os.getenv("WHEEL_BLOCK_EARNINGS", "1") == "1")

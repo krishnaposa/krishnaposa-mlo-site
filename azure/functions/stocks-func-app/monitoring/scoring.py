@@ -42,3 +42,37 @@ def score_row(r: pd.Series, min_dollar_vol: int, strategy: str = "debit_call_spr
 
     penny_penalty = 0.6 if r.get("last_price", np.inf) < PENNY_PRICE else 0.0
     return float(trend + liquidity - risk - penny_penalty)
+
+
+def score_wheel_put_row(r: pd.Series, option: dict) -> float:
+    """
+    Score cash-secured put candidates: quality first, then premium/liquidity.
+    """
+    roc = float(option.get("return_on_cash", 0.0) or 0.0)
+    ann = float(option.get("annualized_return", 0.0) or 0.0)
+    spread = float(option.get("spread_pct", 1.0) or 1.0)
+    oi = float(option.get("open_interest", 0.0) or 0.0)
+    buffer = float(option.get("downside_buffer", 0.0) or 0.0)
+
+    quality = 0.0
+    quality += 1.0 if r.get("close_above_sma20", 0.0) == 1.0 else 0.0
+    quality += 1.0 if r.get("close_above_sma50", 0.0) == 1.0 else 0.0
+    quality += 0.8 if r.get("dist_52w_high", -1.0) > -0.05 else 0.0
+    quality += 0.6 * clamp((70.0 - float(r.get("rsi14", 70.0))) / 25.0, 0.0, 1.0)
+    quality += 0.6 * clamp(float(r.get("rel_volume_20", 0.0)) - 1.0, 0.0, 1.0)
+    quality += 0.8 * clamp(float(r.get("ml_prob_up_30d", 0.5)) - 0.5, 0.0, 0.5) * 2.0
+    quality += 0.8 * clamp(float(r.get("hmm_prob_bull", 0.5)) - 0.5, 0.0, 0.5) * 2.0
+
+    growth = max(
+        float(r.get("rev_growth", 0.0) or 0.0),
+        float(r.get("earn_growth", 0.0) or 0.0),
+    )
+    quality += 0.8 * clamp(growth / 0.5, 0.0, 1.0)
+
+    premium = 1.5 * clamp(roc / 0.03, 0.0, 1.5)
+    premium += 0.7 * clamp(ann / 0.30, 0.0, 1.5)
+    liquidity = 0.8 * clamp(oi / 1000.0, 0.0, 1.5)
+    risk_penalty = 1.0 * clamp(spread / 0.20, 0.0, 2.0)
+    risk_penalty += 0.6 if buffer < 0.03 else 0.0
+
+    return float(quality + premium + liquidity - risk_penalty)

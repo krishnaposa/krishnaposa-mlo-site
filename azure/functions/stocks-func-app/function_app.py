@@ -10,8 +10,8 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 
 import daily_monitor
 from universe_utils import read_universe_blob as _read_universe_blob
-from local_list_utils import load_local_list
-from ai_utils import ai_rank_tickers
+# from local_list_utils import load_local_list  # Disabled with LEAPS/debit-spread AI artifact generation.
+# from ai_utils import ai_rank_tickers  # Disabled: LEAPS/debit-spread AI artifacts are not currently needed.
 
 app = func.FunctionApp()
 
@@ -197,41 +197,38 @@ def monitor_signals(timer: func.TimerRequest) -> None:
         except Exception as e:
             logging.warning(f"[parquet] skipped ({e})")
 
-        # 3) Build combined local+universe list for AI ranking
-        try:
-            cached = _read_universe_blob() or {}
-            universe = [str(t).upper().strip() for t in (cached.get("tickers") or []) if str(t).strip()]
-        except Exception:
-            universe = []
-        try:
-            local = load_local_list(initial_fallback=[])
-        except Exception:
-            local = []
-
-        combined = sorted(set(universe) | set(local))
-        if not combined:
-            combined = df_all["ticker"].astype(str).str.upper().unique().tolist()
-
-        # Filter out <$5 using df_all’s last_price when available
-        if "last_price" in df_all.columns:
-            px_map = dict(zip(df_all["ticker"].astype(str).str.upper(), df_all["last_price"].astype(float)))
-            combined = [t for t in combined if px_map.get(t, float("inf")) >= PENNY_PRICE]
-
-        # 4) AI rankings (LEAPS & 30–40d debit call spreads)
-        ai_leaps   = ai_rank_tickers(combined, strategy="leaps", horizon_text="12–24 months", top_k=AI_TOPK)
-        ai_spreads = ai_rank_tickers(combined, strategy="debit_call_spread", horizon_text="30–40 days", top_k=AI_TOPK)
-
-        # Persist AI outputs alongside daily snapshot
-        try:
-            _upload_bytes(cont, f"ai_leaps_{stamp}.json",
-                          ai_leaps.to_json(orient="records").encode("utf-8"),
-                          "application/json")
-            _upload_bytes(cont, f"ai_debit_call_spreads_{stamp}.json",
-                          ai_spreads.to_json(orient="records").encode("utf-8"),
-                          "application/json")
-            logging.info(f"[ai] wrote AI picks (leaps & 30–40d) -> {SIGNALS_CONTAINER}")
-        except Exception as e:
-            logging.warning(f"[ai] failed to persist AI outputs: {e}")
+        # Disabled for now: LEAPS/debit-spread AI rankings and JSON artifacts are not needed.
+        # try:
+        #     cached = _read_universe_blob() or {}
+        #     universe = [str(t).upper().strip() for t in (cached.get("tickers") or []) if str(t).strip()]
+        # except Exception:
+        #     universe = []
+        # try:
+        #     local = load_local_list(initial_fallback=[])
+        # except Exception:
+        #     local = []
+        #
+        # combined = sorted(set(universe) | set(local))
+        # if not combined:
+        #     combined = df_all["ticker"].astype(str).str.upper().unique().tolist()
+        #
+        # if "last_price" in df_all.columns:
+        #     px_map = dict(zip(df_all["ticker"].astype(str).str.upper(), df_all["last_price"].astype(float)))
+        #     combined = [t for t in combined if px_map.get(t, float("inf")) >= PENNY_PRICE]
+        #
+        # ai_leaps = ai_rank_tickers(combined, strategy="leaps", horizon_text="12–24 months", top_k=AI_TOPK)
+        # ai_spreads = ai_rank_tickers(combined, strategy="debit_call_spread", horizon_text="30–40 days", top_k=AI_TOPK)
+        #
+        # try:
+        #     _upload_bytes(cont, f"ai_leaps_{stamp}.json",
+        #                   ai_leaps.to_json(orient="records").encode("utf-8"),
+        #                   "application/json")
+        #     _upload_bytes(cont, f"ai_debit_call_spreads_{stamp}.json",
+        #                   ai_spreads.to_json(orient="records").encode("utf-8"),
+        #                   "application/json")
+        #     logging.info(f"[ai] wrote AI picks (leaps & 30–40d) -> {SIGNALS_CONTAINER}")
+        # except Exception as e:
+        #     logging.warning(f"[ai] failed to persist AI outputs: {e}")
 
         # Log quick summary (kept)
         logging.info("[top picks]\n" + str(
@@ -241,10 +238,11 @@ def monitor_signals(timer: func.TimerRequest) -> None:
             .reset_index(drop=True)
         ))
         logging.info("[leaders]\n" + str(df_leaders.head(15).reset_index(drop=True)))
-        if not ai_leaps.empty:
-            logging.info("[AI LEAPS]\n" + str(ai_leaps.head(10)))
-        if not ai_spreads.empty:
-            logging.info("[AI 30–40d Debit Call Spreads]\n" + str(ai_spreads.head(10)))
+        # Disabled for now: LEAPS/debit-spread AI ranking logs.
+        # if not ai_leaps.empty:
+        #     logging.info("[AI LEAPS]\n" + str(ai_leaps.head(10)))
+        # if not ai_spreads.empty:
+        #     logging.info("[AI 30–40d Debit Call Spreads]\n" + str(ai_spreads.head(10)))
 
     except Exception as e:
         logging.exception(f"[monitor_signals] failed: {e}")
