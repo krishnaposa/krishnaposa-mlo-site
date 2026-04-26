@@ -31,9 +31,9 @@ from .emailer import send_email_report_with_sims  # emailer that shows sims + op
 
 # external utils
 from universe_utils import read_universe_blob
-from local_list_utils import load_local_list, save_local_list
+from local_list_utils import load_local_list, load_holdings_list, save_local_list
 # from ai_utils import ai_rank_tickers  # Disabled: LEAPS/debit-spread AI rankings are not currently needed.
-from wb4u_main import get_large_strongbuy_alltime_high_symbols, get_wheel_finviz_symbols
+from wb4u_main import get_large_strongbuy_alltime_high_symbols, get_trend_entry_symbols, get_wheel_finviz_symbols
 
 # 30-day direction ML model
 from .model_predict import train_direction_model, predict_up_probability_for_latest
@@ -66,7 +66,9 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     cached = read_universe_blob()
     universe_tickers = [t.upper().strip() for t in (cached.get("tickers", []) if cached else []) if t]
     local_list = load_local_list(initial_fallback=seed_list)
+    holdings_list = load_holdings_list(initial_fallback=[])
     alltime_high_value_list = []
+    trend_entry_list = []
     wheel_finviz_list = []
     if WHEEL_ENABLED and WHEEL_INCLUDE_FINVIZ:
         try:
@@ -74,17 +76,26 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         except Exception as e:
             logger.warning(f"[finviz] all-time-high wheel source failed: {e}")
         try:
+            trend_entry_list = get_trend_entry_symbols(max_count=WHEEL_FINVIZ_TOPN)
+        except Exception as e:
+            logger.warning(f"[finviz] trend-entry source failed: {e}")
+        try:
             wheel_finviz_list = get_wheel_finviz_symbols(max_count=WHEEL_FINVIZ_TOPN)
         except Exception as e:
             logger.warning(f"[finviz] wheel source failed: {e}")
         if WHEEL_DEBUG:
             logger.info(
                 "[wheel] Finviz sources: "
-                f"all_time_high={len(alltime_high_value_list)}, wheel_query={len(wheel_finviz_list)}"
+                f"all_time_high={len(alltime_high_value_list)}, "
+                f"trend_entry={len(trend_entry_list)}, wheel_query={len(wheel_finviz_list)}"
             )
 
-    wheel_seed_tickers = {str(t).upper().strip() for t in (alltime_high_value_list + wheel_finviz_list) if str(t).strip()}
-    merged_tickers = sorted(set(local_list) | set(universe_tickers) | wheel_seed_tickers)
+    wheel_seed_tickers = {
+        str(t).upper().strip()
+        for t in (alltime_high_value_list + trend_entry_list + wheel_finviz_list)
+        if str(t).strip()
+    }
+    merged_tickers = sorted(set(local_list) | set(universe_tickers) | set(holdings_list) | wheel_seed_tickers)
     end = today + datetime.timedelta(days=1)
     start = today - datetime.timedelta(days=420)
     frames = fetch_prices_batched(merged_tickers, start, end)
@@ -267,6 +278,106 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     out["ml_prob_up_30d"] = out["ticker"].map(ml_prob_map).astype(float).fillna(0.5)
 
+    def _build_trend_rows(symbols: list[str], *, only_exit_alerts: bool = False) -> list[dict]:
+        rows = []
+        if not symbols:
+            return rows
+        symbol_set = {str(t).upper().strip() for t in symbols if str(t).strip()}
+        trend_df = out[out["ticker"].astype(str).str.upper().isin(symbol_set)].copy()
+        for _, r in trend_df.sort_values("final_rank", ascending=False).iterrows():
+            t = str(r["ticker"]).upper()
+            frame = enriched_frames.get(t)
+            three_bar_low = np.nan
+            atr_stop = np.nan
+            below_sma50_days = 0
+            sma20_below_sma50 = False
+            sma50_below_sma200 = False
+            heavy_down_day = False
+            if isinstance(frame, pd.DataFrame) and not frame.empty:
+                try:
+                    if len(frame) >= 4:
+                        three_bar_low = float(frame["Low"].iloc[-4:-1].min())
+                    else:
+                        three_bar_low = float(frame["Low"].tail(3).min())
+
+                    latest_atr = float(frame["atr14"].iloc[-1])
+                    recent_high = float(frame["CloseAdj"].tail(20).max())
+                    if np.isfinite(latest_atr) and np.isfinite(recent_high):
+                        atr_stop = recent_high - 2.0 * latest_atr
+
+                    below = (frame["CloseAdj"].tail(3) < frame["sma50"].tail(3)).tolist()
+                    for is_below in reversed(below):
+                        if is_below:
+                            below_sma50_days += 1
+                        else:
+                            break
+
+                    latest = frame.iloc[-1]
+                    sma20_below_sma50 = bool(latest.get("sma20", np.nan) < latest.get("sma50", np.nan))
+                    sma50_below_sma200 = bool(latest.get("sma50", np.nan) < latest.get("sma200", np.nan))
+                    last_ret = float(latest.get("ret", 0.0) or 0.0)
+                    last_rel_vol = float(latest.get("rel_volume_20", 0.0) or 0.0)
+                    heavy_down_day = last_ret <= -0.05 and last_rel_vol >= 1.5
+                except Exception:
+                    pass
+
+            price = float(r.get("last_price", np.nan))
+            sma50 = float(r.get("sma50", np.nan))
+            sma200 = float(r.get("sma200", np.nan))
+            adx_val = float(r.get("adx14", np.nan))
+            rsi_val = float(r.get("rsi14", np.nan))
+            entry_ok = (
+                bool(r.get("close_above_sma50", 0.0) == 1.0) and
+                bool(r.get("close_above_sma200", 0.0) == 1.0) and
+                np.isfinite(sma50) and price > sma50 and
+                np.isfinite(adx_val) and adx_val >= 25.0 and
+                np.isfinite(rsi_val) and 50.0 <= rsi_val <= 70.0
+            )
+            climax = np.isfinite(sma50) and sma50 > 0 and (price / sma50 - 1.0) >= 0.20
+            exit_bits = []
+            if np.isfinite(atr_stop) and price <= atr_stop:
+                exit_bits.append("EXIT: ATR stop")
+            if np.isfinite(three_bar_low) and price <= three_bar_low:
+                exit_bits.append("EXIT: 3-bar low")
+            if below_sma50_days >= 2:
+                exit_bits.append("EXIT: SMA50 break")
+            if np.isfinite(sma200) and price < sma200:
+                exit_bits.append("EXIT: below SMA200")
+            if sma50_below_sma200:
+                exit_bits.append("EXIT: 50/200 bear cross")
+            if sma20_below_sma50:
+                exit_bits.append("WATCH: 20<50")
+            if np.isfinite(rsi_val) and rsi_val < 50.0:
+                exit_bits.append("WATCH: RSI<50")
+            if np.isfinite(adx_val) and adx_val < 20.0:
+                exit_bits.append("WATCH: weak ADX")
+            if heavy_down_day:
+                exit_bits.append("WATCH: high-volume selloff")
+            if climax:
+                exit_bits.append("WATCH: climax/trim")
+            if not exit_bits:
+                exit_bits.append("hold while above stops")
+
+            row = {
+                "ticker": t,
+                "entry_status": "Entry OK" if entry_ok else "Watch",
+                "price": price,
+                "rsi": rsi_val,
+                "adx": adx_val,
+                "rel_volume": r.get("rel_volume_20"),
+                "dist_52w_high": r.get("dist_52w_high"),
+                "atr_stop": atr_stop,
+                "three_bar_low": three_bar_low,
+                "exit_watch": ", ".join(exit_bits),
+            }
+            if not only_exit_alerts or row["exit_watch"] != "hold while above stops":
+                rows.append(row)
+        return rows
+
+    alltime_high_trend_rows = _build_trend_rows(alltime_high_value_list)
+    trend_entry_rows = _build_trend_rows(trend_entry_list)
+    holdings_exit_rows = _build_trend_rows(holdings_list, only_exit_alerts=True)
+
     wheel_rows = []
     if WHEEL_ENABLED:
         def _wheel_log(step: str, mask: pd.Series, prev_count: int | None = None) -> int:
@@ -448,6 +559,10 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         ai_spreads_list=ai_spreads_list,
         ai_leaps_list=ai_leaps_list,
         alltime_high_value_list=alltime_high_value_list,
+        alltime_high_trend_rows=alltime_high_trend_rows,
+        trend_entry_list=trend_entry_list,
+        trend_entry_rows=trend_entry_rows,
+        holdings_exit_rows=holdings_exit_rows,
         sim_rows=sim_rows,
         opt_rows=[],       # placeholder — still valid
         wheel_rows=wheel_rows,

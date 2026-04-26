@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 # Container/blob name (defaults to the same container your signals/parquets use)
 LOCAL_LIST_CONTAINER = os.getenv("LOCAL_LIST_CONTAINER", os.getenv("SIGNALS_CONTAINER", "signals"))
 LOCAL_LIST_BLOB_NAME = os.getenv("LOCAL_LIST_BLOB_NAME", "local_list.json")
+HOLDINGS_LIST_CONTAINER = os.getenv("HOLDINGS_LIST_CONTAINER", LOCAL_LIST_CONTAINER)
+HOLDINGS_LIST_BLOB_NAME = os.getenv("HOLDINGS_LIST_BLOB_NAME", "holdings_list.json")
 
 # Connection string:
 # Prefer MONITOR_STORAGE (new storage account), fall back to AzureWebJobsStorage for local/test.
@@ -40,6 +42,19 @@ def _blob_container():
 def _get_blob_client():
     cont = _blob_container()
     return cont.get_blob_client(LOCAL_LIST_BLOB_NAME)
+
+def _get_named_blob_client(container_name: str, blob_name: str):
+    if BlobServiceClient is None:
+        raise RuntimeError("azure.storage.blob not available. Install azure-storage-blob.")
+    if not AZ_CONN:
+        raise RuntimeError("Storage connection not found. Set MONITOR_STORAGE or AzureWebJobsStorage.")
+    svc = BlobServiceClient.from_connection_string(AZ_CONN)
+    cont = svc.get_container_client(container_name)
+    try:
+        cont.create_container()
+    except Exception:
+        pass
+    return cont.get_blob_client(blob_name)
 
 # --------------------------- Public API ---------------------------
 def load_local_list(initial_fallback: Optional[List[str]] = None) -> List[str]:
@@ -95,6 +110,46 @@ def save_local_list(tickers: List[str], meta: Optional[Dict] = None) -> None:
     logger.info(
         f"[local_list] saved {len(tickers_norm)} symbols -> {LOCAL_LIST_CONTAINER}/{LOCAL_LIST_BLOB_NAME}"
     )
+
+def load_holdings_list(initial_fallback: Optional[List[str]] = None) -> List[str]:
+    """
+    Load holdings_list.json from Blob. This is the user's actual holdings list
+    used for exit-watch emails.
+    """
+    try:
+        blob = _get_named_blob_client(HOLDINGS_LIST_CONTAINER, HOLDINGS_LIST_BLOB_NAME)
+        data = blob.download_blob().readall()
+        js = json.loads(data.decode("utf-8", errors="ignore"))
+        tickers = [str(t).upper().strip() for t in (js.get("tickers") or []) if str(t).strip()]
+        tickers = sorted(set(tickers))
+        logger.info(f"[holdings_list] loaded {len(tickers)} symbols from {HOLDINGS_LIST_CONTAINER}/{HOLDINGS_LIST_BLOB_NAME}")
+        return tickers
+    except Exception as e:
+        fb = sorted({str(t).upper().strip() for t in (initial_fallback or []) if str(t).strip()})
+        if fb:
+            logger.warning(f"[holdings_list] not found; using fallback ({len(fb)} symbols) - {e}")
+            return fb
+        logger.warning(f"[holdings_list] not found; returning empty list ({e})")
+        return []
+
+def save_holdings_list(tickers: List[str], meta: Optional[Dict] = None) -> None:
+    if BlobServiceClient is None:
+        raise RuntimeError("azure.storage.blob not available. Install azure-storage-blob.")
+    if ContentSettings is None:
+        raise RuntimeError("ContentSettings import failed; ensure azure-storage-blob is installed.")
+
+    tickers_norm = sorted({str(t).upper().strip() for t in tickers if str(t).strip()})
+    payload = {"tickers": tickers_norm}
+    if meta:
+        payload.update(meta)
+
+    blob = _get_named_blob_client(HOLDINGS_LIST_CONTAINER, HOLDINGS_LIST_BLOB_NAME)
+    blob.upload_blob(
+        data=json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+        overwrite=True,
+        content_settings=ContentSettings(content_type="application/json"),
+    )
+    logger.info(f"[holdings_list] saved {len(tickers_norm)} symbols -> {HOLDINGS_LIST_CONTAINER}/{HOLDINGS_LIST_BLOB_NAME}")
 
 # ---------- Dynamic update policy (optional; kept for flexibility) ----------
 def update_local_list(

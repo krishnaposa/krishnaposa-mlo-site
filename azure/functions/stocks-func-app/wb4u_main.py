@@ -63,6 +63,24 @@ stock_from_insta_screener = ['cap_largeover','fa_epsyoy_o10','fa_fpe_u25','fa_pe
 
 stocks_large_strongbuy_alltime_high_value = ['an_recom_strongbuy','cap_largeover','fa_debteq_u1','fa_pe_u50','ta_alltime_nh','ta_perf_1wup','ta_sma20_pa','ta_sma50_pa']
 
+stocks_trend_entry = [
+  'cap_largeover',
+  'sh_opt_option',
+  'sh_price_o10',
+  'sh_avgvol_o1000',
+  'sh_relvol_o1.2',
+  'ta_rsi_nob70',
+  'ta_adx_o25',
+  'ta_sma20_pa',
+  'ta_sma50_pa',
+  'ta_sma200_pa',
+  'ta_highlow52w_b0to10h',
+  'ta_perf_1wup',
+  'fa_debteq_u1',
+  'fa_epsqoq_o15',
+  'fa_salesqoq_o15',
+]
+
 def build_wheel_finviz_filters():
   """
   Build the wheel Finviz screener from env-configurable filter tokens.
@@ -126,6 +144,18 @@ def get_large_strongbuy_alltime_high_symbols(max_count=25):
   symbols = wb4u_finviz.getStocksSymbols(
     stocks_large_strongbuy_alltime_high_value,
     sortOrder='pe'
+  )
+  return [s.upper() for s in symbols[:max_count]]
+
+def get_trend_entry_symbols(max_count=25):
+  """
+  Dedicated Finviz source for trend-following entries:
+  large optionable stocks above key moving averages, ADX > 25, RSI below 70,
+  near 52-week highs, high relative volume, debt/equity < 1, and recent growth.
+  """
+  symbols = wb4u_finviz.getStocksSymbols(
+    stocks_trend_entry,
+    sortOrder=os.getenv("TREND_ENTRY_FINVIZ_SORT", "-change")
   )
   return [s.upper() for s in symbols[:max_count]]
 

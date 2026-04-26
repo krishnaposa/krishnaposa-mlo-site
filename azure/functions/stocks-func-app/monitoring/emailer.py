@@ -189,6 +189,61 @@ def _wheel_table_html(rows: Optional[List[Dict]], max_rows: int = 20) -> str:
     return "".join(html)
 
 
+def _trend_table_html(rows: Optional[List[Dict]], max_rows: int = 30) -> str:
+    if not rows:
+        return "<i>No trend rows</i>"
+
+    def _fmt_money(x):
+        try:
+            return f"${float(x):.2f}"
+        except Exception:
+            return "—"
+
+    def _fmt_pct(x):
+        try:
+            return f"{float(x)*100:.1f}%"
+        except Exception:
+            return "—"
+
+    def _fmt_num(x):
+        try:
+            return f"{float(x):.1f}"
+        except Exception:
+            return "—"
+
+    head = rows[:max_rows]
+    html = [
+        "<table border='0' cellspacing='0' cellpadding='4'>",
+        "<thead><tr>",
+        "<th align='left'>Ticker</th>",
+        "<th align='left'>Entry</th>",
+        "<th align='right'>Price</th>",
+        "<th align='right'>RSI</th>",
+        "<th align='right'>ADX</th>",
+        "<th align='right'>RelVol</th>",
+        "<th align='right'>52W Dist</th>",
+        "<th align='right'>ATR Stop</th>",
+        "<th align='right'>3-Bar Low</th>",
+        "<th align='left'>Exit Watch</th>",
+        "</tr></thead><tbody>",
+    ]
+    for r in head:
+        html.append(
+            f"<tr><td>{r.get('ticker','')}</td>"
+            f"<td>{r.get('entry_status','')}</td>"
+            f"<td align='right'>{_fmt_money(r.get('price'))}</td>"
+            f"<td align='right'>{_fmt_num(r.get('rsi'))}</td>"
+            f"<td align='right'>{_fmt_num(r.get('adx'))}</td>"
+            f"<td align='right'>{_fmt_num(r.get('rel_volume'))}</td>"
+            f"<td align='right'>{_fmt_pct(r.get('dist_52w_high'))}</td>"
+            f"<td align='right'>{_fmt_money(r.get('atr_stop'))}</td>"
+            f"<td align='right'>{_fmt_money(r.get('three_bar_low'))}</td>"
+            f"<td>{r.get('exit_watch','')}</td></tr>"
+        )
+    html.append("</tbody></table>")
+    return "".join(html)
+
+
 def send_email_report_with_sims(*,
     stamp: str,
     universe_tickers: List[str],
@@ -196,6 +251,10 @@ def send_email_report_with_sims(*,
     ai_spreads_list: List[str],
     ai_leaps_list: List[str],
     alltime_high_value_list: Optional[List[str]] = None,
+    alltime_high_trend_rows: Optional[List[Dict]] = None,
+    trend_entry_list: Optional[List[str]] = None,
+    trend_entry_rows: Optional[List[Dict]] = None,
+    holdings_exit_rows: Optional[List[Dict]] = None,
     sim_rows: Optional[List[Dict]] = None,    # ticker, mc30, hmm_bull, ml_prob
     opt_rows: Optional[List[Dict]] = None,    # ticker, expiry, dte, k1, k2, debit, oi1, oi2, combo_spread
     wheel_rows: Optional[List[Dict]] = None,  # cash-secured put wheel candidates
@@ -220,6 +279,10 @@ def send_email_report_with_sims(*,
     html_universe   = _list_html(universe_tickers)
     html_picks   = _list_html(picks_tickers)
     html_alltime_high_value = _list_html(alltime_high_value_list or [])
+    html_alltime_high_trends = _trend_table_html(alltime_high_trend_rows)
+    html_trend_entry = _list_html(trend_entry_list or [])
+    html_trend_entry_rows = _trend_table_html(trend_entry_rows)
+    html_holdings_exit = _trend_table_html(holdings_exit_rows)
     # Disabled for now: LEAPS/debit-spread AI sections are not rendered.
     # html_spreads = _list_html(ai_spreads_list)
     # html_leaps = _list_html(ai_leaps_list)
@@ -246,6 +309,14 @@ def send_email_report_with_sims(*,
 
       <h3>Finviz: Strong Buy Large Caps at All-Time High</h3>
       <div>{html_alltime_high_value}</div>
+      {html_alltime_high_trends}
+
+      <h3>Finviz: Trend Entry Candidates</h3>
+      <div>{html_trend_entry}</div>
+      {html_trend_entry_rows}
+
+      <h3>Holdings Exit Watchlist</h3>
+      {html_holdings_exit}
 
       <!-- Disabled for now: LEAPS/debit-spread AI sections. -->
       <!--

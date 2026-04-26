@@ -190,3 +190,11 @@ az functionapp config appsettings set \
     WHEEL_FINVIZ_SORT=-change \
     EARNINGS_BLOCK_DAYS=45 \
     WHEEL_BLOCK_EARNINGS=1
+
+
+az storage blob upload \
+  --connection-string "$MONITOR_STORAGE" \
+  --container-name "signals" \
+  --name "holdings_list.json" \
+  --file "holdings_list.json" \
+  --overwrite true

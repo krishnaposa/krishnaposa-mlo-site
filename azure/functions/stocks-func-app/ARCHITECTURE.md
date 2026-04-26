@@ -323,16 +323,17 @@ The daily email renders the result in:
 Wheel Strategy: 45-Day Cash-Secured Puts
 ```
 
-## Dedicated Finviz Email List
+## Dedicated Finviz Email Lists
 
-The daily email also includes a separate list for the custom Finviz screener:
+The daily email also includes separate lists for custom Finviz screeners:
 
 ```text
 Finviz: Strong Buy Large Caps at All-Time High
+Finviz: Trend Entry Candidates
 ```
 
-This list is fetched by `wb4u_main.get_large_strongbuy_alltime_high_symbols` and
-uses the filters from:
+The all-time-high list is fetched by
+`wb4u_main.get_large_strongbuy_alltime_high_symbols` and uses the filters from:
 
 ```text
 an_recom_strongbuy, cap_largeover, fa_debteq_u1, fa_pe_u50,
@@ -342,6 +343,71 @@ ta_alltime_nh, ta_perf_1wup, ta_sma20_pa, ta_sma50_pa
 The screener is sorted by P/E ascending, matching `o=pe` in the Finviz URL.
 It is displayed separately from the main universe, stock picks, and wheel
 candidates so it can be reviewed directly in the email.
+
+The trend-entry list is fetched by `wb4u_main.get_trend_entry_symbols` and uses
+filters for large, optionable, liquid stocks with relative volume, ADX above 25,
+RSI below 70, above SMA20/SMA50/SMA200, near 52-week highs, one-week momentum,
+debt/equity below 1, and recent EPS/sales growth.
+
+Both lists include trend-following entry and exit fields when price history is
+available:
+
+- Entry OK requires price above SMA50 and SMA200, ADX >= 25, and RSI between 50
+  and 70.
+- ATR stop is `last_price - 2 * ATR14`.
+- 3-bar low is the lowest low of the last three sessions.
+- Exit watch flags an SMA50 break after consecutive closes below SMA50 and flags
+  a climax/trim warning when price is 20% or more above SMA50.
+
+## Holdings Exit Watchlist
+
+The user's actual holdings are stored separately from the local idea list in
+Blob Storage:
+
+```text
+signals/holdings_list.json
+```
+
+The blob shape is:
+
+```json
+{
+  "tickers": ["AAPL", "MSFT", "NVDA"]
+}
+```
+
+The monitor loads this list with `load_holdings_list`, adds those symbols to the
+daily price-fetch universe, and computes exit warnings only for holdings. The
+email section is:
+
+```text
+Holdings Exit Watchlist
+```
+
+It only includes holdings where the trend exit logic has an active warning.
+Holdings that are still simply "hold while above stops" are omitted from this
+section.
+
+Exit signals include:
+
+- `EXIT: ATR stop`: close is below the 20-day high minus `2 * ATR14`.
+- `EXIT: 3-bar low`: close is below the prior three-session low.
+- `EXIT: SMA50 break`: consecutive recent closes below SMA50.
+- `EXIT: below SMA200`: close is below SMA200.
+- `EXIT: 50/200 bear cross`: SMA50 is below SMA200.
+- `WATCH: 20<50`: SMA20 is below SMA50.
+- `WATCH: RSI<50`: momentum has fallen below neutral.
+- `WATCH: weak ADX`: trend strength is below 20.
+- `WATCH: high-volume selloff`: daily loss worse than 5% on relative volume
+  above 1.5.
+- `WATCH: climax/trim`: price is 20% or more above SMA50.
+
+Configuration:
+
+```text
+HOLDINGS_LIST_CONTAINER=signals
+HOLDINGS_LIST_BLOB_NAME=holdings_list.json
+```
 
 ## Azure OpenAI Design
 
