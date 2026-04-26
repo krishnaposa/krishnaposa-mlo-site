@@ -179,7 +179,7 @@ az functionapp config appsettings set \
     WHEEL_FINVIZ_TOPN=25 \
     WHEEL_USE_EQUITY_FILTERS=0 \
     WHEEL_TOPK=8 \
-    WHEEL_MIN_OI=100 \
+    WHEEL_MIN_OI=0 \
     WHEEL_MAX_SPREAD_PCT=0.30 \
     WHEEL_PREFILTER_TOPN=100 \
     WHEEL_FINVIZ_RSI_FILTER=ta_rsi_nob70 \
