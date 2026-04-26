@@ -377,6 +377,15 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     alltime_high_trend_rows = _build_trend_rows(alltime_high_value_list)
     trend_entry_rows = _build_trend_rows(trend_entry_list)
     holdings_exit_rows = _build_trend_rows(holdings_list, only_exit_alerts=True)
+    strong_buy_entry_ok = [r["ticker"] for r in alltime_high_trend_rows if r.get("entry_status") == "Entry OK"]
+    trend_entry_ok = [r["ticker"] for r in trend_entry_rows if r.get("entry_status") == "Entry OK"]
+    holdings_exit_tickers = [r["ticker"] for r in holdings_exit_rows]
+    if WHEEL_DEBUG:
+        logger.info(f"[stocks] raw strong-buy/all-time-high list ({len(alltime_high_value_list)}): {alltime_high_value_list}")
+        logger.info(f"[stocks] strong-buy/all-time-high Entry OK ({len(strong_buy_entry_ok)}): {strong_buy_entry_ok}")
+        logger.info(f"[stocks] raw trend-entry list ({len(trend_entry_list)}): {trend_entry_list}")
+        logger.info(f"[stocks] trend-entry Entry OK ({len(trend_entry_ok)}): {trend_entry_ok}")
+        logger.info(f"[stocks] holdings exit list ({len(holdings_exit_tickers)}): {holdings_exit_tickers}")
 
     wheel_rows = []
     if WHEEL_ENABLED:
@@ -507,7 +516,10 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
             if reject_counts:
                 logger.info(f"[wheel] option reject counts: {reject_counts}")
             if wheel_rows:
-                logger.info("[wheel] selected: " + ", ".join([str(r.get("ticker")) for r in wheel_rows]))
+                logger.info(
+                    "[wheel] selected by score: " +
+                    ", ".join([f"{r.get('ticker')}={float(r.get('score', 0.0)):.2f}" for r in wheel_rows])
+                )
 
     # leaders
     leaders = out[(out.get("ret_5d", 0) > 0) & (out.get("ret_21d", 0) > 0)].copy().sort_values("strength_score", ascending=False)

@@ -294,6 +294,9 @@ def send_email_report_with_sims(*,
     holdings_exits = _tickers_from_rows(holdings_exit_rows)
     wheel_tickers = _tickers_from_rows(wheel_rows)
 
+    html_universe = _list_html(universe_tickers)
+    html_picks = _list_html(picks_tickers)
+    html_alltime_high_value = _list_html(alltime_high_value_list or [])
     html_strong_buy_entries = _list_html(strong_buy_entries)
     html_trend_entries = _list_html(trend_entries)
     html_holdings_exits = _list_html(holdings_exits)
@@ -312,10 +315,21 @@ def send_email_report_with_sims(*,
     html_body = f"""<html><body>
       <h2>Daily Stock Picks — {stamp}</h2>
 
-      <h3>Strong Buy Large Caps: Entry OK</h3>
+      <h3>Universe Stocks</h3>
+      <div>{html_universe}</div>
+
+      <h3>Stock Picks</h3>
+      <div>{html_picks}</div>
+
+      <h3>Finviz: Strong Buy Large Caps at All-Time High</h3>
+      <div>{html_alltime_high_value}</div>
+
+      <h3>Strong Buy Large Cap Stock List</h3>
+      <div><i>Passed trend entry criteria</i></div>
       <div>{html_strong_buy_entries}</div>
 
-      <h3>Trend Entry Candidates: Entry OK</h3>
+      <h3>Trend Entry Stock List</h3>
+      <div><i>Passed trend entry criteria</i></div>
       <div>{html_trend_entries}</div>
 
       <h3>Holdings Exit List</h3>
