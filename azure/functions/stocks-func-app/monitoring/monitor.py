@@ -13,7 +13,8 @@ from .config import (
     LOCAL_PRUNE_COUNT, LOCAL_MAX_SIZE, LOCAL_ADD_MIN_PRICE, LOCAL_ADD_MIN_STRENGTH_Z,
     ADD_LEADERS_TOPK,
     USE_MC_HMM_FILTER, MC_MIN_PUP, HMM_MIN_BULL,
-    WHEEL_ENABLED, WHEEL_DEBUG, WHEEL_TOPK, WHEEL_PREFILTER_TOPN, WHEEL_MIN_DTE, WHEEL_MAX_DTE,
+    WHEEL_ENABLED, WHEEL_DEBUG, WHEEL_INCLUDE_FINVIZ, WHEEL_FINVIZ_TOPN,
+    WHEEL_TOPK, WHEEL_PREFILTER_TOPN, WHEEL_MIN_DTE, WHEEL_MAX_DTE,
     WHEEL_PUT_OTM_PCT, WHEEL_MIN_MARKET_CAP, WHEEL_MIN_PRICE, WHEEL_MAX_RSI,
     WHEEL_MIN_REL_VOLUME, WHEEL_MAX_DIST_52W_HIGH, WHEEL_MAX_DEBT_TO_EQUITY,
     WHEEL_MIN_INSIDER_OWNERSHIP, WHEEL_MIN_GROWTH, WHEEL_MIN_OI,
@@ -32,7 +33,7 @@ from .emailer import send_email_report_with_sims  # emailer that shows sims + op
 from universe_utils import read_universe_blob
 from local_list_utils import load_local_list, save_local_list
 # from ai_utils import ai_rank_tickers  # Disabled: LEAPS/debit-spread AI rankings are not currently needed.
-from wb4u_main import get_large_strongbuy_alltime_high_symbols
+from wb4u_main import get_large_strongbuy_alltime_high_symbols, get_wheel_finviz_symbols
 
 # 30-day direction ML model
 from .model_predict import train_direction_model, predict_up_probability_for_latest
@@ -65,8 +66,24 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     cached = read_universe_blob()
     universe_tickers = [t.upper().strip() for t in (cached.get("tickers", []) if cached else []) if t]
     local_list = load_local_list(initial_fallback=seed_list)
+    alltime_high_value_list = []
+    wheel_finviz_list = []
+    if WHEEL_ENABLED and WHEEL_INCLUDE_FINVIZ:
+        try:
+            alltime_high_value_list = get_large_strongbuy_alltime_high_symbols(max_count=WHEEL_FINVIZ_TOPN)
+        except Exception as e:
+            logger.warning(f"[finviz] all-time-high wheel source failed: {e}")
+        try:
+            wheel_finviz_list = get_wheel_finviz_symbols(max_count=WHEEL_FINVIZ_TOPN)
+        except Exception as e:
+            logger.warning(f"[finviz] wheel source failed: {e}")
+        if WHEEL_DEBUG:
+            logger.info(
+                "[wheel] Finviz sources: "
+                f"all_time_high={len(alltime_high_value_list)}, wheel_query={len(wheel_finviz_list)}"
+            )
 
-    merged_tickers = sorted(set(local_list) | set(universe_tickers))
+    merged_tickers = sorted(set(local_list) | set(universe_tickers) | set(alltime_high_value_list) | set(wheel_finviz_list))
     end = today + datetime.timedelta(days=1)
     start = today - datetime.timedelta(days=420)
     frames = fetch_prices_batched(merged_tickers, start, end)
@@ -396,12 +413,6 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     ai_spreads_list = []
     ai_leaps_list = []
-    alltime_high_value_list = []
-    if os.getenv("SEND_EMAIL", "0") == "1":
-        try:
-            alltime_high_value_list = get_large_strongbuy_alltime_high_symbols()
-        except Exception as e:
-            logger.warning(f"[finviz] all-time-high value list failed: {e}")
 
     sim_df = out[out["ticker"].isin(picks_tickers)][["ticker", "mc_p_up_30d", "hmm_prob_bull", "ml_prob_up_30d"]]
     sim_rows = [

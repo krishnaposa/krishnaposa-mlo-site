@@ -27,6 +27,8 @@ export MONITOR_STORAGE="${MONITOR_STORAGE:-<azure-storage-connection-string>}"
 # Optional wheel strategy knobs.
 export WHEEL_ENABLED="1"
 export WHEEL_DEBUG="1"
+export WHEEL_INCLUDE_FINVIZ="1"
+export WHEEL_FINVIZ_TOPN="25"
 export WHEEL_TOPK="8"
 
 export WHEEL_MIN_INSIDER_OWNERSHIP="0"

@@ -210,6 +210,19 @@ The wheel path is built inside `monitoring.monitor.run_monitor` after the main
 quant scoring and ML probability are available. It is intended for 45-day
 cash-secured put candidates, not long put buying.
 
+When `WHEEL_INCLUDE_FINVIZ=1`, the monitor also seeds the wheel universe with two
+dedicated Finviz sources before price history and option chains are fetched:
+
+- `get_large_strongbuy_alltime_high_symbols`: strong-buy, large-cap stocks at
+  all-time highs, sorted by P/E ascending.
+- `get_wheel_finviz_symbols`: large, optionable, high-relative-volume stocks
+  above SMA20/SMA50, near 52-week highs, RSI below 70, debt/equity below 1, and
+  strong quarterly EPS/sales growth.
+
+Those Finviz tickers are merged with the cached universe and local list, so they
+can flow through the same wheel filters and put-chain scoring as the rest of the
+monitor universe.
+
 ### Equity Pre-Filter
 
 The pre-filter uses only large, liquid, bullish or neutral quality stocks. The
@@ -217,6 +230,8 @@ default gates are configurable through environment variables:
 
 ```text
 WHEEL_ENABLED=1
+WHEEL_INCLUDE_FINVIZ=1
+WHEEL_FINVIZ_TOPN=25
 WHEEL_TOPK=8
 WHEEL_PREFILTER_TOPN=40
 WHEEL_MIN_MARKET_CAP=10000000000
