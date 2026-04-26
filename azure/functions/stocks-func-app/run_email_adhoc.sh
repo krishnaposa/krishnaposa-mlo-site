@@ -50,5 +50,7 @@ export WHEEL_PREFILTER_TOPN="100"
 export WHEEL_MIN_PRICE="10"
 export WHEEL_MIN_MARKET_CAP="10000000000"
 export WHEEL_MAX_RSI="70"
+export EARNINGS_BLOCK_DAYS="45"
+export WHEEL_BLOCK_EARNINGS="1"
 
 python run_daily_monitor.py

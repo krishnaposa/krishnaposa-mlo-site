@@ -168,3 +168,25 @@ az storage blob upload \
   --name local_list.json \
   --file ./local_list.json \
   --overwrite
+
+
+az functionapp config appsettings set 
+  --resource-group $resourceGroup
+  --name $functionApp 
+  --settings 
+    WHEEL_ENABLED=1 
+    WHEEL_INCLUDE_FINVIZ=1 
+    WHEEL_FINVIZ_TOPN=25 
+    WHEEL_USE_EQUITY_FILTERS=0 
+    WHEEL_TOPK=8 
+    WHEEL_MIN_OI=100 
+    WHEEL_MAX_SPREAD_PCT=0.30 
+    WHEEL_PREFILTER_TOPN=100 
+    WHEEL_FINVIZ_RSI_FILTER=ta_rsi_nob70 
+    WHEEL_FINVIZ_REL_VOLUME_FILTER=sh_relvol_o1.2 
+    WHEEL_FINVIZ_HIGH_FILTER=ta_highlow52w_b0to10h 
+    WHEEL_FINVIZ_SMA20_FILTER=ta_sma20_pa 
+    WHEEL_FINVIZ_SMA50_FILTER=ta_sma50_pa 
+    WHEEL_FINVIZ_SORT=-change
+    EARNINGS_BLOCK_DAYS=45 
+    WHEEL_BLOCK_EARNINGS=1
