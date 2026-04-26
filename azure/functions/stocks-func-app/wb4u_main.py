@@ -63,23 +63,31 @@ stock_from_insta_screener = ['cap_largeover','fa_epsyoy_o10','fa_fpe_u25','fa_pe
 
 stocks_large_strongbuy_alltime_high_value = ['an_recom_strongbuy','cap_largeover','fa_debteq_u1','fa_pe_u50','ta_alltime_nh','ta_perf_1wup','ta_sma20_pa','ta_sma50_pa']
 
-stocks_wheel_cash_secured_puts = [
-  'an_recom_buybetter',
-  'cap_largeover',
-  'fa_debteq_u1',
-  'fa_epsqoq_o15',
-  'fa_salesqoq_o15',
-  'geo_usa',
-  'sh_avgvol_o1000',
-  'sh_opt_option',
-  'sh_price_o10',
-  'sh_relvol_o1.2',
-  'ta_highlow52w_b0to10h',
-  'ta_perf_1wup',
-  'ta_rsi_nob70',
-  'ta_sma20_pa',
-  'ta_sma50_pa'
-]
+def build_wheel_finviz_filters():
+  """
+  Build the wheel Finviz screener from env-configurable filter tokens.
+  Set any value to empty to omit that Finviz filter.
+  """
+  filters = [
+    os.getenv("WHEEL_FINVIZ_RECOMMENDATION_FILTER", "an_recom_buybetter"),
+    os.getenv("WHEEL_FINVIZ_CAP_FILTER", "cap_largeover"),
+    os.getenv("WHEEL_FINVIZ_DEBT_FILTER", "fa_debteq_u1"),
+    os.getenv("WHEEL_FINVIZ_EPS_GROWTH_FILTER", "fa_epsqoq_o15"),
+    os.getenv("WHEEL_FINVIZ_SALES_GROWTH_FILTER", "fa_salesqoq_o15"),
+    os.getenv("WHEEL_FINVIZ_GEO_FILTER", "geo_usa"),
+    os.getenv("WHEEL_FINVIZ_AVG_VOLUME_FILTER", "sh_avgvol_o1000"),
+    os.getenv("WHEEL_FINVIZ_OPTIONABLE_FILTER", "sh_opt_option"),
+    os.getenv("WHEEL_FINVIZ_PRICE_FILTER", "sh_price_o10"),
+    os.getenv("WHEEL_FINVIZ_REL_VOLUME_FILTER", "sh_relvol_o1.2"),
+    os.getenv("WHEEL_FINVIZ_HIGH_FILTER", "ta_highlow52w_b0to10h"),
+    os.getenv("WHEEL_FINVIZ_PERF_FILTER", "ta_perf_1wup"),
+    os.getenv("WHEEL_FINVIZ_RSI_FILTER", "ta_rsi_nob70"),
+    os.getenv("WHEEL_FINVIZ_SMA20_FILTER", "ta_sma20_pa"),
+    os.getenv("WHEEL_FINVIZ_SMA50_FILTER", "ta_sma50_pa"),
+  ]
+  return [f for f in filters if f]
+
+stocks_wheel_cash_secured_puts = build_wheel_finviz_filters()
 
 goodFilter = {
     "isCFOIncreasing": [True],
@@ -131,8 +139,8 @@ def get_wheel_finviz_symbols(max_count=25):
   above SMA20/SMA50, near 52-week high, debt/equity < 1, and strong recent growth.
   """
   symbols = wb4u_finviz.getStocksSymbols(
-    stocks_wheel_cash_secured_puts,
-    sortOrder='-change'
+    build_wheel_finviz_filters(),
+    sortOrder=os.getenv("WHEEL_FINVIZ_SORT", "-change")
   )
   return [s.upper() for s in symbols[:max_count]]
 

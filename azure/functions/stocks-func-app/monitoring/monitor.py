@@ -13,7 +13,7 @@ from .config import (
     LOCAL_PRUNE_COUNT, LOCAL_MAX_SIZE, LOCAL_ADD_MIN_PRICE, LOCAL_ADD_MIN_STRENGTH_Z,
     ADD_LEADERS_TOPK,
     USE_MC_HMM_FILTER, MC_MIN_PUP, HMM_MIN_BULL,
-    WHEEL_ENABLED, WHEEL_DEBUG, WHEEL_INCLUDE_FINVIZ, WHEEL_FINVIZ_TOPN,
+    WHEEL_ENABLED, WHEEL_DEBUG, WHEEL_INCLUDE_FINVIZ, WHEEL_FINVIZ_TOPN, WHEEL_USE_EQUITY_FILTERS,
     WHEEL_TOPK, WHEEL_PREFILTER_TOPN, WHEEL_MIN_DTE, WHEEL_MAX_DTE,
     WHEEL_PUT_OTM_PCT, WHEEL_MIN_MARKET_CAP, WHEEL_MIN_PRICE, WHEEL_MAX_RSI,
     WHEEL_MIN_REL_VOLUME, WHEEL_MAX_DIST_52W_HIGH, WHEEL_MAX_DEBT_TO_EQUITY,
@@ -83,7 +83,8 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
                 f"all_time_high={len(alltime_high_value_list)}, wheel_query={len(wheel_finviz_list)}"
             )
 
-    merged_tickers = sorted(set(local_list) | set(universe_tickers) | set(alltime_high_value_list) | set(wheel_finviz_list))
+    wheel_seed_tickers = {str(t).upper().strip() for t in (alltime_high_value_list + wheel_finviz_list) if str(t).strip()}
+    merged_tickers = sorted(set(local_list) | set(universe_tickers) | wheel_seed_tickers)
     end = today + datetime.timedelta(days=1)
     start = today - datetime.timedelta(days=420)
     frames = fetch_prices_batched(merged_tickers, start, end)
@@ -278,47 +279,56 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         base_mask = pd.Series(True, index=out.index)
         prev = _wheel_log("start", base_mask)
 
-        price_mask = base_mask & (out["last_price"].fillna(0.0) > WHEEL_MIN_PRICE)
-        prev = _wheel_log(f"price > {WHEEL_MIN_PRICE:g}", price_mask, prev)
+        if WHEEL_INCLUDE_FINVIZ and wheel_seed_tickers:
+            final_mask = out["ticker"].astype(str).str.upper().isin(wheel_seed_tickers)
+            prev = _wheel_log("Finviz wheel/all-time-high seeds", final_mask, prev)
+        else:
+            final_mask = base_mask
 
-        cap_mask = price_mask & (out["market_cap"].fillna(0.0) >= WHEEL_MIN_MARKET_CAP)
-        prev = _wheel_log(f"market cap >= {WHEEL_MIN_MARKET_CAP:,.0f}", cap_mask, prev)
+        if WHEEL_USE_EQUITY_FILTERS:
+            price_mask = final_mask & (out["last_price"].fillna(0.0) > WHEEL_MIN_PRICE)
+            prev = _wheel_log(f"price > {WHEEL_MIN_PRICE:g}", price_mask, prev)
 
-        rsi_mask = cap_mask & (out["rsi14"].fillna(100.0) < WHEEL_MAX_RSI)
-        prev = _wheel_log(f"RSI < {WHEEL_MAX_RSI:g}", rsi_mask, prev)
+            cap_mask = price_mask & (out["market_cap"].fillna(0.0) >= WHEEL_MIN_MARKET_CAP)
+            prev = _wheel_log(f"market cap >= {WHEEL_MIN_MARKET_CAP:,.0f}", cap_mask, prev)
 
-        sma20_mask = rsi_mask & (out["close_above_sma20"].fillna(0.0) == 1.0)
-        prev = _wheel_log("above SMA20", sma20_mask, prev)
+            rsi_mask = cap_mask & (out["rsi14"].fillna(100.0) < WHEEL_MAX_RSI)
+            prev = _wheel_log(f"RSI < {WHEEL_MAX_RSI:g}", rsi_mask, prev)
 
-        sma50_mask = sma20_mask & (out["close_above_sma50"].fillna(0.0) == 1.0)
-        prev = _wheel_log("above SMA50", sma50_mask, prev)
+            sma20_mask = rsi_mask & (out["close_above_sma20"].fillna(0.0) == 1.0)
+            prev = _wheel_log("above SMA20", sma20_mask, prev)
 
-        high_mask = sma50_mask & (out["dist_52w_high"].fillna(-1.0) >= -WHEEL_MAX_DIST_52W_HIGH)
-        prev = _wheel_log(f"within {WHEEL_MAX_DIST_52W_HIGH:.0%} of 52w high", high_mask, prev)
+            sma50_mask = sma20_mask & (out["close_above_sma50"].fillna(0.0) == 1.0)
+            prev = _wheel_log("above SMA50", sma50_mask, prev)
 
-        relvol_mask = high_mask & (out["rel_volume_20"].fillna(0.0) >= WHEEL_MIN_REL_VOLUME)
-        prev = _wheel_log(f"relative volume >= {WHEEL_MIN_REL_VOLUME:g}", relvol_mask, prev)
+            high_mask = sma50_mask & (out["dist_52w_high"].fillna(-1.0) >= -WHEEL_MAX_DIST_52W_HIGH)
+            prev = _wheel_log(f"within {WHEEL_MAX_DIST_52W_HIGH:.0%} of 52w high", high_mask, prev)
 
-        debt_mask = relvol_mask & (out["debt_to_equity"].fillna(np.inf) < WHEEL_MAX_DEBT_TO_EQUITY)
-        prev = _wheel_log(f"debt/equity < {WHEEL_MAX_DEBT_TO_EQUITY:g}", debt_mask, prev)
+            relvol_mask = high_mask & (out["rel_volume_20"].fillna(0.0) >= WHEEL_MIN_REL_VOLUME)
+            prev = _wheel_log(f"relative volume >= {WHEEL_MIN_REL_VOLUME:g}", relvol_mask, prev)
 
-        insider_mask = debt_mask & (out["insider_ownership"].fillna(0.0) >= WHEEL_MIN_INSIDER_OWNERSHIP)
-        prev = _wheel_log(f"insider ownership >= {WHEEL_MIN_INSIDER_OWNERSHIP:.0%}", insider_mask, prev)
+            debt_mask = relvol_mask & (out["debt_to_equity"].fillna(np.inf) < WHEEL_MAX_DEBT_TO_EQUITY)
+            prev = _wheel_log(f"debt/equity < {WHEEL_MAX_DEBT_TO_EQUITY:g}", debt_mask, prev)
 
-        growth_ok = (
-            (out["rev_growth"].fillna(0.0) >= WHEEL_MIN_GROWTH) |
-            (out["earn_growth"].fillna(0.0) >= WHEEL_MIN_GROWTH) |
-            (out["growth_streak"].fillna(0.0) == 1.0)
-        )
-        final_mask = insider_mask & growth_ok
-        prev = _wheel_log(f"growth >= {WHEEL_MIN_GROWTH:.0%} or growth streak", final_mask, prev)
+            insider_mask = debt_mask & (out["insider_ownership"].fillna(0.0) >= WHEEL_MIN_INSIDER_OWNERSHIP)
+            prev = _wheel_log(f"insider ownership >= {WHEEL_MIN_INSIDER_OWNERSHIP:.0%}", insider_mask, prev)
 
-        if WHEEL_DEBUG:
-            logger.info(
-                "[wheel] missing fundamentals in filtered universe: "
-                f"debt_to_equity={int(out.loc[relvol_mask, 'debt_to_equity'].isna().sum())}, "
-                f"insider_ownership={int(out.loc[debt_mask, 'insider_ownership'].isna().sum())}"
+            growth_ok = (
+                (out["rev_growth"].fillna(0.0) >= WHEEL_MIN_GROWTH) |
+                (out["earn_growth"].fillna(0.0) >= WHEEL_MIN_GROWTH) |
+                (out["growth_streak"].fillna(0.0) == 1.0)
             )
+            final_mask = insider_mask & growth_ok
+            prev = _wheel_log(f"growth >= {WHEEL_MIN_GROWTH:.0%} or growth streak", final_mask, prev)
+
+            if WHEEL_DEBUG:
+                logger.info(
+                    "[wheel] missing fundamentals in filtered universe: "
+                    f"debt_to_equity={int(out.loc[relvol_mask, 'debt_to_equity'].isna().sum())}, "
+                    f"insider_ownership={int(out.loc[debt_mask, 'insider_ownership'].isna().sum())}"
+                )
+        elif WHEEL_DEBUG:
+            logger.info("[wheel] Python equity filters disabled; using Finviz seeds plus option-chain checks")
 
         wheel_base = out[final_mask].copy()
         wheel_base = wheel_base.sort_values("final_rank", ascending=False).head(WHEEL_PREFILTER_TOPN)

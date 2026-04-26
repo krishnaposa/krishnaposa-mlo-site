@@ -223,6 +223,25 @@ Those Finviz tickers are merged with the cached universe and local list, so they
 can flow through the same wheel filters and put-chain scoring as the rest of the
 monitor universe.
 
+By default, `WHEEL_USE_EQUITY_FILTERS=0`, so the wheel equity selection is driven
+by the Finviz screeners and the Python wheel step only performs option-chain
+checks and scoring. Set `WHEEL_USE_EQUITY_FILTERS=1` to re-enable the additional
+Python-side price, market cap, RSI, moving-average, growth, debt, and insider
+ownership filters.
+
+The wheel Finviz query tokens are configurable. For example:
+
+```text
+WHEEL_FINVIZ_RSI_FILTER=ta_rsi_nob70
+WHEEL_FINVIZ_REL_VOLUME_FILTER=sh_relvol_o1.2
+WHEEL_FINVIZ_HIGH_FILTER=ta_highlow52w_b0to10h
+WHEEL_FINVIZ_SMA20_FILTER=ta_sma20_pa
+WHEEL_FINVIZ_SMA50_FILTER=ta_sma50_pa
+WHEEL_FINVIZ_SORT=-change
+```
+
+Set any of these to an empty string to omit that Finviz filter.
+
 ### Equity Pre-Filter
 
 The pre-filter uses only large, liquid, bullish or neutral quality stocks. The
