@@ -349,7 +349,8 @@ filters for large, optionable, liquid stocks with relative volume, ADX above 25,
 RSI below 70, above SMA20/SMA50/SMA200, near 52-week highs, one-week momentum,
 debt/equity below 1, and recent EPS/sales growth.
 
-Both lists include trend-following entry and exit fields when price history is
+The email renders these as simple ticker lists only. Internally, the monitor
+still computes trend-following entry and exit fields when price history is
 available:
 
 - Entry OK requires price above SMA50 and SMA200, ADX >= 25, and RSI between 50
@@ -358,6 +359,9 @@ available:
 - 3-bar low is the lowest low of the last three sessions.
 - Exit watch flags an SMA50 break after consecutive closes below SMA50 and flags
   a climax/trim warning when price is 20% or more above SMA50.
+
+Only `Entry OK` symbols are shown in the Strong Buy Large Caps and Trend Entry
+Candidates email lists.
 
 ## Holdings Exit Watchlist
 
@@ -384,9 +388,9 @@ email section is:
 Holdings Exit Watchlist
 ```
 
-It only includes holdings where the trend exit logic has an active warning.
-Holdings that are still simply "hold while above stops" are omitted from this
-section.
+It is rendered as a simple ticker list and only includes holdings where the trend
+exit logic has an active warning. Holdings that are still simply "hold while
+above stops" are omitted from this section.
 
 Exit signals include:
 

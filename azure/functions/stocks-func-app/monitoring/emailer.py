@@ -244,6 +244,19 @@ def _trend_table_html(rows: Optional[List[Dict]], max_rows: int = 30) -> str:
     return "".join(html)
 
 
+def _tickers_from_rows(rows: Optional[List[Dict]], *, entry_only: bool = False) -> List[str]:
+    if not rows:
+        return []
+    out: List[str] = []
+    for r in rows:
+        if entry_only and r.get("entry_status") != "Entry OK":
+            continue
+        ticker = str(r.get("ticker", "")).upper().strip()
+        if ticker:
+            out.append(ticker)
+    return list(dict.fromkeys(out))
+
+
 def send_email_report_with_sims(*,
     stamp: str,
     universe_tickers: List[str],
@@ -276,20 +289,18 @@ def send_email_report_with_sims(*,
     # subj_tail = f"Spreads: {s_spreads}" + (f" | LEAPS: {s_leaps}" if s_leaps else "")
     subject = f"{subj_prefix} — {stamp}".strip()
 
-    html_universe   = _list_html(universe_tickers)
-    html_picks   = _list_html(picks_tickers)
-    html_alltime_high_value = _list_html(alltime_high_value_list or [])
-    html_alltime_high_trends = _trend_table_html(alltime_high_trend_rows)
-    html_trend_entry = _list_html(trend_entry_list or [])
-    html_trend_entry_rows = _trend_table_html(trend_entry_rows)
-    html_holdings_exit = _trend_table_html(holdings_exit_rows)
+    strong_buy_entries = _tickers_from_rows(alltime_high_trend_rows, entry_only=True)
+    trend_entries = _tickers_from_rows(trend_entry_rows, entry_only=True)
+    holdings_exits = _tickers_from_rows(holdings_exit_rows)
+    wheel_tickers = _tickers_from_rows(wheel_rows)
+
+    html_strong_buy_entries = _list_html(strong_buy_entries)
+    html_trend_entries = _list_html(trend_entries)
+    html_holdings_exits = _list_html(holdings_exits)
+    html_wheel_tickers = _list_html(wheel_tickers)
     # Disabled for now: LEAPS/debit-spread AI sections are not rendered.
     # html_spreads = _list_html(ai_spreads_list)
     # html_leaps = _list_html(ai_leaps_list)
-    html_sims    = _sim_table_html(sim_rows)
-    html_perf    = _perf_table_html(perf_rows)
-    html_opts    = _opt_table_html(opt_rows)
-    html_wheel   = _wheel_table_html(wheel_rows)
 
     eat_note = (
         "<div style='font-size:12px;color:#666;margin-top:8px'>"
@@ -301,22 +312,17 @@ def send_email_report_with_sims(*,
     html_body = f"""<html><body>
       <h2>Daily Stock Picks — {stamp}</h2>
 
-      <h3>Universe stocks</h3>
-      <div>{html_universe}</div>
+      <h3>Strong Buy Large Caps: Entry OK</h3>
+      <div>{html_strong_buy_entries}</div>
 
-      <h3>Stock Picks (buy_flag + top leaders)</h3>
-      <div>{html_picks}</div>
+      <h3>Trend Entry Candidates: Entry OK</h3>
+      <div>{html_trend_entries}</div>
 
-      <h3>Finviz: Strong Buy Large Caps at All-Time High</h3>
-      <div>{html_alltime_high_value}</div>
-      {html_alltime_high_trends}
+      <h3>Holdings Exit List</h3>
+      <div>{html_holdings_exits}</div>
 
-      <h3>Finviz: Trend Entry Candidates</h3>
-      <div>{html_trend_entry}</div>
-      {html_trend_entry_rows}
-
-      <h3>Holdings Exit Watchlist</h3>
-      {html_holdings_exit}
+      <h3>Wheel Stocks</h3>
+      <div>{html_wheel_tickers}</div>
 
       <!-- Disabled for now: LEAPS/debit-spread AI sections. -->
       <!--
@@ -326,18 +332,6 @@ def send_email_report_with_sims(*,
       <h3>AI: LEAPS (12–24 months)</h3>
       <div>{{html_leaps}}</div>
       -->
-
-      <h3>Simulators</h3>
-      {html_sims}
-
-      <h3>Performance (Price Change)</h3>
-      {html_perf}
-
-      <h3>Options (30–45 DTE) Setup</h3>
-      {html_opts}
-
-      <h3>Wheel Strategy: 45-Day Cash-Secured Puts</h3>
-      {html_wheel}
 
       {eat_note}
     </body></html>"""
