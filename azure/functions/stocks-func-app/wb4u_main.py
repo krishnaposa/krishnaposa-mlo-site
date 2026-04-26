@@ -86,9 +86,6 @@ def build_wheel_finviz_filters():
     os.getenv("WHEEL_FINVIZ_SMA50_FILTER", "ta_sma50_pa"),
   ]
   return [f for f in filters if f]
-
-stocks_wheel_cash_secured_puts = build_wheel_finviz_filters()
-
 goodFilter = {
     "isCFOIncreasing": [True],
     "recommendation": ["buy","strong_buy"],
