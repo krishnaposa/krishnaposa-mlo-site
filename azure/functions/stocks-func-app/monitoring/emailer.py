@@ -301,6 +301,8 @@ def send_email_report_with_sims(*,
     html_trend_entries = _list_html(trend_entries)
     html_holdings_exits = _list_html(holdings_exits)
     html_wheel_tickers = _list_html(wheel_tickers)
+    html_sims = _sim_table_html(sim_rows)
+    html_perf = _perf_table_html(perf_rows)
     # Disabled for now: LEAPS/debit-spread AI sections are not rendered.
     # html_spreads = _list_html(ai_spreads_list)
     # html_leaps = _list_html(ai_leaps_list)
@@ -337,6 +339,12 @@ def send_email_report_with_sims(*,
 
       <h3>Wheel Stocks</h3>
       <div>{html_wheel_tickers}</div>
+
+      <h3>Simulators</h3>
+      {html_sims}
+
+      <h3>Performance (Price Change)</h3>
+      {html_perf}
 
       <!-- Disabled for now: LEAPS/debit-spread AI sections. -->
       <!--
