@@ -293,6 +293,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
             sma20_below_sma50 = False
             sma50_below_sma200 = False
             heavy_down_day = False
+            down_today_and_week = False
             if isinstance(frame, pd.DataFrame) and not frame.empty:
                 try:
                     if len(frame) >= 4:
@@ -316,8 +317,10 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
                     sma20_below_sma50 = bool(latest.get("sma20", np.nan) < latest.get("sma50", np.nan))
                     sma50_below_sma200 = bool(latest.get("sma50", np.nan) < latest.get("sma200", np.nan))
                     last_ret = float(latest.get("ret", 0.0) or 0.0)
+                    ret_5d = float(latest.get("ret_5d", 0.0) or 0.0)
                     last_rel_vol = float(latest.get("rel_volume_20", 0.0) or 0.0)
                     heavy_down_day = last_ret <= -0.05 and last_rel_vol >= 1.5
+                    down_today_and_week = last_ret < 0.0 and ret_5d < 0.0
                 except Exception:
                     pass
 
@@ -353,6 +356,8 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
                 exit_bits.append("WATCH: weak ADX")
             if heavy_down_day:
                 exit_bits.append("WATCH: high-volume selloff")
+            if down_today_and_week:
+                exit_bits.append("EXIT: down today + down week")
             if climax:
                 exit_bits.append("WATCH: climax/trim")
             if not exit_bits:

@@ -404,6 +404,8 @@ Exit signals include:
 - `WATCH: weak ADX`: trend strength is below 20.
 - `WATCH: high-volume selloff`: daily loss worse than 5% on relative volume
   above 1.5.
+- `EXIT: down today + down week`: latest daily return is negative and 5-day
+  return is negative.
 - `WATCH: climax/trim`: price is 20% or more above SMA50.
 
 Configuration:
