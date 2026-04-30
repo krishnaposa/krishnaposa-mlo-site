@@ -257,6 +257,18 @@ def _tickers_from_rows(rows: Optional[List[Dict]], *, entry_only: bool = False) 
     return list(dict.fromkeys(out))
 
 
+def _tickers_with_exit_flag(rows: Optional[List[Dict]], exit_flag: str) -> List[str]:
+    if not rows or not exit_flag:
+        return []
+    out: List[str] = []
+    for r in rows:
+        ticker = str(r.get("ticker", "")).upper().strip()
+        exit_watch = str(r.get("exit_watch", "")).strip()
+        if ticker and exit_flag in exit_watch:
+            out.append(ticker)
+    return list(dict.fromkeys(out))
+
+
 def send_email_report_with_sims(*,
     stamp: str,
     universe_tickers: List[str],
@@ -292,6 +304,9 @@ def send_email_report_with_sims(*,
     strong_buy_entries = _tickers_from_rows(alltime_high_trend_rows, entry_only=True)
     trend_entries = _tickers_from_rows(trend_entry_rows, entry_only=True)
     holdings_exits = _tickers_from_rows(holdings_exit_rows)
+    down_today_week_exits = _tickers_with_exit_flag(
+        holdings_exit_rows, "EXIT: down today + down week"
+    )
     wheel_tickers = _tickers_from_rows(wheel_rows)
 
     html_universe = _list_html(universe_tickers)
@@ -300,6 +315,7 @@ def send_email_report_with_sims(*,
     html_strong_buy_entries = _list_html(strong_buy_entries)
     html_trend_entries = _list_html(trend_entries)
     html_holdings_exits = _list_html(holdings_exits)
+    html_down_today_week_exits = _list_html(down_today_week_exits)
     html_wheel_tickers = _list_html(wheel_tickers)
     html_sims = _sim_table_html(sim_rows)
     html_perf = _perf_table_html(perf_rows)
@@ -336,6 +352,10 @@ def send_email_report_with_sims(*,
 
       <h3>Holdings Exit List</h3>
       <div>{html_holdings_exits}</div>
+
+      <h3>Holdings: Exit Down Today + Down Week</h3>
+      <div><i>Triggered when daily return &lt; 0 and 5-day return &lt; 0</i></div>
+      <div>{html_down_today_week_exits}</div>
 
       <h3>Wheel Stocks</h3>
       <div>{html_wheel_tickers}</div>
