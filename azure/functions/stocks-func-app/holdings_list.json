@@ -9,11 +9,9 @@
     "GOOG",
     "AVGO",
     "TSLA",
-    "ALAB",
     "SNDK",
     "LITE",
     "MPWR",
-    "CRDO",
     "VRT",
     "GEV",
     "STX",
@@ -23,8 +21,9 @@
     "FIX",
     "IONQ",
     "BE",
-    "NBIS",
     "LUNR",
-    "CIEN"
+    "CIEN",
+    "AAOI",
+    "CLS"
   ]
 }
