@@ -135,6 +135,12 @@ python -m http.server 8765
 http://localhost:8765/karaoke/index-local.html 
 use above to save lyrics
 
+ ngrok config add-authtoken 3CYPP3McyY0oldiHbYmblGiiTtn_5sr1d7VsaxitpcPzeA1MA
+Authtoken saved to configuration file: C:\Users\krish\AppData\Local\ngrok\ngrok.yml
+
+export KARAOKE_LOCAL_PORT=8787
+export  KARAOKE_LOCAL_ROOT=/c/pers/karaoke-local
+python karaoke/local_folder_queue.py
 
 ngrok.yaml
 
@@ -154,3 +160,6 @@ endpoints:
                 status_code: 404
 agent:
     authtoken: <token>
+
+
+https://untrained-chase-slinky.ngrok-free.dev/karaoke/player-folder-local-root.html

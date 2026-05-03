@@ -45,12 +45,8 @@
 <main class="container">
 
   <section class="card">
-    <h1>Karaoke Player — local queue folder</h1>
-    <p class="help">Stems and lyrics come from the same tree the local queue uses: set <code>KARAOKE_LOCAL_ROOT</code> on the machine running <code>python karaoke/local_folder_queue.py</code> (default <code>~/.karaoke-local</code>). This page does <strong>not</strong> read that path in the browser; it calls the server’s <code>GET /api/list</code> and <code>GET /api/lyrics</code> and streams <code>/api/out/&lt;job_id&gt;/…</code>.</p>
-    <p class="help"><strong>One ngrok tunnel:</strong> point ngrok at the queue port (default <strong>8787</strong>), set <code>KARAOKE_LOCAL_PUBLIC_BASE</code> to your ngrok HTTPS origin, restart <code>local_folder_queue.py</code>, then open <code>https://YOUR-TUNNEL/karaoke/player-folder-local-root.html</code> (same host serves API + this page). <strong>Two tunnels not required.</strong> Otherwise API base: <code>?api=http://127.0.0.1:8787</code> or <code>?api=https://…</code>.</p>
-    <div id="httpsLocalBarrier" class="error hide" role="alert">
-      <strong>Mixed content:</strong> this page is HTTPS but the API base is plain <code>http://…</code>, so the browser will block requests. Use the one-tunnel setup above, or add <code>?api=https://…</code> pointing at an HTTPS API, or open the player over <code>http://</code>.
-    </div>
+    <h1>Karaoke Player </h1>
+
 
     <div class="row" style="flex-wrap:wrap; gap:.5rem; align-items:center">
       <button type="button" id="refreshList" class="btn btn-blue">Refresh list</button>
