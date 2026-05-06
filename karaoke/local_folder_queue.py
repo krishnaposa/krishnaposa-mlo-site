@@ -28,6 +28,9 @@ Run:
   set DEMUCS_JOBS=1       (optional; Windows defaults to 1 — avoids many demucs -j2 spawn failures)
   Demucs speed: DEMUCS_MODEL=htdemucs (faster than default htdemucs_ft); install PyTorch with CUDA for GPU;
     optional DEMUCS_DEVICE=cuda, DEMUCS_EXTRA_ARGS e.g. --shifts 1; for fastest splits use SEPARATOR=spleeter.
+  Optional pre-trim (ffmpeg silenceremove at start/end, speeds long silent intros/outros):
+    KARAOKE_PRETRIM=1  KARAOKE_PRETRIM_SILENCE_DB=-35dB  KARAOKE_PRETRIM_MIN_SILENCE=0.3
+    Requires ffmpeg on PATH (or FFMPEG_DIR). On failure, the original file is used.
   python karaoke/local_folder_queue.py
 
 Then open karaoke/index-local.html (set KARAOKE_API_BASE to match, default http://127.0.0.1:8787).
@@ -82,6 +85,16 @@ DEMUCS_JOBS = os.environ.get("DEMUCS_JOBS", "1" if platform.system() == "Windows
 DEMUCS_DEVICE = os.environ.get("DEMUCS_DEVICE", "").strip()
 # Optional: extra CLI args (quoted segments), e.g. --segment 7  or  --shifts 1
 DEMUCS_EXTRA_ARGS = os.environ.get("DEMUCS_EXTRA_ARGS", "").strip()
+
+# Optional: ffmpeg silenceremove before Spleeter/Demucs (long silence → faster split).
+KARAOKE_PRETRIM = (os.environ.get("KARAOKE_PRETRIM") or "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+KARAOKE_PRETRIM_SILENCE_DB = (os.environ.get("KARAOKE_PRETRIM_SILENCE_DB") or "-35dB").strip()
+KARAOKE_PRETRIM_MIN_SILENCE = (os.environ.get("KARAOKE_PRETRIM_MIN_SILENCE") or "0.3").strip()
 
 
 def _split_demucs_extra_args(extra: str):
@@ -426,6 +439,66 @@ def run_cmd_with_progress(
     return subprocess.CompletedProcess(cmd, proc.returncode, out_b, err_b)
 
 
+def pretrim_audio_if_needed(work_audio: Path, tdp: Path, job_id: str) -> Tuple[Path, str]:
+    """
+    Optionally trim leading/trailing silence via ffmpeg before the separator runs.
+    Returns (path_for_separator, stem_for_output_finder). On skip/failure returns work_audio and its stem.
+    """
+    if not KARAOKE_PRETRIM:
+        return work_audio, work_audio.stem
+    ffmpeg_exe = shutil.which("ffmpeg")
+    if not ffmpeg_exe:
+        LOG.warning("[%s] KARAOKE_PRETRIM enabled but ffmpeg not on PATH; skipping pre-trim", job_id)
+        return work_audio, work_audio.stem
+    try:
+        min_dur = float(KARAOKE_PRETRIM_MIN_SILENCE)
+        if min_dur <= 0:
+            raise ValueError("min silence must be positive")
+    except ValueError:
+        LOG.warning(
+            "[%s] invalid KARAOKE_PRETRIM_MIN_SILENCE=%r; skipping pre-trim",
+            job_id,
+            KARAOKE_PRETRIM_MIN_SILENCE,
+        )
+        return work_audio, work_audio.stem
+    out_wav = tdp / "pretrim.wav"
+    thresh = KARAOKE_PRETRIM_SILENCE_DB
+    af = (
+        f"silenceremove=start_periods=1:start_duration={min_dur}:start_threshold={thresh}:"
+        f"stop_periods=1:stop_duration={min_dur}:stop_threshold={thresh}"
+    )
+    cmd = [
+        ffmpeg_exe,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(work_audio),
+        "-af",
+        af,
+        "-ar",
+        "44100",
+        "-ac",
+        "2",
+        str(out_wav),
+    ]
+    try:
+        run_cmd(cmd, job_id, "ffmpeg pre-trim")
+    except RuntimeError as e:
+        LOG.warning("[%s] ffmpeg pre-trim failed, using original: %s", job_id, e)
+        return work_audio, work_audio.stem
+    try:
+        if not out_wav.is_file() or out_wav.stat().st_size == 0:
+            LOG.warning("[%s] pre-trim produced empty output; using original", job_id)
+            return work_audio, work_audio.stem
+    except OSError:
+        LOG.warning("[%s] cannot stat pre-trim output; using original", job_id)
+        return work_audio, work_audio.stem
+    LOG.info("[%s] pre-trim ok -> %s", job_id, out_wav)
+    return out_wav, out_wav.stem
+
+
 def run_spleeter(inp: Path, work_base: Path, job_id: str, original_name: str) -> Path:
     out_dir = work_base / "spleeter"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -547,18 +620,24 @@ def process_job_file(input_file: Path, job_id: str, original_name: str) -> None:
             tdp = Path(td)
             work_audio = tdp / Path(original_name).name
             shutil.copy2(input_file, work_audio)
-            basename = work_audio.stem
+            split_audio, basename = pretrim_audio_if_needed(work_audio, tdp, job_id)
             put_status(job_id, {"state": "running", "progress": 35, "original_name": original_name})
             separator = resolve_separator()
-            LOG.info("[%s] separator=%s basename=%r work_audio=%s", job_id, separator, basename, work_audio)
+            LOG.info(
+                "[%s] separator=%s basename=%r split_audio=%s",
+                job_id,
+                separator,
+                basename,
+                split_audio,
+            )
 
             if separator == "demucs":
-                out_base = run_demucs(work_audio, tdp / "demucs_out", job_id, original_name)
+                out_base = run_demucs(split_audio, tdp / "demucs_out", job_id, original_name)
                 LOG.info("[%s] demucs subprocess finished, scanning outputs under %s", job_id, out_base)
                 put_status(job_id, {"state": "running", "progress": 90, "original_name": original_name})
                 voc, band = find_demucs_vocals_band(out_base, DEMUCS_MODEL, basename, job_id)
             else:
-                sp_out = run_spleeter(work_audio, tdp, job_id, original_name)
+                sp_out = run_spleeter(split_audio, tdp, job_id, original_name)
                 put_status(job_id, {"state": "running", "progress": 90, "original_name": original_name})
                 voc, band = find_spleeter_vocals_band(sp_out, basename, job_id)
 
@@ -896,6 +975,12 @@ def main() -> None:
     _ffmpeg_path_prep()
     LOG.info("KARAOKE_LOCAL_ROOT=%s", ROOT)
     LOG.info("SEPARATOR=%s", SEPARATOR)
+    if KARAOKE_PRETRIM:
+        LOG.info(
+            "KARAOKE_PRETRIM=1 silence_db=%s min_silence=%s",
+            KARAOKE_PRETRIM_SILENCE_DB,
+            KARAOKE_PRETRIM_MIN_SILENCE,
+        )
     if SEPARATOR == "demucs":
         LOG.info("DEMUCS_MODEL=%s DEMUCS_JOBS=%s", DEMUCS_MODEL, DEMUCS_JOBS)
     try:
