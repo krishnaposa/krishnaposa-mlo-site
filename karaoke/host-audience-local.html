@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karaoke Audience Host (local)</title>
+  <link rel="stylesheet" href="../assets/css/styles.css">
+  <link rel="stylesheet" href="../assets/css/karaoke.css">
+</head>
+<body>
+<main class="container">
+  <section class="card">
+    <h1>Audience Host (local)</h1>
+    <p class="help">Select a completed split, play vocals, and broadcast state+lyrics to listeners on local network.</p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="roomId">Room ID</label>
+        <input id="roomId" type="text" value="room1">
+      </div>
+      <div class="field">
+        <label for="hostName">Host Name</label>
+        <input id="hostName" type="text" value="Host">
+      </div>
+    </div>
+    <div class="row">
+      <button id="refreshList" class="btn btn-outline" type="button">Refresh songs</button>
+      <span id="status" class="help"></span>
+    </div>
+    <div class="field" style="margin-top:.5rem">
+      <label for="songPick">Song</label>
+      <select id="songPick"></select>
+    </div>
+    <div class="row" style="margin-top:.5rem">
+      <button id="playBtn" class="btn btn-blue" type="button">Play</button>
+      <button id="pauseBtn" class="btn btn-outline" type="button">Pause</button>
+      <button id="publishNow" class="btn btn-outline" type="button">Publish now</button>
+    </div>
+    <div class="field" style="margin-top:.5rem">
+      <label for="listenerUrl">Listener URL</label>
+      <input id="listenerUrl" type="text" readonly>
+    </div>
+    <audio id="vocalsEl" preload="auto" controls style="width:100%;margin-top:.5rem"></audio>
+  </section>
+</main>
+<script src="../assets/js/karaoke-audience-host-local.js?v=1"></script>
+</body>
+</html>

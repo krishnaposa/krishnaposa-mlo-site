@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karaoke Audience Listener (local)</title>
+  <link rel="stylesheet" href="../assets/css/styles.css">
+  <link rel="stylesheet" href="../assets/css/karaoke.css">
+  <style>
+    #lyricsSynced { max-height: 320px; overflow: auto; border: 1px solid #ddd; padding: .5rem; border-radius: 6px; }
+    #lyricsSynced .line { opacity: .45; }
+    #lyricsSynced .line.active { opacity: 1; font-weight: 700; color: #2563eb; }
+  </style>
+</head>
+<body>
+<main class="container">
+  <section class="card">
+    <h1>Audience Listener (local)</h1>
+    <div class="row">
+      <label for="roomId">Room ID</label>
+      <input id="roomId" type="text" value="room1" style="max-width:220px">
+      <button id="joinBtn" class="btn btn-blue" type="button">Join</button>
+      <span id="status" class="help"></span>
+    </div>
+    <audio id="vocalsEl" preload="auto" controls style="width:100%;margin-top:.5rem"></audio>
+  </section>
+  <section class="card">
+    <h2>Lyrics</h2>
+    <pre id="lyricsPlain" style="white-space:pre-wrap">—</pre>
+    <div id="lyricsSynced" hidden></div>
+  </section>
+</main>
+<script src="../assets/js/karaoke-audience-listener-local.js?v=1"></script>
+</body>
+</html>
