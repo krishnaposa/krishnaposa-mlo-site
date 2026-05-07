@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karaoke Audience</title>
+  <link rel="stylesheet" href="../assets/css/styles.css">
+  <link rel="stylesheet" href="../assets/css/karaoke.css">
+  <style>
+    /* Readable lyrics (plain + LRC); avoid faint muted body text */
+    #lyricsPlain {
+      color: #0f172a;
+      font-size: 1.05rem;
+      line-height: 1.55;
+      font-weight: 500;
+      margin: 0;
+    }
+    #lyricsSynced {
+      max-height: 320px;
+      overflow: auto;
+      border: 1px solid #cbd5e1;
+      padding: .65rem .75rem;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #0f172a;
+      font-size: 1.05rem;
+      line-height: 1.55;
+    }
+    #lyricsSynced .line {
+      opacity: 0.88;
+      color: #334155;
+      font-weight: 500;
+      padding: 0.15rem 0;
+    }
+    #lyricsSynced .line.active {
+      opacity: 1;
+      font-weight: 700;
+      color: #1d4ed8;
+    }
+  </style>
+</head>
+<body>
+<main class="container">
+  <section class="card">
+    <h1>Audience</h1>
+    <div class="row">
+      <label for="roomId">Room ID</label>
+      <input id="roomId" type="text" value="room1" style="max-width:220px">
+      <button id="joinBtn" class="btn btn-blue" type="button">Join</button>
+      <span id="status" class="help"></span>
+    </div>
+    <audio id="vocalsEl" preload="auto" controls style="width:100%;margin-top:.5rem"></audio>
+  </section>
+  <section class="card">
+    <h2>Lyrics</h2>
+    <pre id="lyricsPlain" style="white-space:pre-wrap">—</pre>
+    <div id="lyricsSynced" hidden></div>
+  </section>
+</main>
+<script src="../assets/js/karaoke-api-base.js?v=1"></script>
+<script src="../assets/js/karaoke-audience.js?v=1"></script>
+</body>
+</html>

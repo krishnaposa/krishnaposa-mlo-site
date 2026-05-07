@@ -995,6 +995,11 @@ class Handler(BaseHTTPRequestHandler):
         if path_norm == "/api/lyrics":
             self._handle_get_lyrics(parsed)
             return
+        if path_norm == "/api/config":
+            # Lets host/audience pages discover PUBLIC_BASE (from KARAOKE_LOCAL_PUBLIC_BASE) without ?api=
+            raw = json.dumps({"public_base": PUBLIC_BASE}).encode("utf-8")
+            self._send(200, raw)
+            return
         if path_norm == "/api/list":
             qs = urllib.parse.parse_qs(parsed.query)
             q = (qs.get("q", [""])[0] or "").strip()

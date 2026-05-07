@@ -3,7 +3,7 @@
 Local audience queue server.
 
 This runs the same local queue functionality as local_folder_queue.py and adds
-audience session endpoints used by host/listener local audience pages:
+audience session endpoints used by `host.html` / `audience.html`:
   GET  /api/audience/session?room_id=...
   POST /api/audience/session
 """
