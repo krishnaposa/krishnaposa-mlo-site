@@ -175,3 +175,7 @@ python karaoke/local_folder_queue.py
    python karaoke/local_folder_queue.py
 
    http://localhost:8787/karaoke/index-local.html
+
+   https://www.djjohal.com/
+
+  https://pagalworld.is/

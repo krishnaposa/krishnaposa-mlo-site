@@ -52,6 +52,53 @@
       <button type="button" id="refreshList" class="btn btn-blue">Refresh list</button>
       <span id="folderScanSummary" class="help" aria-live="polite"></span>
     </div>
+    <div class="field" style="margin-top:.75rem">
+      <label>Search mode</label>
+      <div class="row" style="flex-wrap:wrap; gap:.75rem; align-items:center">
+        <label><input type="radio" name="searchMode" id="searchModeQuick" value="quick" checked> Quick</label>
+        <label><input type="radio" name="searchMode" id="searchModeAdvanced" value="advanced"> Advanced</label>
+      </div>
+    </div>
+    <div class="field" style="margin-top:.5rem">
+      <label for="searchQ">Quick search (title, tags, language, singer, actor, lyrics text)</label>
+      <input id="searchQ" type="text" placeholder="e.g. bollywood arijit telugu" />
+    </div>
+    <div id="advancedFilters" hidden>
+      <div class="grid-2" style="margin-top:.5rem">
+        <div class="field">
+          <label for="filterTitle">Title</label>
+          <input id="filterTitle" type="text" placeholder="Song title" />
+        </div>
+        <div class="field">
+          <label for="filterLanguage">Language</label>
+          <input id="filterLanguage" type="text" placeholder="hindi / telugu / tamil" />
+        </div>
+        <div class="field">
+          <label for="filterCategory">Category</label>
+          <input id="filterCategory" type="text" placeholder="bhajan / devotional / film" />
+        </div>
+        <div class="field">
+          <label for="filterTags">Tags (comma-separated)</label>
+          <input id="filterTags" type="text" placeholder="bollywood, romantic, 90s" />
+        </div>
+        <div class="field">
+          <label for="filterSinger">Singer</label>
+          <input id="filterSinger" type="text" placeholder="Arijit Singh" />
+        </div>
+        <div class="field">
+          <label for="filterActor">Actor</label>
+          <input id="filterActor" type="text" placeholder="Ranbir Kapoor" />
+        </div>
+        <div class="field">
+          <label for="filterText">Lyrics text contains</label>
+          <input id="filterText" type="text" placeholder="line from song" />
+        </div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:.5rem; flex-wrap:wrap; gap:.5rem; align-items:center">
+      <button type="button" id="applyFilters" class="btn btn-outline">Apply filters</button>
+      <button type="button" id="clearFilters" class="btn btn-outline">Clear filters</button>
+    </div>
 
     <div class="field" id="songPickWrap" style="margin-top:.75rem" hidden>
       <label for="folderSongPick">Song</label>
@@ -151,6 +198,6 @@
   }
 })();
 </script>
-<script src="../assets/js/karaoke-player-folder-local-root.js"></script>
+<script src="../assets/js/karaoke-player-folder-local-root.js?v=20260507-devotional1"></script>
 </body>
 </html>

@@ -15,6 +15,19 @@
   const songPick = K.$('folderSongPick');
   const songPickWrap = K.$('songPickWrap');
   const refreshBtn = K.$('refreshList');
+  const searchModeQuick = K.$('searchModeQuick');
+  const searchModeAdvanced = K.$('searchModeAdvanced');
+  const advancedFiltersWrap = K.$('advancedFilters');
+  const searchQ = K.$('searchQ');
+  const filterTitle = K.$('filterTitle');
+  const filterLanguage = K.$('filterLanguage');
+  const filterCategory = K.$('filterCategory');
+  const filterTags = K.$('filterTags');
+  const filterSinger = K.$('filterSinger');
+  const filterActor = K.$('filterActor');
+  const filterText = K.$('filterText');
+  const applyFiltersBtn = K.$('applyFilters');
+  const clearFiltersBtn = K.$('clearFilters');
 
   /** @type {{ job_id: string, title?: string, vocals_url?: string, band_url?: string }[]} */
   let listItems = [];
@@ -189,6 +202,34 @@
     if (folderLoadStatus) folderLoadStatus.textContent = t || '';
   }
 
+  function normalizeHumanTitle(raw) {
+    let s = String(raw || '').trim();
+    if (!s) return '';
+    // Drop common download/bitrate tails from filenames.
+    s = s.replace(/[_\s-]*(?:64|96|128|160|192|256|320)\s*kbps[_\s-]*/gi, ' ');
+    s = s.replace(/\.(mp3|wav|m4a|flac|aac|ogg)$/i, '');
+    s = s.replace(/[_]+/g, ' ');
+    s = s.replace(/\s{2,}/g, ' ').trim();
+    return s;
+  }
+
+  function buildSongDisplayLabel(item) {
+    const title = normalizeHumanTitle((item && item.title) || '');
+    const artist = (item && item.artist && String(item.artist).trim()) || '';
+    const movie = (item && item.movie && String(item.movie).trim()) || '';
+    const language = (item && item.language && String(item.language).trim()) || '';
+    const category = (item && item.category && String(item.category).trim()) || '';
+    const tags = Array.isArray(item && item.tags) ? item.tags.slice(0, 2).map((x) => String(x || '').trim()).filter(Boolean) : [];
+    const primary = title || item.job_id;
+    const meta = [];
+    if (artist) meta.push(artist);
+    if (movie) meta.push(movie);
+    if (language) meta.push(language);
+    if (category) meta.push(category);
+    if (tags.length) meta.push(tags.join(', '));
+    return meta.length ? primary + ' — ' + meta.join(' | ') : primary;
+  }
+
   function resetSongUi() {
     PB.showTitle('—');
     setLoadStatus('Select a song from the list.');
@@ -203,6 +244,38 @@
     K.setJobId(null);
   }
 
+  function isAdvancedMode() {
+    return !!(searchModeAdvanced && searchModeAdvanced.checked);
+  }
+
+  function updateSearchModeUi() {
+    if (!advancedFiltersWrap) return;
+    advancedFiltersWrap.hidden = !isAdvancedMode();
+  }
+
+  function buildListUrlWithFilters() {
+    const url = new URL(K.endpoints.listUrl);
+    const setIf = (k, v) => {
+      const s = String(v || '').trim();
+      if (s) url.searchParams.set(k, s);
+      else url.searchParams.delete(k);
+    };
+    if (isAdvancedMode()) {
+      setIf('title', filterTitle && filterTitle.value);
+      setIf('language', filterLanguage && filterLanguage.value);
+      setIf('category', filterCategory && filterCategory.value);
+      setIf('tags', filterTags && filterTags.value);
+      setIf('singer', filterSinger && filterSinger.value);
+      setIf('actor', filterActor && filterActor.value);
+      setIf('text', filterText && filterText.value);
+      url.searchParams.delete('q');
+    } else {
+      setIf('q', searchQ && searchQ.value);
+      ['title', 'language', 'category', 'tags', 'singer', 'actor', 'text'].forEach((k) => url.searchParams.delete(k));
+    }
+    return url.toString();
+  }
+
   async function refreshList() {
     setFolderSummary('');
     setLoadStatus('Loading list…');
@@ -210,7 +283,8 @@
     if (songPick) songPick.innerHTML = '';
     if (songPickWrap) songPickWrap.hidden = true;
     try {
-      const r = await apiFetch(K.endpoints.listUrl, { mode: 'cors' });
+      const listUrl = buildListUrlWithFilters();
+      const r = await apiFetch(listUrl, { mode: 'cors' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
       listItems = Array.isArray(j.items) ? j.items : [];
@@ -243,11 +317,11 @@
     listItems.forEach((it) => {
       const opt = document.createElement('option');
       opt.value = it.job_id;
-      const labelBase = (it.title && String(it.title).trim()) || it.job_id;
+      const labelBase = buildSongDisplayLabel(it);
       const dup = listItems.filter(
-        (x) => ((x.title && String(x.title).trim()) || x.job_id) === labelBase
+        (x) => buildSongDisplayLabel(x) === labelBase
       ).length;
-      opt.textContent = dup > 1 ? labelBase + ' (' + it.job_id + ')' : labelBase;
+      opt.textContent = dup > 1 ? labelBase + ' [' + it.job_id + ']' : labelBase;
       songPick.appendChild(opt);
     });
 
@@ -287,6 +361,35 @@
     refreshList().catch((e) => setLoadStatus(String(e && e.message ? e.message : e)));
   });
 
+  searchModeQuick?.addEventListener('change', updateSearchModeUi);
+  searchModeAdvanced?.addEventListener('change', updateSearchModeUi);
+
+  applyFiltersBtn?.addEventListener('click', () => {
+    refreshList().catch((e) => setLoadStatus(String(e && e.message ? e.message : e)));
+  });
+
+  clearFiltersBtn?.addEventListener('click', () => {
+    if (searchQ) searchQ.value = '';
+    if (filterTitle) filterTitle.value = '';
+    if (filterLanguage) filterLanguage.value = '';
+    if (filterCategory) filterCategory.value = '';
+    if (filterTags) filterTags.value = '';
+    if (filterSinger) filterSinger.value = '';
+    if (filterActor) filterActor.value = '';
+    if (filterText) filterText.value = '';
+    if (searchModeQuick) searchModeQuick.checked = true;
+    if (searchModeAdvanced) searchModeAdvanced.checked = false;
+    updateSearchModeUi();
+    refreshList().catch((e) => setLoadStatus(String(e && e.message ? e.message : e)));
+  });
+
+  searchQ?.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && !isAdvancedMode()) {
+      ev.preventDefault();
+      refreshList().catch((e) => setLoadStatus(String(e && e.message ? e.message : e)));
+    }
+  });
+
   songPick?.addEventListener('change', () => {
     const v = songPick.value;
     if (!v) {
@@ -297,5 +400,6 @@
     selectJob(v).catch((e) => setLoadStatus(String(e && e.message ? e.message : e)));
   });
 
+  updateSearchModeUi();
   refreshList().catch((e) => setLoadStatus(String(e && e.message ? e.message : e)));
 })(window);

@@ -95,6 +95,7 @@ KARAOKE_PRETRIM = (os.environ.get("KARAOKE_PRETRIM") or "0").strip().lower() in 
 )
 KARAOKE_PRETRIM_SILENCE_DB = (os.environ.get("KARAOKE_PRETRIM_SILENCE_DB") or "-35dB").strip()
 KARAOKE_PRETRIM_MIN_SILENCE = (os.environ.get("KARAOKE_PRETRIM_MIN_SILENCE") or "0.3").strip()
+KARAOKE_LIST_CACHE_TTL = float((os.environ.get("KARAOKE_LIST_CACHE_TTL") or "2.0").strip())
 
 
 def _split_demucs_extra_args(extra: str):
@@ -108,6 +109,9 @@ JOB_ID_ONLY_RE = re.compile(r"^[a-f0-9]{16}$", re.I)
 
 _processing: set[str] = set()
 _lock = threading.Lock()
+_songs_index_lock = threading.Lock()
+_songs_index: dict[str, Dict[str, Any]] = {}
+_songs_index_last_scan: float = 0.0
 
 
 def _serve_repo_static_enabled() -> bool:
@@ -258,11 +262,11 @@ def get_saved_lyrics(job_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def list_completed_jobs() -> list[Dict[str, Any]]:
-    """Folders under output/ with both stems; title from status original_name when present."""
-    items: list[Dict[str, Any]] = []
+def _scan_completed_jobs_index() -> dict[str, Dict[str, Any]]:
+    """Build an index of completed songs keyed by job_id from output/ folders."""
+    index: dict[str, Dict[str, Any]] = {}
     if not OUTPUT_DIR.is_dir():
-        return items
+        return index
     for sub in OUTPUT_DIR.iterdir():
         if not sub.is_dir():
             continue
@@ -277,8 +281,18 @@ def list_completed_jobs() -> list[Dict[str, Any]]:
         if not band.is_file() and not band_alt.is_file():
             continue
         st = get_status(job_id) or {}
+        lyr = get_saved_lyrics(job_id) or {}
         orig = (st.get("original_name") or "").strip()
         title = Path(orig).stem if orig else job_id
+        title = _to_clean_text(lyr.get("title") or title) or title
+        artist = _to_clean_text(lyr.get("artist") or "")
+        language = _to_clean_text(lyr.get("language") or lyr.get("lang") or "")
+        category = _to_clean_text(lyr.get("category") or "")
+        movie = _to_clean_text(lyr.get("movie") or "")
+        singers = _ensure_list_text(lyr.get("singers") or lyr.get("singer"))
+        actors = _ensure_list_text(lyr.get("actors") or lyr.get("actor"))
+        tags = _normalize_tags(lyr.get("tags"))
+        text_blob = _to_clean_text(lyr.get("text") or lyr.get("lrc") or "")
         try:
             mtime = max(voc.stat().st_mtime, band.stat().st_mtime)
             updated = (
@@ -286,17 +300,104 @@ def list_completed_jobs() -> list[Dict[str, Any]]:
             )
         except OSError:
             updated = None
-        items.append(
-            {
-                "job_id": job_id,
-                "title": title,
-                "updated": updated,
-                "vocals_url": f"{PUBLIC_BASE}/api/out/{job_id}/vocals.wav",
-                "band_url": f"{PUBLIC_BASE}/api/out/{job_id}/no_vocals.wav",
-            }
-        )
+        index[job_id] = {
+            "job_id": job_id,
+            "title": title,
+            "artist": artist,
+            "language": language,
+            "category": category,
+            "movie": movie,
+            "singers": singers,
+            "actors": actors,
+            "tags": tags,
+            "text": text_blob,
+            "updated": updated,
+            "vocals_url": f"{PUBLIC_BASE}/api/out/{job_id}/vocals.wav",
+            "band_url": f"{PUBLIC_BASE}/api/out/{job_id}/no_vocals.wav",
+            "_search": " ".join(
+                x
+                for x in [
+                    job_id,
+                    title,
+                    artist,
+                    language,
+                    category,
+                    movie,
+                    " ".join(singers),
+                    " ".join(actors),
+                    " ".join(tags),
+                    text_blob,
+                ]
+                if x
+            ).lower(),
+        }
+    return index
+
+
+def _refresh_completed_jobs_cache_if_needed(force: bool = False) -> None:
+    global _songs_index, _songs_index_last_scan
+    now = time.time()
+    if not force and (now - _songs_index_last_scan) < KARAOKE_LIST_CACHE_TTL:
+        return
+    new_index = _scan_completed_jobs_index()
+    with _songs_index_lock:
+        _songs_index = new_index
+        _songs_index_last_scan = now
+
+
+def list_completed_jobs(
+    query: str = "",
+    title: str = "",
+    job_id: str = "",
+    tags: str = "",
+    language: str = "",
+    category: str = "",
+    singer: str = "",
+    actor: str = "",
+    text: str = "",
+) -> list[Dict[str, Any]]:
+    """Return cached completed jobs, optionally filtered by metadata and text."""
+    _refresh_completed_jobs_cache_if_needed()
+    with _songs_index_lock:
+        items = list(_songs_index.values())
+    q = (query or "").strip().lower()
+    t = (title or "").strip().lower()
+    j = (job_id or "").strip().lower()
+    tg = [x.lower() for x in _normalize_tags(tags)]
+    lang = (language or "").strip().lower()
+    cat = (category or "").strip().lower()
+    sing = (singer or "").strip().lower()
+    act = (actor or "").strip().lower()
+    txt = (text or "").strip().lower()
+    if q:
+        items = [x for x in items if q in (x.get("_search") or "")]
+    if t:
+        items = [x for x in items if t in (x.get("title") or "").lower()]
+    if j:
+        items = [x for x in items if j in (x.get("job_id") or "").lower()]
+    if tg:
+        items = [
+            x
+            for x in items
+            if all(tag in " ".join((x.get("tags") or [])).lower() for tag in tg)
+        ]
+    if lang:
+        items = [x for x in items if lang in (x.get("language") or "").lower()]
+    if cat:
+        items = [x for x in items if cat in (x.get("category") or "").lower()]
+    if sing:
+        items = [x for x in items if sing in " ".join((x.get("singers") or [])).lower()]
+    if act:
+        items = [x for x in items if act in " ".join((x.get("actors") or [])).lower()]
+    if txt:
+        items = [x for x in items if txt in (x.get("text") or "").lower()]
     items.sort(key=lambda x: x.get("updated") or "", reverse=True)
-    return items
+    clean_items: list[Dict[str, Any]] = []
+    for x in items:
+        c = dict(x)
+        c.pop("_search", None)
+        clean_items.append(c)
+    return clean_items
 
 
 def _lyrics_clean(s: str) -> str:
@@ -309,6 +410,49 @@ def _lyrics_clean(s: str) -> str:
         flags=re.I,
     ).strip()
     return re.sub(r"\s+", " ", s)
+
+
+def _to_clean_text(v: Any) -> str:
+    return _lyrics_clean(str(v or ""))
+
+
+def _normalize_tags(raw: Any) -> list[str]:
+    parts: list[str] = []
+    if isinstance(raw, list):
+        for x in raw:
+            sx = _to_clean_text(x)
+            if sx:
+                parts.append(sx)
+    elif isinstance(raw, str):
+        txt = raw.replace("|", ",")
+        for x in txt.split(","):
+            sx = _to_clean_text(x)
+            if sx:
+                parts.append(sx)
+    elif raw is not None:
+        sx = _to_clean_text(raw)
+        if sx:
+            parts.append(sx)
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in parts:
+        key = p.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
+
+
+def _ensure_list_text(raw: Any) -> list[str]:
+    if isinstance(raw, list):
+        return [x for x in (_to_clean_text(v) for v in raw) if x]
+    if raw is None:
+        return []
+    txt = _to_clean_text(raw)
+    if not txt:
+        return []
+    return [txt]
 
 
 def run_cmd(cmd: list[str], job_id: str, desc: str) -> subprocess.CompletedProcess[str]:
@@ -646,6 +790,7 @@ def process_job_file(input_file: Path, job_id: str, original_name: str) -> None:
             put_status(job_id, {"state": "running", "progress": 94, "original_name": original_name})
             shutil.copy2(voc, out_job / "vocals.wav")
             shutil.copy2(band, out_job / "no_vocals.wav")
+            _refresh_completed_jobs_cache_if_needed(force=True)
 
         outputs = {
             "vocals.wav": f"{PUBLIC_BASE}/api/out/{job_id}/vocals.wav",
@@ -822,12 +967,19 @@ class Handler(BaseHTTPRequestHandler):
             "job_id": job_id,
             "title": _lyrics_clean(body.get("title") or ""),
             "artist": _lyrics_clean(body.get("artist") or ""),
+            "language": _lyrics_clean(body.get("language") or body.get("lang") or ""),
+            "category": _lyrics_clean(body.get("category") or ""),
+            "movie": _lyrics_clean(body.get("movie") or ""),
+            "singers": _ensure_list_text(body.get("singers") or body.get("singer")),
+            "actors": _ensure_list_text(body.get("actors") or body.get("actor")),
+            "tags": _normalize_tags(body.get("tags")),
             "synced": synced,
             "lrc": lrc if synced else "",
             "text": "" if synced else text,
             "saved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
         }
         lyrics_disk_path(job_id).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        _refresh_completed_jobs_cache_if_needed(force=True)
         self._send(200, json.dumps({"ok": True, "saved": f"by-job/{job_id}.json"}).encode())
 
     def do_GET(self) -> None:
@@ -838,11 +990,40 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_get_lyrics(parsed)
             return
         if path_norm == "/api/list":
-            items = list_completed_jobs()
+            qs = urllib.parse.parse_qs(parsed.query)
+            q = (qs.get("q", [""])[0] or "").strip()
+            title = (qs.get("title", [""])[0] or "").strip()
+            job_id = (qs.get("job_id", [""])[0] or "").strip()
+            tags = (qs.get("tags", [""])[0] or qs.get("tag", [""])[0] or "").strip()
+            language = (qs.get("language", [""])[0] or qs.get("lang", [""])[0] or "").strip()
+            category = (qs.get("category", [""])[0] or "").strip()
+            singer = (qs.get("singer", [""])[0] or "").strip()
+            actor = (qs.get("actor", [""])[0] or "").strip()
+            text = (qs.get("text", [""])[0] or "").strip()
+            items = list_completed_jobs(
+                query=q,
+                title=title,
+                job_id=job_id,
+                tags=tags,
+                language=language,
+                category=category,
+                singer=singer,
+                actor=actor,
+                text=text,
+            )
             n_sub = sum(1 for _ in OUTPUT_DIR.iterdir()) if OUTPUT_DIR.is_dir() else 0
             LOG.info(
-                "GET /api/list -> %d completed job(s) (KARAOKE_LOCAL_ROOT=%s output/ sub-entries=%s)",
+                "GET /api/list -> %d completed job(s) (q=%r title=%r job_id=%r tags=%r language=%r category=%r singer=%r actor=%r text=%r) (KARAOKE_LOCAL_ROOT=%s output/ sub-entries=%s)",
                 len(items),
+                q,
+                title,
+                job_id,
+                tags,
+                language,
+                category,
+                singer,
+                actor,
+                text,
                 ROOT,
                 n_sub,
             )
@@ -975,6 +1156,7 @@ def main() -> None:
     _ffmpeg_path_prep()
     LOG.info("KARAOKE_LOCAL_ROOT=%s", ROOT)
     LOG.info("SEPARATOR=%s", SEPARATOR)
+    LOG.info("KARAOKE_LIST_CACHE_TTL=%ss", KARAOKE_LIST_CACHE_TTL)
     if KARAOKE_PRETRIM:
         LOG.info(
             "KARAOKE_PRETRIM=1 silence_db=%s min_silence=%s",
