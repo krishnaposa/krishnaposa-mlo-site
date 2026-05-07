@@ -1,6 +1,6 @@
 # Karaoke local audience — runbook
 
-Audience mode lets a **host** play stems and publish play state + lyrics to a **room**; **listeners** on the same LAN open a link, hear synced vocals (via HTTP audio), and see lyrics (plain or LRC highlight).
+Audience mode lets a **host** play **vocals + band** together on the host machine (default system output = speakers) while publishing **vocals-only** timing + lyrics to a **room**. **Listeners** on phones open the listener page and hear **vocals only** (via HTTP audio), with lyrics (plain or LRC highlight).
 
 This is **HTTP polling + shared session state**, not WebRTC. Good for same Wi‑Fi; scale is browser/network limited.
 

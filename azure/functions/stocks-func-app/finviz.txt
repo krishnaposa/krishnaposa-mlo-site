@@ -169,6 +169,11 @@ az storage blob upload \
   --file ./local_list.json \
   --overwrite
 
+az storage blob download \
+  --connection-string "$MONITOR_STORAGE" \
+  --container-name "signals" \
+  --name "local_list.json" \
+  --file "local_list_check.json"
 
 az functionapp config appsettings set \
   --resource-group $resourceGroup \

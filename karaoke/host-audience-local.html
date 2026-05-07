@@ -11,7 +11,10 @@
 <main class="container">
   <section class="card">
     <h1>Audience Host (local)</h1>
-    <p class="help">Select a completed split, play vocals, and broadcast state+lyrics to listeners on local network.</p>
+    <p class="help">
+      You hear <strong>vocals + band</strong> together here (default: laptop speakers).
+      Phone listeners only stream <strong>vocals</strong> on the listener page.
+    </p>
     <div class="grid-2">
       <div class="field">
         <label for="roomId">Room ID</label>
@@ -30,18 +33,46 @@
       <label for="songPick">Song</label>
       <select id="songPick"></select>
     </div>
+    <div class="now-playing" style="margin-top:.5rem">
+      <strong>Now playing:</strong> <span id="trackTitle">—</span>
+    </div>
     <div class="row" style="margin-top:.5rem">
-      <button id="playBtn" class="btn btn-blue" type="button">Play</button>
-      <button id="pauseBtn" class="btn btn-outline" type="button">Pause</button>
+      <button id="play" class="btn btn-blue" type="button">Play</button>
+      <button id="pause" class="btn btn-outline" type="button">Pause</button>
+      <button id="restart" class="btn btn-outline" type="button">Restart</button>
       <button id="publishNow" class="btn btn-outline" type="button">Publish now</button>
+    </div>
+    <div class="row">
+      <label for="offset">Vocals advance/delay (ms):</label>
+      <input id="offset" type="number" value="0" step="10" style="width:120px">
+      <span class="help">Positive delays vocals vs band (same as main player).</span>
+    </div>
+    <div class="grid-2" style="margin-top:.75rem">
+      <div class="field">
+        <label for="vocalsOut">Vocals output</label>
+        <select id="vocalsOut"></select>
+      </div>
+      <div class="field">
+        <label for="bandOut">Band output</label>
+        <select id="bandOut"></select>
+      </div>
+    </div>
+    <div class="row" style="margin-top:.5rem">
+      <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
+      <span id="deviceMsg" class="help" style="margin-left:.5rem">Pick the same device for both for “everything on speakers.”</span>
     </div>
     <div class="field" style="margin-top:.5rem">
       <label for="listenerUrl">Listener URL</label>
       <input id="listenerUrl" type="text" readonly>
     </div>
-    <audio id="vocalsEl" preload="auto" controls style="width:100%;margin-top:.5rem"></audio>
+    <p class="help" style="margin-top:.5rem">Vocals (reference for sync + published to room)</p>
+    <audio id="vocalsEl" preload="auto" playsinline></audio>
+    <p class="help" style="margin-top:.5rem">Band / instrumental (host only)</p>
+    <audio id="bandEl" preload="auto" playsinline></audio>
   </section>
 </main>
-<script src="../assets/js/karaoke-audience-host-local.js?v=1"></script>
+<script>window.KARAOKE = window.KARAOKE || {};</script>
+<script src="../assets/js/karaoke-core.js"></script>
+<script src="../assets/js/karaoke-audience-host-local.js?v=2"></script>
 </body>
 </html>

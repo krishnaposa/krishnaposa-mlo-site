@@ -1,4 +1,10 @@
 (function () {
+  const K = window.KARAOKE;
+  if (!K || typeof K.initPlaybackControls !== "function") {
+    console.error("karaoke-audience-host-local.js: load karaoke-core.js first.");
+    return;
+  }
+
   const q = new URLSearchParams(window.location.search);
   const API_BASE = (q.get("api") || window.KARAOKE_API_BASE || "http://127.0.0.1:8787").replace(/\/$/, "");
   const endpoints = {
@@ -14,20 +20,45 @@
   const vocalsEl = document.getElementById("vocalsEl");
   const listenerUrlEl = document.getElementById("listenerUrl");
   const refreshBtn = document.getElementById("refreshList");
-  const playBtn = document.getElementById("playBtn");
-  const pauseBtn = document.getElementById("pauseBtn");
   const publishBtn = document.getElementById("publishNow");
+
+  const PB = K.initPlaybackControls();
 
   let items = [];
   let current = null;
   let currentLyrics = { synced: false, lrc: "", text: "" };
   let timer = null;
 
-  function setStatus(t) { if (statusEl) statusEl.textContent = t || ""; }
+  function apiOrigin() {
+    try {
+      return new URL(API_BASE).origin;
+    } catch {
+      return "";
+    }
+  }
+
+  /** Match stem URL host to API so LAN/ngrok works when list returns 127.0.0.1 links. */
+  function resolveStemUrl(u) {
+    if (!u || typeof u !== "string") return u;
+    const origin = apiOrigin();
+    if (!origin) return u;
+    try {
+      const p = new URL(u, origin);
+      return origin + p.pathname + p.search + p.hash;
+    } catch {
+      return u;
+    }
+  }
+
+  function setStatus(t) {
+    if (statusEl) statusEl.textContent = t || "";
+  }
 
   function listenerUrl() {
     const room = (roomIdEl.value || "room1").trim();
-    const base = window.location.origin + window.location.pathname.replace("host-audience-local.html", "listener-audience-local.html");
+    const base =
+      window.location.origin +
+      window.location.pathname.replace("host-audience-local.html", "listener-audience-local.html");
     const u = new URL(base);
     u.searchParams.set("api", API_BASE);
     u.searchParams.set("room", room);
@@ -51,7 +82,7 @@
       songPickEl.appendChild(o);
     });
     listenerUrlEl.value = listenerUrl();
-    setStatus(items.length ? ("Loaded " + items.length + " song(s).") : "No songs found.");
+    setStatus(items.length ? "Loaded " + items.length + " song(s)." : "No songs found.");
   }
 
   async function loadLyrics(jobId) {
@@ -75,8 +106,8 @@
       job_id: current.job_id,
       title: current.title || current.job_id,
       vocals_url: current.vocals_url || "",
-      playing: !vocalsEl.paused,
-      position_sec: vocalsEl.currentTime || 0,
+      playing: vocalsEl && !vocalsEl.paused,
+      position_sec: vocalsEl ? vocalsEl.currentTime || 0 : 0,
       synced: !!currentLyrics.synced,
       lrc: currentLyrics.lrc || "",
       text: currentLyrics.text || "",
@@ -93,27 +124,44 @@
     const id = songPickEl.value;
     current = items.find((x) => x.job_id === id) || null;
     if (!current) {
-      vocalsEl.src = "";
+      PB.setSources("", "");
+      setStatus("");
       return;
     }
-    vocalsEl.src = current.vocals_url || "";
-    vocalsEl.currentTime = 0;
+    const v = resolveStemUrl(current.vocals_url || "");
+    const b = resolveStemUrl(current.band_url || "");
+    PB.setSources(v, b);
+    PB.showTitle(current.title || current.job_id);
     await loadLyrics(current.job_id);
     await publishSession();
-    setStatus("Ready: " + (current.title || current.job_id));
+    setStatus("Ready: " + (current.title || current.job_id) + " — host hears vocals + band.");
   });
 
-  refreshBtn.addEventListener("click", function () { loadSongs().catch((e) => setStatus(String(e))); });
-  publishBtn.addEventListener("click", function () { publishSession().then(() => setStatus("Published.")).catch((e) => setStatus(String(e))); });
-  playBtn.addEventListener("click", function () { vocalsEl.play(); });
-  pauseBtn.addEventListener("click", function () { vocalsEl.pause(); });
+  refreshBtn.addEventListener("click", function () {
+    loadSongs().catch((e) => setStatus(String(e)));
+  });
+  publishBtn.addEventListener("click", function () {
+    publishSession().then(() => setStatus("Published.")).catch((e) => setStatus(String(e)));
+  });
 
   [roomIdEl, hostNameEl].forEach((el) => {
-    el && el.addEventListener("input", function () { listenerUrlEl.value = listenerUrl(); });
+    el &&
+      el.addEventListener("input", function () {
+        listenerUrlEl.value = listenerUrl();
+      });
   });
-  vocalsEl.addEventListener("play", function () { publishSession().catch(() => {}); });
-  vocalsEl.addEventListener("pause", function () { publishSession().catch(() => {}); });
-  vocalsEl.addEventListener("seeked", function () { publishSession().catch(() => {}); });
+
+  if (vocalsEl) {
+    vocalsEl.addEventListener("play", function () {
+      publishSession().catch(() => {});
+    });
+    vocalsEl.addEventListener("pause", function () {
+      publishSession().catch(() => {});
+    });
+    vocalsEl.addEventListener("seeked", function () {
+      publishSession().catch(() => {});
+    });
+  }
 
   timer = setInterval(function () {
     publishSession().catch(() => {});
