@@ -21,6 +21,13 @@
     lyrJobId: K.$('lyrJobId'),
     lyricsBox: K.$('lyricsBox'),
     lyrText: K.$('lyrText'),
+    lyrArtist: K.$('lyrArtist'),
+    lyrMovie: K.$('lyrMovie'),
+    lyrLanguage: K.$('lyrLanguage'),
+    lyrCategory: K.$('lyrCategory'),
+    lyrSingers: K.$('lyrSingers'),
+    lyrActors: K.$('lyrActors'),
+    lyrTags: K.$('lyrTags'),
     lyricsMsg: K.$('lyricsMsg'),
     loadLyricsBtn: K.$('loadLyrics'),
     saveLyricsBtn: K.$('saveLyrics'),
@@ -47,6 +54,13 @@
 
     if (els.lyricsBox) els.lyricsBox.textContent = '';
     if (els.lyrText)   els.lyrText.value = '';
+    if (els.lyrArtist) els.lyrArtist.value = '';
+    if (els.lyrMovie) els.lyrMovie.value = '';
+    if (els.lyrLanguage) els.lyrLanguage.value = '';
+    if (els.lyrCategory) els.lyrCategory.value = '';
+    if (els.lyrSingers) els.lyrSingers.value = '';
+    if (els.lyrActors) els.lyrActors.value = '';
+    if (els.lyrTags) els.lyrTags.value = '';
     if (els.lyricsMsg) els.lyricsMsg.textContent = '';
     if (els.lyrJobId)  els.lyrJobId.value = '';
     const ljp = K.$('localJobPick');
@@ -190,15 +204,33 @@
     const title = (K.$('trackTitle')?.textContent || '').trim();
     const durs = PB.getDurations();
 
-    await K.loadLyrics({
+    const data = await K.loadLyrics({
       jobId: jobId,
       title: title && title !== '—' ? title : '',
-      artist: (K.$('lyrArtist')?.value || '').trim(),
+      artist: (els.lyrArtist?.value || '').trim(),
       duration: Math.round(durs.band || durs.vocals || 0),
       lyricsBoxId: 'lyricsBox',
       msgId: 'lyricsMsg',
       textId: 'lyrText'     // also populate the editor
     });
+    if (data && data.found !== false) {
+      if (els.lyrArtist) els.lyrArtist.value = (data.artist || '').trim();
+      if (els.lyrMovie) els.lyrMovie.value = (data.movie || '').trim();
+      if (els.lyrLanguage) els.lyrLanguage.value = (data.language || '').trim();
+      if (els.lyrCategory) els.lyrCategory.value = (data.category || '').trim();
+      if (els.lyrSingers) {
+        const singers = Array.isArray(data.singers) ? data.singers : (data.singer ? [data.singer] : []);
+        els.lyrSingers.value = singers.join(', ');
+      }
+      if (els.lyrActors) {
+        const actors = Array.isArray(data.actors) ? data.actors : (data.actor ? [data.actor] : []);
+        els.lyrActors.value = actors.join(', ');
+      }
+      if (els.lyrTags) {
+        const tags = Array.isArray(data.tags) ? data.tags : [];
+        els.lyrTags.value = tags.join(', ');
+      }
+    }
   });
 
   els.saveLyricsBtn?.addEventListener('click', async () => {
@@ -210,6 +242,13 @@
     await K.saveLyrics({
       jobId: jobId,
       text: els.lyrText?.value || '',
+      artist: (els.lyrArtist?.value || '').trim(),
+      movie: (els.lyrMovie?.value || '').trim(),
+      language: (els.lyrLanguage?.value || '').trim(),
+      category: (els.lyrCategory?.value || '').trim(),
+      singers: (els.lyrSingers?.value || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean),
+      actors: (els.lyrActors?.value || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean),
+      tags: (els.lyrTags?.value || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean),
       msgId: 'lyricsMsg'
     });
   });

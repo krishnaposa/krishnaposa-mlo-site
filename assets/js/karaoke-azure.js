@@ -48,7 +48,7 @@
         if (box) box.textContent = 'No lyrics found.';
         if (textEl) textEl.value = '';
         if (msg) msg.textContent = '';
-        return;
+        return data;
       }
       if (data.synced && data.lrc) {
         if (textEl) textEl.value = data.lrc;
@@ -59,9 +59,11 @@
         if (box) box.textContent = plain ? 'Lyrics loaded.' : 'No lyrics text available.';
       }
       if (msg) msg.textContent = 'Loaded.';
+      return data;
     } catch (e) {
       console.warn(e);
       if (msg) msg.textContent = 'Failed to fetch lyrics.';
+      return null;
     }
   };
 
@@ -93,6 +95,12 @@
         synced: !!synced,
         title: (opts.title || '').trim(),
         artist: (opts.artist || '').trim(),
+        language: (opts.language || '').trim(),
+        category: (opts.category || '').trim(),
+        movie: (opts.movie || '').trim(),
+        singers: Array.isArray(opts.singers) ? opts.singers : [],
+        actors: Array.isArray(opts.actors) ? opts.actors : [],
+        tags: Array.isArray(opts.tags) ? opts.tags : [],
       };
       const r = await fetch(K.endpoints.lyricsUrl, {
         method: 'POST',
