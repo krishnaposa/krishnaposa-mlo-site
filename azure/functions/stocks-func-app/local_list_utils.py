@@ -16,6 +16,7 @@ LOCAL_LIST_CONTAINER = os.getenv("LOCAL_LIST_CONTAINER", os.getenv("SIGNALS_CONT
 LOCAL_LIST_BLOB_NAME = os.getenv("LOCAL_LIST_BLOB_NAME", "local_list.json")
 HOLDINGS_LIST_CONTAINER = os.getenv("HOLDINGS_LIST_CONTAINER", LOCAL_LIST_CONTAINER)
 HOLDINGS_LIST_BLOB_NAME = os.getenv("HOLDINGS_LIST_BLOB_NAME", "holdings_list.json")
+HOLDINGS_TRAILING_BLOB_NAME = os.getenv("HOLDINGS_TRAILING_BLOB_NAME", "holdings_trailing_state.json")
 
 # Connection string:
 # Prefer MONITOR_STORAGE (new storage account), fall back to AzureWebJobsStorage for local/test.
@@ -150,6 +151,89 @@ def save_holdings_list(tickers: List[str], meta: Optional[Dict] = None) -> None:
         content_settings=ContentSettings(content_type="application/json"),
     )
     logger.info(f"[holdings_list] saved {len(tickers_norm)} symbols -> {HOLDINGS_LIST_CONTAINER}/{HOLDINGS_LIST_BLOB_NAME}")
+
+
+def holdings_trailing_storage_description() -> str:
+    """Label for email/logs for holdings trailing-high JSON."""
+    if AZ_CONN and BlobServiceClient:
+        return f"blob:{HOLDINGS_LIST_CONTAINER}/{HOLDINGS_TRAILING_BLOB_NAME}"
+    return "blob:(not configured)"
+
+
+def _normalize_holdings_trailing_positions(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for k, v in raw.items():
+        kk = str(k).upper().strip()
+        if not kk or not isinstance(v, dict):
+            continue
+        try:
+            hi = float(v.get("high_seen", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            hi = 0.0
+        out[kk] = {"high_seen": hi}
+    return out
+
+
+def load_holdings_trailing_state() -> Dict[str, Dict[str, Any]]:
+    """
+    Trailing-stop state for holdings_list tickers (high_seen per symbol).
+    Same container as holdings_list; separate blob.
+    """
+    if BlobServiceClient is None or not AZ_CONN:
+        logger.warning("[holdings_trailing] storage not configured; trailing state starts empty")
+        return {}
+    try:
+        blob = _get_named_blob_client(HOLDINGS_LIST_CONTAINER, HOLDINGS_TRAILING_BLOB_NAME)
+        data = blob.download_blob().readall()
+        js = json.loads(data.decode("utf-8", errors="ignore"))
+        pos = js.get("positions") if isinstance(js, dict) else None
+        if isinstance(pos, dict):
+            st = _normalize_holdings_trailing_positions(pos)
+            logger.info(
+                f"[holdings_trailing] loaded {len(st)} symbols from "
+                f"{HOLDINGS_LIST_CONTAINER}/{HOLDINGS_TRAILING_BLOB_NAME}"
+            )
+            return st
+        return {}
+    except Exception as e:
+        logger.warning(f"[holdings_trailing] load failed (starting fresh): {e}")
+        return {}
+
+
+def save_holdings_trailing_state(positions: Dict[str, Dict[str, Any]], meta: Optional[Dict] = None) -> None:
+    if BlobServiceClient is None:
+        raise RuntimeError("azure.storage.blob not available.")
+    if ContentSettings is None:
+        raise RuntimeError("ContentSettings import failed; ensure azure-storage-blob is installed.")
+    if not AZ_CONN:
+        raise RuntimeError("Storage connection not found. Set MONITOR_STORAGE or AzureWebJobsStorage.")
+
+    norm: Dict[str, Dict[str, Any]] = {}
+    for k, v in positions.items():
+        kk = str(k).upper().strip()
+        if not kk or not isinstance(v, dict):
+            continue
+        try:
+            hi = float(v.get("high_seen", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            hi = 0.0
+        norm[kk] = {"high_seen": hi}
+
+    payload: Dict[str, Any] = {"positions": norm}
+    if meta:
+        payload["meta"] = meta
+
+    blob = _get_named_blob_client(HOLDINGS_LIST_CONTAINER, HOLDINGS_TRAILING_BLOB_NAME)
+    blob.upload_blob(
+        data=json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+        overwrite=True,
+        content_settings=ContentSettings(content_type="application/json"),
+    )
+    logger.info(
+        f"[holdings_trailing] saved {len(norm)} symbols -> "
+        f"{HOLDINGS_LIST_CONTAINER}/{HOLDINGS_TRAILING_BLOB_NAME}"
+    )
+
 
 # ---------- Dynamic update policy (optional; kept for flexibility) ----------
 def update_local_list(

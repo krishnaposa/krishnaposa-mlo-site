@@ -257,18 +257,6 @@ def _tickers_from_rows(rows: Optional[List[Dict]], *, entry_only: bool = False) 
     return list(dict.fromkeys(out))
 
 
-def _tickers_with_exit_flag(rows: Optional[List[Dict]], exit_flag: str) -> List[str]:
-    if not rows or not exit_flag:
-        return []
-    out: List[str] = []
-    for r in rows:
-        ticker = str(r.get("ticker", "")).upper().strip()
-        exit_watch = str(r.get("exit_watch", "")).strip()
-        if ticker and exit_flag in exit_watch:
-            out.append(ticker)
-    return list(dict.fromkeys(out))
-
-
 def send_email_report_with_sims(*,
     stamp: str,
     universe_tickers: List[str],
@@ -279,12 +267,14 @@ def send_email_report_with_sims(*,
     alltime_high_trend_rows: Optional[List[Dict]] = None,
     trend_entry_list: Optional[List[str]] = None,
     trend_entry_rows: Optional[List[Dict]] = None,
-    holdings_exit_rows: Optional[List[Dict]] = None,
+    holdings_trailing_section_html: Optional[str] = None,  # holdings_list: trailing stop + RS exits
     sim_rows: Optional[List[Dict]] = None,    # ticker, mc30, hmm_bull, ml_prob
     opt_rows: Optional[List[Dict]] = None,    # ticker, expiry, dte, k1, k2, debit, oi1, oi2, combo_spread
     wheel_rows: Optional[List[Dict]] = None,  # cash-secured put wheel candidates
     perf_rows: Optional[List[Dict]] = None,   # ticker, perf_5d, perf_1m, perf_6m
     momentum_section_html: Optional[str] = None,  # monitoring.momentum_portfolio HTML fragment
+    holdings_exit_alert_tickers: Optional[List[str]] = None,  # removed from holdings_list (trailing/RS) — subject line
+    momentum_exited_tickers: Optional[List[str]] = None,  # set when momentum ran; None if feature off
     subj_prefix: str = "Daily Stock Picks"
 ):
     if os.getenv("SEND_EMAIL", "0") != "1":
@@ -301,13 +291,23 @@ def send_email_report_with_sims(*,
     # s_leaps = ", ".join(ai_leaps_list[:2])
     # subj_tail = f"Spreads: {s_spreads}" + (f" | LEAPS: {s_leaps}" if s_leaps else "")
     subject = f"{subj_prefix} — {stamp}".strip()
+    alert_parts: List[str] = []
+    he = holdings_exit_alert_tickers or []
+    if he:
+        hx = ", ".join(str(t) for t in he[:10])
+        if len(he) > 10:
+            hx += " …"
+        alert_parts.append(f"Holdings exits: {hx}")
+    if momentum_exited_tickers is not None and momentum_exited_tickers:
+        mx = ", ".join(str(t) for t in momentum_exited_tickers[:10])
+        if len(momentum_exited_tickers) > 10:
+            mx += " …"
+        alert_parts.append(f"Momentum exits: {mx}")
+    if alert_parts:
+        subject = f"{subject} — " + " · ".join(alert_parts)
 
     strong_buy_entries = _tickers_from_rows(alltime_high_trend_rows, entry_only=True)
     trend_entries = _tickers_from_rows(trend_entry_rows, entry_only=True)
-    holdings_exits = _tickers_from_rows(holdings_exit_rows)
-    down_today_week_exits = _tickers_with_exit_flag(
-        holdings_exit_rows, "EXIT: down today + down week"
-    )
     wheel_tickers = _tickers_from_rows(wheel_rows)
 
     html_universe = _list_html(universe_tickers)
@@ -315,8 +315,11 @@ def send_email_report_with_sims(*,
     html_alltime_high_value = _list_html(alltime_high_value_list or [])
     html_strong_buy_entries = _list_html(strong_buy_entries)
     html_trend_entries = _list_html(trend_entries)
-    html_holdings_exits = _list_html(holdings_exits)
-    html_down_today_week_exits = _list_html(down_today_week_exits)
+    html_holdings_trailing = (
+        holdings_trailing_section_html
+        if (holdings_trailing_section_html or "").strip()
+        else "<i>Holdings trailing section not available.</i>"
+    )
     html_wheel_tickers = _list_html(wheel_tickers)
     html_sims = _sim_table_html(sim_rows)
     html_perf = _perf_table_html(perf_rows)
@@ -358,12 +361,11 @@ def send_email_report_with_sims(*,
       <div><i>Passed trend entry criteria</i></div>
       <div>{html_trend_entries}</div>
 
-      <h3>Holdings Exit List</h3>
-      <div>{html_holdings_exits}</div>
+      <h3>Holdings — trailing stop &amp; RS exits (holdings_list.json)</h3>
+      <div><i>Same rules as momentum: trailing stop off high_seen; exit if RS percentile &lt; threshold (default 70). Removals update the blob list.</i></div>
+      <div>{html_holdings_trailing}</div>
 
-      <h3>Holdings: Exit Down Today + Down Week</h3>
-      <div><i>Triggered when daily return &lt; 0 and 5-day return &lt; 0</i></div>
-      <div>{html_down_today_week_exits}</div>
+      {html_momentum_block}
 
       <h3>Wheel Stocks</h3>
       <div>{html_wheel_tickers}</div>
@@ -373,8 +375,6 @@ def send_email_report_with_sims(*,
 
       <h3>Performance (Price Change)</h3>
       {html_perf}
-
-      {html_momentum_block}
 
       <!-- Disabled for now: LEAPS/debit-spread AI sections. -->
       <!--

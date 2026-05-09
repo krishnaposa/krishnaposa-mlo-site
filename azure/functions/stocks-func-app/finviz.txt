@@ -207,5 +207,4 @@ az storage blob upload \
 export MONITOR_STORAGE='...'   # your connection string
 export CONTAINER=signals
 export BLOB=holdings_list.json
-az storage blob download --connection-string "$MONITOR_STORAGE" \
-  --container-name "$CONTAINER" --name "$BLOB" --file remote_holdings.json
+az storage blob download --connection-string "$MONITOR_STORAGE"  --container-name "$CONTAINER" --name "$BLOB" --file remote_holdings.json

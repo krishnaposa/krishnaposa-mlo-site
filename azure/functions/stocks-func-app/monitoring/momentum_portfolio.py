@@ -3,6 +3,9 @@ Momentum RS portfolio — trailing stop + RS percentile exits.
 
 Separate from the main quant monitor; optional daily hook updates JSON and feeds the email.
 
+Holdings list (holdings_list.json) uses the same trailing-stop + RS exit rules via run_holdings_trailing_daily()
+(state: holdings_trailing_state.json). Disable with HOLDINGS_TRAILING_EXITS_ENABLED=0.
+
 Env:
   MOMENTUM_PORTFOLIO_ENABLED=1   — run update + include email section
   MOMENTUM_PORTFOLIO_FILE        — local JSON path fallback (default: stocks-func-app/momentum_portfolio.json)
@@ -34,6 +37,13 @@ try:
         save_momentum_portfolio,
         storage_description,
     )
+    from local_list_utils import (
+        load_holdings_list,
+        save_holdings_list,
+        load_holdings_trailing_state,
+        save_holdings_trailing_state,
+        holdings_trailing_storage_description,
+    )
 except ImportError:
     import sys
 
@@ -44,6 +54,13 @@ except ImportError:
         load_momentum_portfolio,
         save_momentum_portfolio,
         storage_description,
+    )
+    from local_list_utils import (
+        load_holdings_list,
+        save_holdings_list,
+        load_holdings_trailing_state,
+        save_holdings_trailing_state,
+        holdings_trailing_storage_description,
     )
 
 RS_ENTRY_THRESHOLD = float(os.getenv("MOMENTUM_RS_ENTRY_THRESHOLD", "90"))
@@ -165,6 +182,194 @@ def get_rs_ratings(tickers: List[str]) -> pd.Series:
     return rs
 
 
+def run_holdings_trailing_daily() -> Dict[str, Any]:
+    """
+    Trailing stop + RS percentile exits for symbols in holdings_list.json (blob).
+    Persists high_seen in holdings_trailing_state.json; removes exited tickers from holdings_list.json.
+    Uses same thresholds as momentum: MOMENTUM_RS_EXIT_THRESHOLD (default 70), MOMENTUM_TRAILING_STOP_PCT.
+    """
+    out: Dict[str, Any] = {
+        "enabled": True,
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+        "state_file": holdings_trailing_storage_description(),
+        "messages": [],
+        "exited": [],
+        "holdings_rows": [],
+        "state_saved": False,
+        "list_saved": False,
+        "rs_series": {},
+    }
+
+    if os.getenv("HOLDINGS_TRAILING_EXITS_ENABLED", "1") != "1":
+        out["enabled"] = False
+        out["messages"].append("Holdings trailing exits disabled (set HOLDINGS_TRAILING_EXITS_ENABLED=1).")
+        return out
+
+    holdings = load_holdings_list()
+    if not holdings:
+        out["messages"].append("No symbols in holdings_list.json — nothing to manage.")
+        return out
+
+    tickers = sorted({str(t).upper().strip() for t in holdings if str(t).strip()})
+
+    state = load_holdings_trailing_state()
+    hold_set = set(tickers)
+    for k in list(state.keys()):
+        if k not in hold_set:
+            del state[k]
+
+    closes = _close_panel(tickers, period="5d", interval="1d")
+    if closes.empty:
+        out["messages"].append("yfinance returned no price data for holdings.")
+        return out
+
+    rs_ratings = get_rs_ratings(tickers)
+    out["rs_series"] = {k: float(v) for k, v in rs_ratings.items() if k in tickers}
+
+    to_delete: List[str] = []
+    updates_made = False
+
+    for ticker in tickers:
+        if ticker not in closes.columns:
+            out["messages"].append(f"{ticker}: missing from latest download — skipped.")
+            continue
+
+        series = closes[ticker].dropna()
+        if series.empty:
+            out["messages"].append(f"{ticker}: no closes — skipped.")
+            continue
+
+        current_price = float(series.iloc[-1])
+        entry = state.setdefault(ticker, {})
+        high_seen = float(entry.get("high_seen") or 0.0)
+        if high_seen <= 0:
+            high_seen = current_price
+            entry["high_seen"] = high_seen
+            updates_made = True
+
+        if current_price > high_seen:
+            entry["high_seen"] = current_price
+            updates_made = True
+            stop_px = current_price * (1.0 - TRAILING_STOP_PCT)
+            out["messages"].append(
+                f"NEW HIGH {ticker} @ ${current_price:.2f} → trailing stop ${stop_px:.2f}"
+            )
+
+        stop_price = float(entry["high_seen"]) * (1.0 - TRAILING_STOP_PCT)
+        if current_price <= stop_price:
+            out["messages"].append(
+                f"EXIT {ticker} — trailing stop (price ${current_price:.2f} ≤ stop ${stop_price:.2f})"
+            )
+            to_delete.append(ticker)
+            continue
+
+        rs_val = rs_ratings.get(ticker) if len(rs_ratings) else None
+        if rs_val is not None and pd.notna(rs_val) and float(rs_val) < RS_EXIT_THRESHOLD:
+            out["messages"].append(
+                f"EXIT {ticker} — RS {float(rs_val):.1f} < exit threshold {RS_EXIT_THRESHOLD:g}"
+            )
+            to_delete.append(ticker)
+
+    to_delete = list(dict.fromkeys(str(x).upper() for x in to_delete))
+    exited_set = set(to_delete)
+    out["exited"] = list(to_delete)
+    for t in to_delete:
+        state.pop(t, None)
+
+    if to_delete:
+        remaining = sorted(hold_set - exited_set)
+        save_holdings_list(remaining, meta={"source": "holdings_trailing_exit"})
+        out["list_saved"] = True
+        updates_made = True
+
+    if updates_made:
+        try:
+            save_holdings_trailing_state(state, meta={"source": "daily_holdings_trailing"})
+            out["state_saved"] = True
+        except Exception as e:
+            msg = f"Failed to save holdings trailing state: {e}"
+            out["messages"].append(msg)
+            logger.warning("[holdings_trailing] %s", msg)
+
+    remaining_tickers = sorted(hold_set - exited_set)
+    for t in remaining_tickers:
+        hi = float((state.get(t) or {}).get("high_seen") or 0.0)
+        cp = float(closes[t].dropna().iloc[-1]) if t in closes.columns else float("nan")
+        rs_v = rs_ratings.get(t)
+        rs_f = float(rs_v) if rs_v is not None and pd.notna(rs_v) else float("nan")
+        stop_px = hi * (1.0 - TRAILING_STOP_PCT) if hi else float("nan")
+        out["holdings_rows"].append(
+            {
+                "ticker": t,
+                "last": cp,
+                "high_seen": hi,
+                "stop": stop_px,
+                "rs": rs_f,
+            }
+        )
+
+    if not updates_made and not out["messages"]:
+        out["messages"].append(
+            f"Holdings check OK — no exits ({datetime.now().strftime('%Y-%m-%d')})."
+        )
+
+    return out
+
+
+def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
+    """HTML fragment for send_email_report_with_sims (holdings_list trailing + RS)."""
+    if result.get("enabled") is False:
+        return (
+            "<p><i>Holdings trailing exits disabled — set HOLDINGS_TRAILING_EXITS_ENABLED=1 to enable.</i></p>"
+        )
+
+    rows = result.get("holdings_rows") or []
+    msgs = result.get("messages") or []
+    exited = result.get("exited") or []
+
+    msg_html = "".join(f"<div style='margin:2px 0'>{_esc(m)}</div>" for m in msgs)
+
+    if exited:
+        msg_html += f"<div style='margin-top:6px'><b>Removed from holdings_list:</b> {_esc(', '.join(exited))}</div>"
+
+    table = ""
+    if rows:
+        parts = [
+            "<table border='0' cellspacing='0' cellpadding='4'>",
+            "<thead><tr>",
+            "<th align='left'>Ticker</th>",
+            "<th align='right'>Last</th>",
+            "<th align='right'>High seen</th>",
+            "<th align='right'>Trailing stop</th>",
+            "<th align='right'>RS %ile</th>",
+            "</tr></thead><tbody>",
+        ]
+        for r in rows[:80]:
+            parts.append(
+                "<tr>"
+                f"<td>{_esc(str(r.get('ticker','')))}</td>"
+                f"<td align='right'>{_fmt_money(r.get('last'))}</td>"
+                f"<td align='right'>{_fmt_money(r.get('high_seen'))}</td>"
+                f"<td align='right'>{_fmt_money(r.get('stop'))}</td>"
+                f"<td align='right'>{_fmt_num(r.get('rs'))}</td>"
+                "</tr>"
+            )
+        parts.append("</tbody></table>")
+        table = "".join(parts)
+    else:
+        table = "<i>No holdings remaining after exits.</i>"
+
+    meta = (
+        f"<div style='font-size:11px;color:#666;margin-bottom:6px'>"
+        f"Source: holdings_list.json · State: {_esc(str(result.get('state_file','')))} · "
+        f"Exit RS &lt; {RS_EXIT_THRESHOLD:g} · Trailing {TRAILING_STOP_PCT:.0%} · "
+        f"RS = return percentile vs holdings + SPY (1y)"
+        f"</div>"
+    )
+
+    return f"{meta}{msg_html}<div style='margin-top:10px'>{table}</div>"
+
+
 def run_momentum_daily() -> Dict[str, Any]:
     """
     Update trailing highs, exits, persist JSON. Returns a dict for logging + email HTML.
@@ -279,7 +484,8 @@ def run_momentum_daily() -> Dict[str, Any]:
 
 def format_momentum_email_section(result: Dict[str, Any]) -> str:
     """HTML fragment for send_email_report_with_sims."""
-    if not result.get("enabled"):
+    # Default missing key to on — only skip when explicitly disabled.
+    if result.get("enabled") is False:
         return ""
 
     rows = result.get("holdings_rows") or []

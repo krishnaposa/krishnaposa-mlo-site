@@ -381,16 +381,13 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     alltime_high_trend_rows = _build_trend_rows(alltime_high_value_list)
     trend_entry_rows = _build_trend_rows(trend_entry_list)
-    holdings_exit_rows = _build_trend_rows(holdings_list, only_exit_alerts=True)
     strong_buy_entry_ok = [r["ticker"] for r in alltime_high_trend_rows if r.get("entry_status") == "Entry OK"]
     trend_entry_ok = [r["ticker"] for r in trend_entry_rows if r.get("entry_status") == "Entry OK"]
-    holdings_exit_tickers = [r["ticker"] for r in holdings_exit_rows]
     if WHEEL_DEBUG:
         logger.info(f"[stocks] raw strong-buy/all-time-high list ({len(alltime_high_value_list)}): {alltime_high_value_list}")
         logger.info(f"[stocks] strong-buy/all-time-high Entry OK ({len(strong_buy_entry_ok)}): {strong_buy_entry_ok}")
         logger.info(f"[stocks] raw trend-entry list ({len(trend_entry_list)}): {trend_entry_list}")
         logger.info(f"[stocks] trend-entry Entry OK ({len(trend_entry_ok)}): {trend_entry_ok}")
-        logger.info(f"[stocks] holdings exit list ({len(holdings_exit_tickers)}): {holdings_exit_tickers}")
 
     wheel_rows = []
     if WHEEL_ENABLED:
@@ -570,15 +567,35 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     stamp = today.strftime("%Y-%m-%d")
 
+    holdings_trailing_section_html = None
+    holdings_trailing_exited: list[str] | None = None
+    try:
+        from .momentum_portfolio import (
+            format_holdings_trailing_email_section,
+            run_holdings_trailing_daily,
+        )
+
+        holdings_trailing_result = run_holdings_trailing_daily()
+        holdings_trailing_section_html = format_holdings_trailing_email_section(holdings_trailing_result)
+        holdings_trailing_exited = list(holdings_trailing_result.get("exited") or [])
+    except Exception as e:
+        logger.warning("[holdings trailing] daily update failed: %s", e)
+        holdings_trailing_section_html = f"<p><i>Holdings trailing exit error: {e}</i></p>"
+        holdings_trailing_exited = []
+
     momentum_section_html = None
+    momentum_exited_tickers: list[str] | None = None
     if os.getenv("MOMENTUM_PORTFOLIO_ENABLED", "1") == "1":
         try:
             from .momentum_portfolio import format_momentum_email_section, run_momentum_daily
 
-            momentum_section_html = format_momentum_email_section(run_momentum_daily())
+            momentum_result = run_momentum_daily()
+            momentum_section_html = format_momentum_email_section(momentum_result)
+            momentum_exited_tickers = list(momentum_result.get("exited") or [])
         except Exception as e:
             logger.warning("[momentum] daily update failed: %s", e)
             momentum_section_html = f"<p><i>Momentum portfolio error: {e}</i></p>"
+            momentum_exited_tickers = []
 
     send_email_report_with_sims(
         stamp=stamp,
@@ -590,12 +607,14 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         alltime_high_trend_rows=alltime_high_trend_rows,
         trend_entry_list=trend_entry_list,
         trend_entry_rows=trend_entry_rows,
-        holdings_exit_rows=holdings_exit_rows,
+        holdings_trailing_section_html=holdings_trailing_section_html,
         sim_rows=sim_rows,
         opt_rows=[],       # placeholder — still valid
         wheel_rows=wheel_rows,
         perf_rows=perf_rows,  # new table
         momentum_section_html=momentum_section_html,
+        holdings_exit_alert_tickers=holdings_trailing_exited,
+        momentum_exited_tickers=momentum_exited_tickers,
         subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),
     )
 
