@@ -571,7 +571,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     stamp = today.strftime("%Y-%m-%d")
 
     momentum_section_html = None
-    if os.getenv("MOMENTUM_PORTFOLIO_ENABLED", "0") == "1":
+    if os.getenv("MOMENTUM_PORTFOLIO_ENABLED", "1") == "1":
         try:
             from .momentum_portfolio import format_momentum_email_section, run_momentum_daily
 
