@@ -172,10 +172,19 @@ To Split
 export KARAOKE_PRETRIM_SILENCE_DB=-35dB
 export KARAOKE_PRETRIM_MIN_SILENCE=0.3
 python karaoke/local_folder_queue.py
-   python karaoke/local_folder_queue.py
+
 
    http://localhost:8787/karaoke/index-local.html
 
    https://www.djjohal.com/
 
   https://pagalworld.is/
+
+  export KARAOKE_LOCAL_PORT=8787
+  export SEPARATOR=spleeter
+  export KARAOKE_PRETRIM=1
+  export KARAOKE_PRETRIM_SILENCE_DB=-35dB
+  export KARAOKE_PRETRIM_MIN_SILENCE=0.3
+  export KARAOKE_LOCAL_HOST=0.0.0.0
+  export  KARAOKE_LOCAL_ROOT=/c/pers/karaoke-local
+  export KARAOKE_LOCAL_PUBLIC_BASE=http://127.0.0.1:8787

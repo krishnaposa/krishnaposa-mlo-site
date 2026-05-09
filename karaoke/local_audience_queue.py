@@ -84,6 +84,7 @@ class AudienceHandler(lfq.Handler):
             "job_id": (body.get("job_id") or "").strip(),
             "title": (body.get("title") or "").strip(),
             "vocals_url": (body.get("vocals_url") or "").strip(),
+            "band_url": (body.get("band_url") or "").strip(),
             "playing": bool(body.get("playing", False)),
             "position_sec": float(body.get("position_sec") or 0.0),
             "synced": bool(body.get("synced", False)),

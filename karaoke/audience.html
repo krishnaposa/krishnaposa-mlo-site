@@ -49,7 +49,16 @@
       <button id="joinBtn" class="btn btn-blue" type="button">Join</button>
       <span id="status" class="help"></span>
     </div>
+    <div class="row" style="margin-top:.5rem">
+      <label for="audioMode">Audio</label>
+      <select id="audioMode" style="max-width:240px">
+        <option value="vocals" selected>Vocals only</option>
+        <option value="band">Band only</option>
+        <option value="both">Vocals + Band</option>
+      </select>
+    </div>
     <audio id="vocalsEl" preload="auto" controls style="width:100%;margin-top:.5rem"></audio>
+    <audio id="bandEl" preload="auto" hidden></audio>
   </section>
   <section class="card">
     <h2>Lyrics</h2>
@@ -58,6 +67,6 @@
   </section>
 </main>
 <script src="../assets/js/karaoke-api-base.js?v=1"></script>
-<script src="../assets/js/karaoke-audience.js?v=1"></script>
+<script src="../assets/js/karaoke-audience.js?v=3"></script>
 </body>
 </html>

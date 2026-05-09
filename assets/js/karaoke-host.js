@@ -148,6 +148,7 @@
         job_id: current.job_id,
         title: current.title || current.job_id,
         vocals_url: current.vocals_url || "",
+        band_url: current.band_url || "",
         playing: vocalsEl && !vocalsEl.paused,
         position_sec: vocalsEl ? vocalsEl.currentTime || 0 : 0,
         synced: !!currentLyrics.synced,

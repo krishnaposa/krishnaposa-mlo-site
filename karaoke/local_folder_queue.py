@@ -53,6 +53,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
+import wave
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -95,6 +96,15 @@ KARAOKE_PRETRIM = (os.environ.get("KARAOKE_PRETRIM") or "0").strip().lower() in 
 )
 KARAOKE_PRETRIM_SILENCE_DB = (os.environ.get("KARAOKE_PRETRIM_SILENCE_DB") or "-35dB").strip()
 KARAOKE_PRETRIM_MIN_SILENCE = (os.environ.get("KARAOKE_PRETRIM_MIN_SILENCE") or "0.3").strip()
+# Reject “done” if copied stems are trivially small (0-byte / truncated — failed IO or bad separator output).
+try:
+    MIN_STEM_WAV_BYTES = int((os.environ.get("KARAOKE_MIN_STEM_BYTES") or "4096").strip())
+except ValueError:
+    MIN_STEM_WAV_BYTES = 4096
+try:
+    MIN_STEM_DURATION_SEC = float((os.environ.get("KARAOKE_MIN_STEM_DURATION_SEC") or "0.15").strip())
+except ValueError:
+    MIN_STEM_DURATION_SEC = 0.15
 KARAOKE_LIST_CACHE_TTL = float((os.environ.get("KARAOKE_LIST_CACHE_TTL") or "2.0").strip())
 
 
@@ -583,6 +593,88 @@ def run_cmd_with_progress(
     return subprocess.CompletedProcess(cmd, proc.returncode, out_b, err_b)
 
 
+def _pcm_wav_frames(path: Path) -> Optional[int]:
+    """PCM WAV frame count, or None if float/other format wave module cannot read."""
+    try:
+        with wave.open(str(path), "rb") as w:
+            return int(w.getnframes())
+    except Exception:
+        return None
+
+
+def _ffprobe_duration_seconds(path: Path) -> Optional[float]:
+    """Decoded duration from ffprobe (works for PCM or float WAV). None if unavailable."""
+    exe = shutil.which("ffprobe")
+    if not exe:
+        return None
+    try:
+        proc = subprocess.run(
+            [
+                exe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if proc.returncode != 0:
+            return None
+        return float((proc.stdout or "").strip())
+    except (ValueError, subprocess.TimeoutExpired, OSError):
+        return None
+
+
+def _validate_stem_files(job_id: str, voc_path: Path, band_path: Path) -> None:
+    """Raise if stem WAVs are missing, tiny on disk, or have no usable audio duration."""
+    for label, p in (("vocals", voc_path), ("band / instrumental", band_path)):
+        try:
+            sz = p.stat().st_size
+        except OSError as e:
+            raise RuntimeError(f"{label} stem missing after split: {p} ({e})") from e
+        if sz < MIN_STEM_WAV_BYTES:
+            raise RuntimeError(
+                f"{label} stem too small ({sz} bytes; need >= {MIN_STEM_WAV_BYTES}). "
+                "Common causes: corrupt source; ffmpeg pre-trim removed everything "
+                "(try KARAOKE_PRETRIM=0 or looser KARAOKE_PRETRIM_SILENCE_DB); "
+                "Demucs/Spleeter picked wrong outputs — check worker logs."
+            )
+        frames = _pcm_wav_frames(p)
+        if frames is not None and frames <= 0:
+            raise RuntimeError(f"{label} stem has zero PCM frames in WAV header: {p}")
+        dur = _ffprobe_duration_seconds(p)
+        if dur is not None and dur < MIN_STEM_DURATION_SEC:
+            raise RuntimeError(
+                f"{label} stem decodes to ~{dur:.3f}s (< {MIN_STEM_DURATION_SEC}s). "
+                "Silence-removal may have deleted all audio, or the source is effectively empty. "
+                "Try KARAOKE_PRETRIM=0 or increase KARAOKE_MIN_STEM_DURATION_SEC only after fixing trim."
+            )
+        if frames is None and dur is None:
+            LOG.warning(
+                "[%s] cannot verify %s audio (install ffmpeg ffprobe on PATH; stdlib wave cannot read format)",
+                job_id,
+                label,
+            )
+
+    vdur = _ffprobe_duration_seconds(voc_path)
+    bdur = _ffprobe_duration_seconds(band_path)
+    vsz = voc_path.stat().st_size
+    bsz = band_path.stat().st_size
+    LOG.info(
+        "[%s] stems ok on disk: vocals=%s bytes (~%s) band=%s bytes (~%s)",
+        job_id,
+        vsz,
+        f"{vdur:.2f}s" if vdur is not None else "?",
+        bsz,
+        f"{bdur:.2f}s" if bdur is not None else "?",
+    )
+
+
 def pretrim_audio_if_needed(work_audio: Path, tdp: Path, job_id: str) -> Tuple[Path, str]:
     """
     Optionally trim leading/trailing silence via ffmpeg before the separator runs.
@@ -790,6 +882,7 @@ def process_job_file(input_file: Path, job_id: str, original_name: str) -> None:
             put_status(job_id, {"state": "running", "progress": 94, "original_name": original_name})
             shutil.copy2(voc, out_job / "vocals.wav")
             shutil.copy2(band, out_job / "no_vocals.wav")
+            _validate_stem_files(job_id, out_job / "vocals.wav", out_job / "no_vocals.wav")
             _refresh_completed_jobs_cache_if_needed(force=True)
 
         outputs = {
