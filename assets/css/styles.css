@@ -32,26 +32,26 @@ html, body { overflow-x: hidden; }
    ANNOUNCEMENT RIBBON (AI)
    – choose bold brand ribbon
 ============================= */
-.announce-ai{
+.announce{
   background:#0b5fff;     /* bright blue */
   color:#fff;
   font-weight:600;
   border-bottom:2px solid #0845c6;
 }
-.announce-ai .container{
+.announce .container{
   display:flex; align-items:center; justify-content:space-between;
   gap:1rem; padding:.75rem 1rem;
 }
-.announce-ai a{ color:#fff; font-weight:700; text-decoration:underline; }
-.announce-ai button{
+.announce a{ color:#fff; font-weight:700; text-decoration:underline; }
+.announce button{
   background:transparent; border:0; color:#fff;
   font-size:1.2rem; cursor:pointer;
 }
 
 /* Optional light variant (commented)
-.announce-ai{ background:#eaf2ff; color:#0b1a3a; font-weight:600; border-bottom:1px solid #c8dcff }
-.announce-ai a{ color:#0b5fff; text-decoration:underline; font-weight:700 }
-.announce-ai button{ color:inherit }
+.announce{ background:#eaf2ff; color:#0b1a3a; font-weight:600; border-bottom:1px solid #c8dcff }
+.announce a{ color:#0b5fff; text-decoration:underline; font-weight:700 }
+.announce button{ color:inherit }
 */
 
 /* =============================
@@ -282,8 +282,6 @@ html, body { overflow-x: hidden; }
   .hero .cta a{ flex:1 1 100%; }
 }
 .help {
-  display:inline-flex; align-items:center; justify-content:center;
-  width:18px; height:18px; margin-left:6px; border-radius:50%;
   border:1px solid rgba(148,163,184,.5); font-size:12px; cursor:help;
 }
 .help:hover { background:rgba(148,163,184,.15); }
@@ -295,4 +293,13 @@ html, body { overflow-x: hidden; }
   max-width: 1100px;   /* adjust as you like */
   margin: 0 auto;
   padding: 0 var(--pad, 1rem);
+}
+#comments {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+#comments h2 {
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
 }

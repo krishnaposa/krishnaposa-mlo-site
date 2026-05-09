@@ -1,0 +1,284 @@
+/* dark-surface.css (full)
+   Scope all overrides to pages that add <body class="dark-surface"> */
+
+/* ---------- Tokens ---------- */
+:root{
+  /* Neutral + brand tokens for dark */
+  --kp-bg:#0b1220;           /* page background */
+  --kp-card:#0f172a;         /* card surface */
+  --kp-card-soft:#0c152a;    /* soft alt card */
+  --kp-hero:rgba(11,95,255,.12);
+  --kp-border:rgba(255,255,255,.12);
+  --kp-border-strong:rgba(255,255,255,.18);
+  --kp-text:#e5e7eb;         /* main text */
+  --kp-text-strong:#ffffff;  /* extra-bright text if needed */
+  --kp-muted:#9aa5b1;        /* secondary text (labels/titles) */
+  --kp-subtle:#6b7280;       /* placeholders, hints */
+  --kp-input:#0b1220;        /* input bg (subtle) */
+  --kp-table-head:#111a2e;   /* thead background */
+  --kp-blue:#0b5fff;         /* brand primary */
+  --kp-blue-hover:#094ecc;
+  --kp-danger:#ff6b6b;       /* error text on dark */
+}
+
+/* ---------- Page base ---------- */
+.dark-surface{
+  background:var(--kp-bg);
+  color:var(--kp-text);
+}
+
+/* ---------- Hero ---------- */
+.dark-surface .page-hero{
+  background:linear-gradient(180deg,var(--kp-hero),transparent);
+}
+.dark-surface .page-hero h1{ color:var(--kp-text); }
+.dark-surface .page-hero .small{ color:var(--kp-muted); }
+
+/* ---------- Headings & section titles ---------- */
+.dark-surface h2,
+.dark-surface h3{
+  color:var(--kp-muted);
+  font-size:1rem;
+  line-height:1.35;
+  font-weight:600;
+  margin:0 0 8px;
+}
+/* Keep main page title larger */
+.dark-surface .page-hero h1{
+  font-size:1.75rem;
+  font-weight:800;
+}
+
+/* Generic text helpers */
+.dark-surface .muted,
+.dark-surface .note,
+.dark-surface .helper{ color:var(--kp-muted); }
+
+/* ---------- Cards / containers ---------- */
+.dark-surface .tool-card,
+.dark-surface .card{
+  background:var(--kp-card);
+  border:1px solid var(--kp-border);
+  box-shadow:none;
+}
+
+/* ---------- Buttons ---------- */
+.dark-surface .btn{
+  background:var(--kp-blue);
+  color:#fff;
+  border:none;
+}
+.dark-surface .btn:hover{ background:var(--kp-blue-hover); }
+.dark-surface .btn.btn-blue{ background:var(--kp-blue); }
+
+/* Outline buttons */
+.dark-surface .btn.btn-outline{
+  background:transparent;
+  color:var(--kp-text);
+  border:1px solid var(--kp-border);
+}
+.dark-surface .btn.btn-outline:hover{
+  background:rgba(255,255,255,.04);
+}
+
+/* ---------- Fields (inputs/selects/textarea) ---------- */
+.dark-surface .field label{
+  color:var(--kp-muted);
+  font-size:.9rem;
+  font-weight:600;
+}
+
+.dark-surface .field input,
+.dark-surface .field select,
+.dark-surface .field textarea,
+.dark-surface input[type="text"],
+.dark-surface input[type="number"],
+.dark-surface input[type="url"],
+.dark-surface input[type="file"],
+.dark-surface textarea{
+  background:var(--kp-input);
+  color:var(--kp-text);
+  border:1px solid var(--kp-border);
+  border-radius:10px;
+}
+
+.dark-surface .field input::placeholder,
+.dark-surface .field textarea::placeholder,
+.dark-surface input::placeholder,
+.dark-surface textarea::placeholder{ color:var(--kp-subtle); }
+
+.dark-surface .field input:focus,
+.dark-surface .field select:focus,
+.dark-surface .field textarea:focus,
+.dark-surface input:focus,
+.dark-surface select:focus,
+.dark-surface textarea:focus{
+  outline:none;
+  border-color:var(--kp-blue);
+  box-shadow:0 0 0 3px rgba(11,95,255,.25);
+}
+
+/* Native dropdown menus – align with theme */
+.dark-surface .field select{
+  appearance:none;
+  -webkit-appearance:none;
+  -moz-appearance:none;
+  color-scheme:dark;
+  padding:8px 34px 8px 10px;
+  line-height:1.35;
+  background-image:
+    url("data:image/svg+xml;utf8,\
+      <svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa5b1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>\
+        <polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat:no-repeat;
+  background-position:right 10px center;
+  background-size:16px;
+}
+.dark-surface .field select option,
+.dark-surface select option{
+  background:var(--kp-card);
+  color:var(--kp-text);
+}
+.dark-surface .field select optgroup{ color:var(--kp-muted); }
+.dark-surface .field select:disabled{ color:var(--kp-muted); }
+.dark-surface .field select::-ms-expand{ display:none; }
+.dark-surface .field select{ scrollbar-color:var(--kp-subtle) transparent; }
+
+/* Placeholder-like first option */
+.dark-surface .field select option[disabled][value=""],
+.dark-surface .field select option[disabled][value=" "],
+.dark-surface .field select option[disabled]:first-child{
+  color:var(--kp-subtle);
+}
+
+/* Disabled / readonly */
+.dark-surface input[disabled],
+.dark-surface select[disabled],
+.dark-surface textarea[disabled],
+.dark-surface input[readonly],
+.dark-surface textarea[readonly]{
+  background:color-mix(in oklab, var(--kp-input) 70%, #000);
+  color:var(--kp-muted);
+  border-color:var(--kp-border);
+}
+
+/* ---------- Errors ---------- */
+.dark-surface .error-box{ color:var(--kp-danger); }
+
+/* ---------- Tables ---------- */
+.dark-surface .table-wrap table{
+  color:var(--kp-text);
+  background:transparent;
+}
+.dark-surface .table-wrap th,
+.dark-surface .table-wrap td{
+  border:1px solid var(--kp-border);
+}
+.dark-surface .table-wrap th{
+  background:var(--kp-table-head);
+  color:var(--kp-muted);
+  font-weight:700;
+}
+.dark-surface table tr:hover td{ background:rgba(255,255,255,.03); }
+.dark-surface .sort-arrow{ color:var(--kp-muted); }
+
+/* ---------- Links ---------- */
+.dark-surface a{ color:var(--kp-blue); }
+.dark-surface a:hover{ color:var(--kp-blue-hover); }
+
+/* ---------- Header/footer containers ---------- */
+.dark-surface #header,
+.dark-surface #footer{
+  background:transparent;
+  color:var(--kp-text);
+  border-color:var(--kp-border);
+}
+
+/* Ensure any “white-space:normal” address cells stay readable */
+.dark-surface td{ color:var(--kp-text); }
+
+/* Lightweight badges */
+.dark-surface .label-ai{
+  background:rgba(11,95,255,.18);
+  color:#cfe1ff;
+  border:1px solid color-mix(in oklab, var(--kp-blue) 30%, #fff 0%);
+}
+
+/* ---------- Mini-metrics ---------- */
+.dark-surface .mini-metrics .card{
+  background:var(--kp-card-soft);
+  border:1px solid var(--kp-border);
+}
+.dark-surface .mini-metrics .badge{ color:var(--kp-muted); }
+
+/* =========================================================
+   Karaoke page dark overrides (works with karaoke.css)
+   ========================================================= */
+
+/* Cards, headings, help text */
+.dark-surface .card{ background:var(--kp-card); border:1px solid var(--kp-border); }
+.dark-surface h1, .dark-surface h2{ color:var(--kp-text); }
+.dark-surface p.help{ color:var(--kp-muted); border:none; }
+
+/* Inputs + selects on karaoke page (already covered above, reiterated for clarity) */
+.dark-surface select,
+.dark-surface input[type="text"],
+.dark-surface input[type="number"],
+.dark-surface input[type="url"],
+.dark-surface input[type="file"]{
+  background:var(--kp-input);
+  color:var(--kp-text);
+  border:1px solid var(--kp-border);
+}
+.dark-surface select option{ background:var(--kp-card); color:var(--kp-text); }
+.dark-surface select:focus,
+.dark-surface input:focus{
+  border-color:var(--kp-blue);
+  box-shadow:0 0 0 3px rgba(11,95,255,.25);
+}
+
+/* Now Playing chip */
+.dark-surface .now-playing{
+  background:var(--kp-card-soft);
+  border:1px solid var(--kp-border);
+  color:var(--kp-text);
+}
+.dark-surface #trackTitle{ color:var(--kp-text); }
+
+/* === Lyrics areas (DISPLAY + UPLOAD) – unified look in dark === */
+.dark-surface #lyricsBox,
+.dark-surface #lyrText{
+  background:var(--kp-card);
+  border:1px solid var(--kp-border);
+  color:var(--kp-text);
+}
+.dark-surface #lyricsBox::selection,
+.dark-surface #lyrText::selection{ background:rgba(11,95,255,.28); }
+
+/* Progress bar */
+.dark-surface .progress{ background:rgba(255,255,255,.08); }
+.dark-surface .progress .bar{ background:var(--kp-blue); }
+
+/* Status / alerts */
+.dark-surface .error{ color:#ff7a7a; }
+.dark-surface .success{ color:#34d399; }
+
+/* ---------------- File input ---------------- */
+.dark-surface input[type="file"]{
+  background: var(--kp-input);
+  color: var(--kp-text);
+  border: 1px solid var(--kp-border);
+  border-radius: 10px;
+  padding: .65rem .8rem;
+}
+.dark-surface input[type="file"]::file-selector-button{
+  background: var(--kp-blue);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: .4rem .75rem;
+  cursor: pointer;
+}
+.dark-surface input[type="file"]::file-selector-button:hover{
+  background: var(--kp-blue-hover);
+}

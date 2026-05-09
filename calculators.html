@@ -31,15 +31,14 @@
   <meta name="twitter:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
 
   <!-- CSS & Favicon -->
-<link rel="stylesheet" href="assets/css/styles.css">
-  <link rel="stylesheet" href="assets/css/header-nav.css?v=final1">
-
-<link rel="stylesheet" href="assets/css/form-contrast.css">
-  
-  <link rel="icon" href="assets/img/favicon.png" type="image/png">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/form-contrast.css?v=2">
+  <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
 
   <!-- Site JS -->
-  <script defer src="assets/js/script.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
+
 </head>
 <body>
   <!-- GTM (noscript) -->
@@ -48,7 +47,7 @@
 
   <!-- Shared header -->
   <div id="header"></div>
-  <script defer src="assets/js/header.js?v=final1"></script>
+  <script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
 
   <main>
     <!-- HERO -->
@@ -58,7 +57,7 @@
           <h1>Mortgage Calculators</h1>
           <p>Run quick numbers for your budget, monthly payment, refinance break-even, and how extra payments may shorten your loan. Estimates only, not a loan offer.</p>
           <div class="cta">
-            <a class="btn btn-blue" href="buyer-funnel.html">Get Pre-Approved</a>
+            <a class="btn btn-blue" href="buyer-funnel-azure.html">Get Pre-Approved</a>
             <a class="btn-outline btn-green" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book a Call</a>
           </div>
           <ul class="trust">
@@ -67,7 +66,7 @@
           </ul>
         </div>
         <div class="hero-photo-card">
-          <img src="assets/img/headshot.jpg" alt="Krish Posa" width="600" height="600" loading="lazy" decoding="async">
+          <img src="https://www.krishposa.com/assets/img/headshot.jpg" alt="Krish Posa" width="600" height="600" loading="lazy" decoding="async">
           <p class="small center">Your mortgage guide in Atlanta, GA</p>
         </div>
       </div>
@@ -75,16 +74,24 @@
 
     <!-- CALCULATORS GRID -->
     <section class="container" style="margin-top:1rem">
-     <!-- Compare Loan Estimates (promoted card) -->
-<div class="card">
-  <h2 style="margin:0 0 .25rem">Compare Loan Estimates</h2>
-  <p class="small">Side-by-side view of two lenders’ Loan Estimates: monthly payment, cash to close, 5-year cost, and points break-even.</p>
-  <div class="cta" style="margin-top:.5rem">
-    <a class="btn btn-blue" href="calculator-le-compare.html">Open Tool</a>
-  </div>
-</div>
-      
-       <div class="grid-3">
+      <!-- Compare Loan Estimates (promoted card) -->
+      <div class="card">
+        <h2 style="margin:0 0 .25rem">Compare Loan Estimates</h2>
+        <p class="small">Side-by-side view of two lenders’ Loan Estimates: monthly payment, cash to close, 5-year cost, and points break-even.</p>
+        <div class="cta" style="margin-top:.5rem">
+          <a class="btn btn-blue" href="https://www.krishposa.com/calculator-le-compare.html">Open Tool</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin:0 0 .25rem">Buyer Funnel</h2>
+        <p class="small">Find the payment estimate -> Pre-Approval Intake Form with Realtor Co-branding Oppurtunity.</p>
+        <div class="cta" style="margin-top:.5rem">
+          <a class="btn btn-blue" href="https://www.krishposa.com/buyer-funnel-azure.html">Click for Pre-Approval</a>
+        </div>
+      </div>
+
+      <div class="grid-3">
         <!-- Affordability -->
         <div class="card" id="affCard">
           <h2 style="margin:0 0 .25rem">Affordability</h2>
@@ -106,18 +113,18 @@
               <label for="aff_zip">ZIP (for taxes)</label>
               <input id="aff_zip" inputmode="numeric" pattern="\\d{5}" placeholder="30301">
             </div>
-           <div class="field">
-  <label for="aff_county">
-    County (optional)
-    <span class="help" aria-label="Info" title="Uses midpoint county-wide effective property tax rates to tighten monthly estimates. Actual taxes vary by city millage and exemptions (e.g., homestead).">i</span>
-  </label>
-  <select id="aff_county">
-    <option value="">— Select county —</option>
-    <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
-    <option>DeKalb</option><option>Forsyth</option>
-  </select>
-  <span class="help-tip">If both County and ZIP are provided, County takes priority for taxes.</span>
-</div>
+            <div class="field">
+              <label for="aff_county">
+                County (optional)
+                <span class="help" aria-label="Info" title="Uses midpoint county-wide effective property tax rates to tighten monthly estimates. Actual taxes vary by city millage and exemptions (e.g., homestead).">i</span>
+              </label>
+              <select id="aff_county">
+                <option value="">— Select county —</option>
+                <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
+                <option>DeKalb</option><option>Forsyth</option>
+              </select>
+              <span class="help-tip">If both County and ZIP are provided, County takes priority for taxes.</span>
+            </div>
             <div class="field">
               <label for="aff_down">Down Payment</label>
               <input id="aff_down" inputmode="decimal" placeholder="80000 or 20%">
@@ -155,28 +162,50 @@
               <label for="pay_zip">ZIP (for taxes)</label>
               <input id="pay_zip" inputmode="numeric" pattern="\\d{5}" placeholder="30301">
             </div>
-          <div class="field">
-  <label for="pay_county">
-    County (optional)
-    <span class="help" aria-label="Info" title="Uses midpoint county-wide effective property tax rates to tighten monthly estimates. Actual taxes vary by city millage and exemptions (e.g., homestead).">i</span>
-  </label>
-  <select id="pay_county">
-    <option value="">— Select county —</option>
-    <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
-    <option>DeKalb</option><option>Forsyth</option>
-  </select>
-  <span class="help-tip">If both County and ZIP are provided, County takes priority for taxes.</span>
-</div>
+            <div class="field">
+              <label for="pay_county">
+                County (optional)
+                <span class="help" aria-label="Info" title="Uses midpoint county-wide effective property tax rates to tighten monthly estimates. Actual taxes vary by city millage and exemptions (e.g., homestead).">i</span>
+              </label>
+              <select id="pay_county">
+                <option value="">— Select county —</option>
+                <option>Fulton</option><option>Cobb</option><option>Gwinnett</option>
+                <option>DeKalb</option><option>Forsyth</option>
+              </select>
+              <span class="help-tip">If both County and ZIP are provided, County takes priority for taxes.</span>
+            </div>
             <div class="field">
               <label for="pay_program">Program</label>
               <select id="pay_program">
-                <option value="conventional">Conventional</option>
+                <option value="conventional" selected>Conventional (Fixed)</option>
+                <option value="arm">Conventional ARM</option>
                 <option value="fha">FHA</option>
                 <option value="va">VA</option>
                 <option value="usda">USDA</option>
                 <option value="jumbo">Jumbo</option>
               </select>
             </div>
+            <div class="field">
+              <label for="pay_term">Term</label>
+              <select id="pay_term">
+                <option value="30" selected>30 years</option>
+                <option value="15">15 years</option>
+              </select>
+            </div>
+
+            <!-- ARM subtype (shown only when Program = ARM) -->
+            <div class="field" id="arm_type_wrap" style="display:none">
+              <label for="arm_type">ARM Type</label>
+              <select id="arm_type">
+                <option value="5-1" selected>5/1 ARM</option>
+                <option value="7-1">7/1 ARM</option>
+                <option value="10-1">10/1 ARM</option>
+              </select>
+              <p class="tiny" id="arm_note">
+                Payment shown uses today’s rate for the fixed period with 30-year amortization. After the fixed period, the payment can change.
+              </p>
+            </div>
+
             <div class="cta" style="gap:.5rem;margin-top:.5rem">
               <button class="btn btn-blue" type="button" id="pay_calc">Calculate</button>
               <button class="btn-outline" type="reset" id="pay_reset">Reset</button>
@@ -225,7 +254,7 @@
           </form>
         </div>
 
-        <!-- Extra Payment Impact (full-width on small screens) -->
+        <!-- Extra Payment Impact -->
         <div class="card" id="extraCard" style="grid-column:1/-1">
           <h2 style="margin:0 0 .25rem">Extra Payment Impact</h2>
           <p class="small">See how an extra monthly amount may reduce interest and shorten payoff time.</p>
@@ -277,10 +306,27 @@
 
   <!-- Shared footer -->
   <div id="footer"></div>
-  <script src="assets/js/footer.js"></script>
+  <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
   <!-- JS: shared helpers then page wiring -->
-  <script defer src="assets/js/dist/mortgage-calc.js"></script>
-  <script defer src="assets/js/dist/calculators.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/mortgage-calc.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/calculators.js?v=3"></script>
+
+  <!-- Tiny enhancer: show/hide ARM subtype -->
+  <script>
+    (function () {
+      const program = document.getElementById('pay_program');
+      const armWrap = document.getElementById('arm_type_wrap');
+      function toggleArm() {
+        if (!program || !armWrap) return;
+        armWrap.style.display = (program.value === 'arm') ? 'block' : 'none';
+      }
+      if (program && armWrap) {
+        program.addEventListener('change', toggleArm);
+        document.addEventListener('DOMContentLoaded', toggleArm);
+        toggleArm();
+      }
+    })();
+  </script>
 </body>
 </html>

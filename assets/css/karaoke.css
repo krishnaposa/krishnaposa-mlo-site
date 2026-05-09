@@ -1,0 +1,179 @@
+/* =========================================================
+   Karaoke – page-specific styles (light theme base)
+   ========================================================= */
+:root{
+  --blue:#0b5fff;
+  --ink:#0f172a;
+  --muted:#6b7280;
+  --bg1:#0a1443;
+  --bg2:#102566;
+  --card:#ffffff;
+  --border:rgba(2,6,23,.10);
+  --ring:rgba(11,95,255,.45);
+}
+
+/* Page background (soft dark-blue gradient to match site) */
+body{
+  background: radial-gradient(1200px 600px at 50% -10%, var(--bg2), var(--bg1));
+}
+
+/* Layout */
+.container{max-width:960px;margin:0 auto;padding:16px}
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  box-shadow:0 6px 20px rgba(2,6,23,.05);
+  padding:18px;
+  margin-bottom:1rem;
+}
+
+/* Headings & text */
+h1,h2{color:var(--ink);line-height:1.2;margin:0 0 .5rem}
+p.help{
+  color:var(--muted);
+  margin:.25rem 0 .75rem;
+  width:auto;
+  border:none;            /* never show a bubble/outline */
+}
+
+/* Form fields */
+.field{display:flex;flex-direction:column;gap:.45rem;margin:.5rem 0}
+label{font-weight:600;color:var(--ink)}
+input[type="file"],
+input[type="url"],
+input[type="text"],
+input[type="number"],
+select,
+textarea{
+  width:100%;
+  appearance:none;
+  background:#f8fafc;
+  border:1px solid rgba(2,6,23,.12);
+  border-radius:10px;
+  padding:.65rem .8rem;
+  color:#0b1220;
+  transition:box-shadow .15s ease,border-color .15s ease, background .15s ease;
+  box-sizing:border-box;
+}
+textarea{
+  min-height:140px;
+  resize:vertical;
+}
+input::placeholder,
+textarea::placeholder{color:#94a3b8}
+input:focus,select:focus,textarea:focus{
+  outline:0;
+  border-color:var(--blue);
+  box-shadow:0 0 0 3px var(--ring);
+}
+
+/* Buttons */
+.btn{
+  appearance:none;
+  border:none;
+  border-radius:10px;
+  padding:.7rem 1rem;
+  font-weight:700;
+  cursor:pointer;
+  transition:transform .05s ease, box-shadow .15s ease, background .15s ease, color .15s ease, border-color .15s ease;
+}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible{outline:0;box-shadow:0 0 0 3px var(--ring)}
+.btn-blue{background:var(--blue);color:#fff}
+.btn-blue:hover{filter:brightness(.95)}
+.btn-outline{
+  background:#fff;
+  border:1px solid #d1d5db;
+  color:#0b1220;
+}
+.btn-outline:hover{background:#f8fafc}
+
+/* Horizontal groupings */
+.row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+.row + .row{margin-top:.5rem}
+
+/* Two-column area */
+.grid-2{display:grid;gap:.6rem;grid-template-columns:1fr}
+@media (min-width:900px){.grid-2{grid-template-columns:1fr 1fr}}
+
+/* Progress */
+.progress{height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:.5rem 0 0}
+.progress .bar{height:100%;width:0;background:var(--blue);transition:width .25s linear}
+
+/* Status + alerts */
+.help{color:var(--muted);width:auto;border:none}
+.error{color:#b91c1c;font-weight:600}
+.success{color:#065f46}
+
+/* Utilities */
+.hide{display:none !important}
+
+/* Specific element tweaks */
+#offset{width:140px}
+
+/* ===== Player: Now Playing chip ===== */
+.now-playing{
+  display:inline-flex;
+  align-items:center;
+  gap:.5rem;
+  padding:.5rem .75rem;
+  border:1px solid var(--border);   /* subtle border */
+  border-radius:10px;
+  background:#f8fafc;
+}
+#trackTitle{font-weight:700;color:var(--ink)}
+
+/* ===== Player: device status line ===== */
+#deviceMsg{min-height:1.25rem}
+
+/* ===== Lyrics: display + upload (unified base light look) ===== */
+#lyricsBox,
+#lyrText{
+  display:block;
+  width:100%;
+  background:#ffffff;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:16px;
+  white-space:pre-wrap;
+  min-height:350px;         /* roomy by default */
+  max-height:600px;         /* scroll if huge */
+  overflow:auto;
+  line-height:1.6;
+  font-size:1.1rem;
+  color:#0f172a;
+  /* readable UI font by default; switch to monospace if you prefer lyric alignment */
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+#lyricsBox::selection, #lyrText::selection{background:rgba(11,95,255,.18)}
+/* highlight current line when JS prefixes with "> " */
+#lyricsBox{tab-size:2}
+
+/* If you want monospace alignment for both, uncomment:
+#lyricsBox, #lyrText{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+*/
+
+/* Optional hint line under the lyrics uploader */
+#lyrHint{ color:var(--muted); }
+
+/* ===== Full-bleed lyrics (edge-to-edge across page) =====
+   Add class 'full-page' on the element to break out of center container:
+   <pre id="lyricsBox" class="full-page"></pre>
+*/
+#lyricsBox.full-page{
+  width:100vw;
+  max-width:100vw;
+  margin-left:calc(50% - 50vw);
+  margin-right:calc(50% - 50vw);
+  border-radius:0;
+  border-left:none;
+  border-right:none;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce){
+  .btn,.progress .bar{transition:none}
+}

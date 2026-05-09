@@ -1,167 +1,343 @@
 /* assets/js/buyer-funnel.js
-   Estimate math, agent co-brand, and Google Forms submit
+   Estimate math, agent co-brand list, open Google Form, and Azure submit
 */
 (function () {
-  const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc;
+  // ---- Mortgage helpers exposed by mortgage-calc.js ----
+  const { cfg, parseNumber: num, fmtCurrency: fmt, calc } = window.MortgageCalc || {};
+  const $  = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-  // ===== 1) SET this to your Google Form action (the /formResponse URL) =====
-  // Example: "https://docs.google.com/forms/d/e/1FAIpQLSdEXAMPLEID/formResponse"
-  const GOOGLE_FORM_ACTION = "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/formResponse";
+  // ---- Config ----
+  const GOOGLE_FORM_URL =
+    "https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/viewform?hl=en";
 
-  // ===== 2) MAP your Google Form "entry.<id>" names here =====
-  // Find them in your form's HTML (Preview -> View Source -> look for name="entry.xxxxx")
-  const ENTRY = {
-    fullName:   "entry.1081531616",
-    email:      "entry.1665114649",
-    phone:      "entry.776689893",
-    timeline:   "entry.938852734",
-    occupancy:  "entry.223995685",
-    source:     "entry.447085241",
-    estPrice:   "entry.390780263",
-    estDown:    "entry.508547119",
-    employment: "entry.1791431821",
-    coBorrower: "entry.1836064847",
-    notes:      "entry.1112680792",
-    // Hidden/derived fields — make short-answer questions for them in your Google Form
-    estMonthly: "entry.672377788",
-    estDTI:     "entry.1531234816",
-    agentName:  "entry.816490105",
-    agentEmail: "entry.1411194686",
-    utm:        "entry.1980121130"
-  };
-
-  // DOM helpers
-  const $ = (sel) => document.querySelector(sel);
   const BOOKING_URL = "https://calendar.app.google/22s8fcMQLge9g63d6";
-  ["#bookTop", "#bookMid", "#bookBottom", "#bookSticky"].forEach((q) => { const el = $(q); if (el) el.href = BOOKING_URL; });
 
-  // Realtor co-brand
-  function drawAgent() {
-    const data = JSON.parse(localStorage.getItem("agent") || "{}");
-    $("#agentName").textContent = data.name || "No agent added";
-    $("#agentFirm").textContent = data.firm || "You can add one above";
-    $("#agentAvatar").src = data.logo || "";
-    $("#h_agentName").value = data.name || "";
-    $("#h_agentEmail").value = data.email || "";
+  // Azure Function endpoint (add code if needed)
+  const AZURE_FUNCTION_URL =
+    "https://realtors-func-app-gbdufbcvazeug7ew.eastus2-01.azurewebsites.net/api/realtorSubmit";
+  const AZURE_FUNCTION_CODE = ""; // <-- if you have a function key, paste it here
+
+  const REALTOR_FALLBACK_LOGO = "assets/img/realtor.png"; // used if no/bad logo
+
+  // Build the URL we actually POST to (handles optional function key)
+  function buildAzureUrl() {
+    if (!AZURE_FUNCTION_CODE) return AZURE_FUNCTION_URL;
+    const u = new URL(AZURE_FUNCTION_URL);
+    u.searchParams.set("code", AZURE_FUNCTION_CODE);
+    return u.toString();
   }
-  $("#saveAgent")?.addEventListener("click", () => {
-    const payload = {
-      name: $("#agent_name").value.trim(),
-      firm: $("#agent_firm").value.trim(),
-      email: $("#agent_email").value.trim(),
-      logo: $("#agent_logo").value.trim()
-    };
-    localStorage.setItem("agent", JSON.stringify(payload));
-    drawAgent();
+
+  // ---- Utility: simple UUID (fallback if crypto not available) ----
+  function uuid() {
+    if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  // ---- Booking links ----
+  ["#bookTop", "#bookBottom", "#bookSticky"].forEach((q) => {
+    const el = $(q);
+    if (el) el.href = BOOKING_URL;
   });
-  drawAgent();
 
-  // Quick Qualify calculator
+  // ==========================================================
+  // REALTOR CO-BRAND — store A LIST, not a single agent
+  // ==========================================================
+  const LS_KEY = "agents"; // array of {id,name,firm,email,logo,addedAt}
+  function loadAgents() {
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch { return []; }
+  }
+  function saveAgents(list) {
+    localStorage.setItem(LS_KEY, JSON.stringify(list || []));
+  }
+  function addAgent(agent) {
+    const list = loadAgents();
+    const item = {
+      id: uuid(),
+      name: (agent.name || "").trim(),
+      firm: (agent.firm || "").trim(),
+      email: (agent.email || "").trim(),
+      logo: (agent.logo || "").trim(),
+      addedAt: new Date().toISOString()
+    };
+    // fallback logo if none provided
+    if (!item.logo) item.logo = REALTOR_FALLBACK_LOGO;
+    list.unshift(item); // add to top (newest first)
+    saveAgents(list);
+    return item;
+  }
+
+  // Create (or reuse) a container for rendering the list
+  function ensureAgentListContainer() {
+    let wrap = $("#agentList");
+    if (!wrap) {
+      const card = $("#agentCard");
+      if (card) {
+        wrap = document.createElement("div");
+        wrap.id = "agentList";
+        wrap.className = "grid-3";
+        wrap.style.marginTop = "1rem";
+        card.appendChild(wrap);
+      }
+    }
+    return wrap;
+  }
+
+  // Render the agents list. Also keeps the original single preview in sync with the most recent.
+  function drawAgents() {
+    const wrap = ensureAgentListContainer();
+    if (!wrap) return;
+    wrap.innerHTML = ""; // clear
+
+    const agents = loadAgents();
+
+    // Keep original preview in sync with the latest agent (if any)
+    const latest = agents[0];
+    if (latest) {
+      const avatar = $("#agentAvatar");
+      const nameEl = $("#agentName");
+      const firmEl = $("#agentFirm");
+      if (avatar) {
+        avatar.src = latest.logo || REALTOR_FALLBACK_LOGO;
+        avatar.width = 64;
+        avatar.height = 64;
+        avatar.style.objectFit = "cover";
+        avatar.style.borderRadius = "50%";
+        avatar.addEventListener("error", () => { avatar.src = REALTOR_FALLBACK_LOGO; }, { once: true });
+      }
+      if (nameEl) nameEl.textContent = latest.name || "No agent added";
+      if (firmEl) firmEl.textContent = latest.firm || "You can add one above";
+    } else {
+      // No agents yet: reset the preview
+      const avatar = $("#agentAvatar");
+      const nameEl = $("#agentName");
+      const firmEl = $("#agentFirm");
+      if (avatar) avatar.src = "";
+      if (nameEl) nameEl.textContent = "No agent added";
+      if (firmEl) firmEl.textContent = "You can add one above";
+    }
+
+    // Build the list UI
+    agents.forEach((a) => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.style.display = "flex";
+      card.style.gap = "12px";
+      card.style.alignItems = "center";
+
+      const img = document.createElement("img");
+      img.alt = "Agent logo or headshot";
+      img.width = 48;
+      img.height = 48;
+      img.style.borderRadius = "50%";
+      img.style.objectFit = "cover";
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.src = a.logo || REALTOR_FALLBACK_LOGO;
+      img.addEventListener("error", () => { img.src = REALTOR_FALLBACK_LOGO; }, { once: true });
+
+      const meta = document.createElement("div");
+      const name = document.createElement("div");
+      name.style.fontWeight = "700";
+      name.textContent = a.name || "(no name)";
+      const firm = document.createElement("div");
+      firm.className = "small";
+      firm.textContent = a.firm || "";
+      const email = document.createElement("div");
+      email.className = "tiny";
+      email.textContent = a.email || "";
+      meta.appendChild(name);
+      meta.appendChild(firm);
+      meta.appendChild(email);
+
+      card.appendChild(img);
+      card.appendChild(meta);
+      wrap.appendChild(card);
+    });
+  }
+
+  // Send realtor to Azure Function
+  async function sendRealtorToAzure(agent) {
+    const url = buildAzureUrl();
+    const payload = {
+      ...agent,
+      source: "buyer-funnel",
+      page: location.href,
+      ua: navigator.userAgent,
+      site_ts: new Date().toISOString()
+    };
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // CORS: make sure your Function App has your domain in CORS allowed origins
+      mode: "cors",
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(`Azure error ${res.status}: ${txt || res.statusText}`);
+    }
+    // if your function returns JSON
+    let data = {};
+    try { data = await res.json(); } catch {}
+    return data;
+  }
+
+  // Save button handler — adds to list (not replace) + fallback logo + sends to Azure
+  $("#saveAgent")?.addEventListener("click", async () => {
+    const newAgent = {
+      name:  $("#agent_name")?.value || "",
+      firm:  $("#agent_firm")?.value || "",
+      email: $("#agent_email")?.value || "",
+      logo:  $("#agent_logo")?.value || ""
+    };
+
+    const saved = addAgent(newAgent);
+    drawAgents();
+
+    // Try to send to Azure (non-blocking UX)
+    try {
+      await sendRealtorToAzure(saved);
+      // Tiny toast
+      const ok = document.createElement("div");
+      ok.textContent = "Realtor saved and sent ✅";
+      ok.style.position = "fixed";
+      ok.style.bottom = "16px";
+      ok.style.left = "50%";
+      ok.style.transform = "translateX(-50%)";
+      ok.style.background = "rgba(11,95,255,.95)";
+      ok.style.color = "#fff";
+      ok.style.padding = "10px 14px";
+      ok.style.borderRadius = "10px";
+      ok.style.fontSize = ".9rem";
+      ok.style.zIndex = "9999";
+      document.body.appendChild(ok);
+      setTimeout(() => ok.remove(), 1800);
+    } catch (err) {
+      console.error(err);
+      const warn = document.createElement("div");
+      warn.textContent = "Saved locally. Couldn’t reach server.";
+      warn.style.position = "fixed";
+      warn.style.bottom = "16px";
+      warn.style.left = "50%";
+      warn.style.transform = "translateX(-50%)";
+      warn.style.background = "rgba(220,53,69,.95)";
+      warn.style.color = "#fff";
+      warn.style.padding = "10px 14px";
+      warn.style.borderRadius = "10px";
+      warn.style.fontSize = ".9rem";
+      warn.style.zIndex = "9999";
+      document.body.appendChild(warn);
+      setTimeout(() => warn.remove(), 2200);
+    }
+  });
+
+  // Initial draw
+  drawAgents();
+
+  // ==========================================================
+  // ESTIMATE CALCULATOR (unchanged behavior)
+  // ==========================================================
   $("#estimateBtn")?.addEventListener("click", () => {
-    const price = num($("#price").value);
-    const downInput = ($("#down").value || "").trim();
-    const down = downInput.endsWith("%") ? price * num(downInput) : num(downInput || 0);
-    const rateField = ($("#rate").value || cfg.defaultRatePct);
-    const ratePct = (rateField.toString().trim().endsWith("%") ? num(rateField) * 100 : num(rateField));
-    const zip = ($("#zip").value || "").trim();
-    const program = $("#program").value;
-    const income = num($("#income").value);
-    const debts = num($("#debts").value || 0);
+    if (!calc || !num || !fmt) return;
 
-    if (!price || !income) { $("#formMsg").textContent = "Please complete price and income (and down payment if available)."; return; }
-    $("#formMsg").textContent = "";
+    const price = num($("#price")?.value);
+    const downInput = ($("#down")?.value || "").trim();
+    const down = downInput.endsWith("%") ? price * num(downInput) : num(downInput || 0);
+    const rateField = ($("#rate")?.value || cfg?.defaultRatePct);
+    const ratePct = (rateField?.toString().trim().endsWith("%") ? num(rateField) * 100 : num(rateField));
+    const zip = ($("#zip")?.value || "").trim();
+    const program = $("#program")?.value || "conventional";
+    const income = num($("#income")?.value);
+    const debts = num($("#debts")?.value || 0);
+
+    if (!price || !income) {
+      $("#formMsg") && ($("#formMsg").textContent = "Please complete price and income (and down payment if available).");
+      return;
+    }
+    $("#formMsg") && ($("#formMsg").textContent = "");
 
     const res = calc.totalMonthly({ price, down, ratePct, program, zip });
     const dti = calc.dti(res.total, debts, income);
 
-    $("#pAndI").textContent = fmt(res.pAndI);
-    $("#taxes").textContent = fmt(res.taxes + res.ins + res.pmi);
-    $("#totalPay").textContent = fmt(res.total);
-    $("#estimatesWrap").style.display = "grid";
+    $("#pAndI")         && ($("#pAndI").textContent    = fmt(res.pAndI));
+    $("#taxes")         && ($("#taxes").textContent    = fmt(res.taxes + res.ins + res.pmi));
+    $("#totalPay")      && ($("#totalPay").textContent = fmt(res.total));
+    $("#estimatesWrap") && ($("#estimatesWrap").style.display = "grid");
 
     const dtiEl = $("#dtiLine");
-    dtiEl.style.display = "";
-    dtiEl.innerHTML = `Estimated DTI: <strong>${(dti * 100).toFixed(1)}%</strong>. Many programs prefer under 43 percent.`;
-
-    if (program === "conventional" && res.ltv > 0.80) {
-      $("#pmiLine").style.display = "";
-      $("#pmiLine").textContent = "Mortgage insurance estimated due to down payment under 20 percent. This can drop as LTV improves.";
-    } else {
-      $("#pmiLine").style.display = "none";
+    if (dtiEl) {
+      dtiEl.style.display = "";
+      dtiEl.innerHTML = `Estimated DTI: <strong>${(dti * 100).toFixed(1)}%</strong>. Many programs prefer under 43 percent.`;
     }
 
-    $("#h_estMonthly").value = Math.round(res.total);
-    $("#h_estDTI").value = `${(dti * 100).toFixed(1)}%`;
-    localStorage.setItem("lastEstimate", JSON.stringify({ price, down, rate: ratePct, program, monthly: Math.round(res.total), dti: (dti * 100).toFixed(1) }));
+    const pmiLine = $("#pmiLine");
+    if (pmiLine) {
+      if (program === "conventional" && res.ltv > 0.80) {
+        pmiLine.style.display = "";
+        pmiLine.textContent = "Mortgage insurance estimated due to down payment under 20 percent. This can drop as LTV improves.";
+      } else {
+        pmiLine.style.display = "none";
+      }
+    }
+
+    // Stash derived values in hidden fields in case you ever need them again
+    $("#h_estMonthly") && ($("#h_estMonthly").value = Math.round(res.total));
+    $("#h_estDTI")     && ($("#h_estDTI").value     = `${(dti * 100).toFixed(1)}%`);
+
+    localStorage.setItem("lastEstimate",
+      JSON.stringify({ price, down, rate: ratePct, program, monthly: Math.round(res.total), dti: (dti * 100).toFixed(1) })
+    );
 
     window.dataLayer && window.dataLayer.push({ event: "estimate_calculated" });
   });
 
   $("#resetBtn")?.addEventListener("click", () => {
-    $("#estimatesWrap").style.display = "none";
-    $("#dtiLine").style.display = "none";
-    $("#pmiLine").style.display = "none";
-    $("#formMsg").textContent = "";
+    $("#estimatesWrap") && ($("#estimatesWrap").style.display = "none");
+    $("#dtiLine")      && ($("#dtiLine").style.display = "none");
+    $("#pmiLine")      && ($("#pmiLine").style.display = "none");
+    $("#formMsg")      && ($("#formMsg").textContent = "");
     localStorage.removeItem("lastEstimate");
   });
 
-  // Prefill from saved estimate + UTM chain
-  (function () {
+  // Prefill some fields from last estimate (nice-to-have)
+  (function prefillFromSaved() {
     try {
       const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
       if (saved.price) {
-        $("#price").value = saved.price;
-        if (saved.down) $("#down").value = saved.down;
-        $("#rate").value = isFinite(saved.rate) ? saved.rate.toFixed?.(2) + "%" : "";
-        $("#program").value = saved.program || "conventional";
+        if ($("#price"))   $("#price").value   = saved.price;
+        if (saved.down && $("#down")) $("#down").value = saved.down;
+        if ($("#rate"))    $("#rate").value    = isFinite(saved.rate) ? saved.rate.toFixed?.(2) + "%" : "";
+        if ($("#program")) $("#program").value = saved.program || "conventional";
       }
-    } catch(e){}
-    const utm = location.search.replace("?", "").split("&").filter(Boolean).join("&");
-    $("#h_utm").value = utm;
+    } catch {}
   })();
 
-  // Google Forms submit (AJAX via no-cors)
-  $("#intakeForm")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const formEl = e.currentTarget;
-    const submitBtn = $("#submitBtn");
-    const msg = $("#submitMsg");
-    const hp = $("#hp");
+  // ==========================================================
+  // INTAKE: open Google Form in a new tab (mobile-friendly)
+  // ==========================================================
+  (function wireOpenFormButton() {
+    const openBtn = $("#openGoogleForm");
+    if (!openBtn) return;
+    openBtn.addEventListener("click", () => {
+      // Push a GTM event if present
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({ event: "open_google_form" });
+      // default behavior is just following the anchor target=_blank
+    }, { passive: true });
+  })();
 
-    msg.textContent = "";
-    if (hp && hp.value) { msg.textContent = "Submission blocked (spam check)."; return; }
-
-    // Build payload for Google Forms
-    const data = new FormData();
-    data.append(ENTRY.fullName,   $("#fullName").value.trim());
-    data.append(ENTRY.email,      $("#email").value.trim());
-    data.append(ENTRY.phone,      $("#phone").value.trim());
-    data.append(ENTRY.timeline,   $("#timeline").value);
-    data.append(ENTRY.occupancy,  $("#occupancy").value);
-    data.append(ENTRY.source,     $("#source").value);
-    data.append(ENTRY.estPrice,   $("#estPrice").value.trim());
-    data.append(ENTRY.estDown,    $("#estDown").value.trim());
-    data.append(ENTRY.employment, $("#employment").value);
-    data.append(ENTRY.coBorrower, $("#coBorrower").value);
-    data.append(ENTRY.notes,      $("#notes").value.trim());
-    // Hidden/derived
-    data.append(ENTRY.estMonthly, $("#h_estMonthly").value);
-    data.append(ENTRY.estDTI,     $("#h_estDTI").value);
-    data.append(ENTRY.agentName,  $("#h_agentName").value);
-    data.append(ENTRY.agentEmail, $("#h_agentEmail").value);
-    data.append(ENTRY.utm,        $("#h_utm").value);
-
-    // Submit (Google Forms blocks CORS; use no-cors and treat as success)
-    submitBtn.disabled = true; submitBtn.textContent = "Submitting…";
-    try {
-      await fetch(GOOGLE_FORM_ACTION, { method: "POST", mode: "no-cors", body: data });
-      msg.textContent = "✅ Thanks! Your pre-approval intake was received. I’ll reach out shortly.";
-      formEl.reset();
-      window.dataLayer && window.dataLayer.push({ event: "preapproval_submit" });
-    } catch (err) {
-      msg.textContent = "Could not submit right now. Please try again or email me.";
-    } finally {
-      submitBtn.disabled = false; submitBtn.textContent = "Submit Pre-Approval";
-    }
-  });
+  // Ensure avatar fallback if initial HTML has a broken/missing src
+  (function hardenAvatarFallback() {
+    const avatar = $("#agentAvatar");
+    if (!avatar) return;
+    avatar.addEventListener("error", () => { avatar.src = REALTOR_FALLBACK_LOGO; }, { once: true });
+    if (!avatar.getAttribute("src")) avatar.src = REALTOR_FALLBACK_LOGO;
+  })();
 })();

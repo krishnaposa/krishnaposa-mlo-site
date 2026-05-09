@@ -1,0 +1,89 @@
+/* rental-analyzer.css — page-specific styles for rental analyzer tool */
+
+.tool-card {
+  background:#fff;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  padding:20px;
+  box-shadow:0 10px 14px rgba(0,0,0,.03);
+}
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+.grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+
+@media (max-width: 900px){
+  .grid-4 { grid-template-columns:1fr 1fr; }
+}
+@media (max-width: 640px){
+  .grid-2, .grid-3, .grid-4 { grid-template-columns:1fr; }
+}
+
+.field label {
+  display:block;
+  font-weight:600;
+  margin:6px 0;
+}
+.field input, .field select {
+  width:100%;
+  padding:10px 12px;
+  border:1px solid #cbd5e1;
+  border-radius:8px;
+  background:#fff;
+}
+.helper { color:#475569; font-size:.9rem; }
+.error-box {
+  display:none;
+  background:#fff5f5;
+  border:1px solid #fecaca;
+  color:#991b1b;
+  padding:10px;
+  border-radius:8px;
+  margin-top:10px;
+}
+.result-wrap { display:none; margin-top:18px; }
+.result-wrap h2 { margin-top:0; }
+.muted { color:#475569; font-size:.9rem; }
+.disclosure { font-size:.85rem; color:#475569; margin-top:14px; }
+.label-ai {
+  display:inline-block;
+  padding:.1rem .4rem;
+  font-size:.8rem;
+  background:#0b5fff;
+  color:#fff;
+  border-radius:6px;
+  vertical-align:middle;
+}
+.mini-metrics {
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+}
+.mini-metrics .card {
+  border:1px solid #e5e7eb;
+  border-radius:10px;
+  padding:12px;
+  text-align:center;
+}
+.table-wrap {
+  overflow:auto;
+  border:1px solid #e5e7eb;
+  border-radius:10px;
+}
+table { width:100%; border-collapse:collapse; }
+th, td {
+  padding:10px 12px;
+  border-bottom:1px solid #f1f5f9;
+  text-align:left;
+  white-space:nowrap;
+}
+th { background:#f8fafc; font-weight:600; }
+.badge {
+  display:inline-block;
+  padding:.15rem .45rem;
+  font-size:.75rem;
+  border-radius:999px;
+  background:#eef2ff;
+}
+.note { font-size:.85rem; color:#475569; }
+.page-hero .small { margin: 0.25rem 0 0; }
+.sticky-cta .btn { min-width: 84px; text-align: center; }

@@ -1,0 +1,190 @@
+Functions in karaoke-func:
+    status - [httpTrigger]
+        Invoke url: https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/status/{job_id}
+
+    submit - [httpTrigger]
+        Invoke url: https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/submit
+
+Refresh SAS URLs
+curl -s https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/list
+
+Delete old blobs and force re-upload
+# Delete a job’s output blobs (replace JOBID)
+az storage blob delete-batch \
+  --source karaoke-output \
+  --pattern "JOBID/*" \
+  --connection-string "$STORAGE_CONN"
+
+Manually requeue a job
+az storage message put \
+  --queue-name karaoke-jobs \
+  --content '{"job_id": "JOBID123", "src": {"type":"blob","blob":"JOBID123/original.mp3"}}' \
+  --connection-string "$STORAGE_CONN"
+
+
+az storage cors clear --services b --account-name krishposastkaraoke
+
+az storage cors add \
+  --methods GET HEAD OPTIONS \
+  --origins https://www.krishposa.com \
+  --services b \
+  --allowed-headers '*' \
+  --exposed-headers '*' \
+  --max-age 3600 \
+  --account-name krishposastkaraoke
+
+# List poison queue messages
+az storage message peek --queue-name karaoke-jobs-poison --connection-string "$STORAGE_CONN"
+
+# Get and move one back
+az storage message get --queue-name karaoke-jobs-poison --connection-string "$STORAGE_CONN" --num-messages 1
+
+# Then re-send it to the main queue
+az storage message put --queue-name karaoke-jobs --connection-string "$STORAGE_CONN" --content '{"job_id":"...","src":{...}}'
+
+curl -X POST "https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/lyrics" \
+  -H "Content-Type: application/json; charset=utf-8" \
+  --data '{
+    "job_id": "1f388398d84a6a5b3",
+    "text": "Tu Hi Ye Mujhko Bata De\r\nChahun Main Ya Naa\r\nApne Tu Dil Ka Pata De\r\nChahun Main Ya Naa\r\nTu Hi Ye Mujhko Bata De\r\nChahun Main Ya Naa\r\nApne Tu Dil Ka Pata De\r\nChahun Main Ya Naa\r\nItna Bata Doon Tujhko\r\nChaahat Pe Apni Mujhko\r\nYun Ton Nahi Ikhtiyaar\r\nPhir Bhi Yeh Socha Dil Ne\r\nAb Jo Laga Hoon Milne\r\nPoochhu Tujhe Ek Baar\r\nTu Hi Ye Mujhko Bata De\r\nChahun Main Ya Naa\r\nApne Tu Dil Ka Pata De\r\nChahun Main Ya Naa\r\nAisi Kabhi Pehle Hui Naa Thi Khwaahishein\r\nO.. Kisi Se Bhi Milne Ki\r\nNaa Ki Thi Koshishein\r\nUljhan Meri Suljha De\r\nChaahun Main Ya Naa\r\nAankhon Aankhon Mein Jataa De\r\nChaahun Main Ya Naa\r\nMere Chhote Chhote Khwaab Hain\r\nKhwabon Mein Geet Hain\r\nGeeton Mein Zindagi Hain\r\nChaahat Hai, Preet Hai\r\nAbhi Main Na Dekhoon Khwaab Woo\r\nJin Mein Na Tu Mile\r\nLe Khole Honth Maine\r\nAb Tak The Jo Sile\r\nMujhko Na Jitna Mujh Pe\r\nUtna Iss Dil Ko Tujh Pe\r\nHone Laga Aitbaar\r\nTanha Lamhon Mein Apne\r\nBunti Hoon Tere Sapne\r\nTujhse Hua Mujhko Pyaar O O..\r\nPoochungi Tujhko Kabhi Naa\r\nChaahun Main Ya Naa\r\nTere Khaabon Mein Ab Jeena\r\nChaahun Main Kyun Naa!\r\nTu Hi Yeh Mujhko Bata De\r\nChahun Main Ya Naa\r\nApne Tu Dil Ka Pata De\r\nChahun Main Ya Naa\r\n"
+  }'
+
+
+Deploy without a VM
+cd c:\pers\krishnaposa-mlo-site\azure\functions\karaoke-func\infra
+.\deploy.ps1 -ResourceGroupName "rg-karaoke-prod" -Location "canadacentral"
+No -SshPublicKey needed. After deploy, get the storage connection string (portal or az storage account show-connection-string) and point local_worker.py at it (same names as today: karaoke-input / karaoke-output / karaoke-status / karaoke-jobs).
+
+local.settings.json now includes WORKER_VM_ENABLED": "false" so local Functions behave the same way.
+
+If you ever want the VM path
+.\deploy.ps1 -ResourceGroupName "rg-karaoke-prod" -DeployWorkerVm `
+  -SshPublicKey (Get-Content "$env:USERPROFILE\.ssh\id_ed25519.pub" -Raw)
+That sets WORKER_VM_ENABLED=true on the Function App and creates the VM, network, and role assignment.
+
+Code touchpoints
+infra/main.bicep: param deployWorkerVm bool = false; VM/network/role only when true; app setting WORKER_VM_ENABLED.
+shared.py: worker_vm_enabled(); ensure_vm_running / deallocate_vm no-op when disabled.
+vmreaper/init.py: returns immediately when the worker VM path is disabled.
+infra/deploy.ps1: -DeployWorkerVm optional; validates SSH key only when that switch is used.
+
+
+
+az storage account show-connection-string --resource-group karaoke-rg --name kpkaraokef34hnamn2t2os
+--query connectionString -o tsv
+
+
+.\deploy.ps1 -ResourceGroupName karaoke-rg -ExternalStorage -ExistingAppServicePlanResourceId "/subscriptions/..."
+
+
+
+ cd C:\pers\krishnaposa-mlo-site\azure\functions\karaoke-func
+       func azure functionapp publish YOUR_FUNCTION_APP_NAME
+
+
+       run local_worker
+
+       cd C:\pers\krishnaposa-mlo-site\azure\virtualmachine\karaoke-agent
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python .\local_worker.py
+
+Container Apps worker (Azure-hosted queue consumer; no VM)
+cd C:\pers\krishnaposa-mlo-site\azure\functions\karaoke-func\infra
+# Uses same STORAGE_CONN as local.settings.json (or env KARAOKE_STORAGE_CONNECTION_STRING). First run builds the image in ACR (slow).
+.\deploy.ps1 -ResourceGroupName karaoke-rg -Location eastus2 -ContainerWorker -AcrBuild
+# Or deploy only the app when the image already exists in that RG's ACR:
+# .\deploy.ps1 -ResourceGroupName karaoke-rg -Location eastus2 -ContainerWorker -ContainerImage YOUR_ACR.azurecr.io/karaoke-worker:latest
+# Bicep: azure/container-apps/infra/main.aca-worker.bicep  Dockerfile: azure/container-apps/karaoke-worker/Dockerfile
+
+
+Same flow as the main page: upload one mixed audio file (vocals + band together). 
+This page talks to a small Python server in this repo—not Azure Functions on your machine 
+(func start is not used). 
+Your file is saved into an input folder as the queue; a background thread runs Spleeter/Demucs 
+and writes stems under an output folder; the player loads those files over HTTP.
+Run:python karaoke/local_folder_queue.py (defaults: KARAOKE_LOCAL_ROOT = ~/.karaoke-local, port 8787, 
+SEPARATOR=spleeter). Override base URL: ?api=http://127.0.0.1:8787 or set window.KARAOKE_API_BASE 
+before scripts load. For the hosted cloud pipeline, use <a href="index.html">Karaoke Split (cloud).
+
+cd c:/pers/krishnaposa-mlo-site
+. .venv/Scripts/activate
+export  KARAOKE_LOCAL_ROOT=/c/pers/karaoke-local
+export SEPARATOR=demucs
+faster:
+export SEPARATOR=spleeter
+
+export DEMUCS_MODEL=htdemucs
+Install PyTorch with CUDA in the same venv. Demucs uses cuda 
+automatically when it’s available. If needed you can force:
+export DEMUCS_DEVICE=cuda  -- only if nvidia gpu
+
+# Demucs is slow by default (htdemucs_ft). Faster: htdemucs — export DEMUCS_MODEL=htdemucs
+# GPU: install PyTorch with CUDA; Demucs uses it automatically. Force: export DEMUCS_DEVICE=cuda
+# -j 1 on Windows is intentional (spawn issues); for one song, model+GPU matter more than -j.
+# Fastest stem path: export SEPARATOR=spleeter (different quality vs Demucs).
+# Advanced: export DEMUCS_EXTRA_ARGS='--shifts 1'  (quality/speed tradeoff; see demucs --help)
+export KARAOKE_LOCAL_PORT=8787
+
+python karaoke/local_folder_queue.py
+
+  another window
+  cd c:/pers/krishnaposa-mlo-site
+python -m http.server 8765
+http://localhost:8765/karaoke/index-local.html 
+use above to save lyrics
+
+ ngrok config add-authtoken 3CYPP3McyY0oldiHbYmblGiiTtn_5sr1d7VsaxitpcPzeA1MA
+Authtoken saved to configuration file: C:\Users\krish\AppData\Local\ngrok\ngrok.yml
+
+export KARAOKE_LOCAL_PORT=8787
+export  KARAOKE_LOCAL_ROOT=/c/pers/karaoke-local
+python karaoke/local_folder_queue.py
+
+ngrok.yaml
+
+version: "3"
+endpoints:
+  - name: restricted-path-tunnel
+    url: https://untrained-chase-slinky.ngrok-free.dev/
+    upstream:
+      url: 8787
+    traffic_policy:
+      on_http_request:
+        - expressions:
+            - "!req.url.path.startsWith('/karaoke')"
+          actions:
+            - type: deny
+              config:
+                status_code: 404
+agent:
+    authtoken: <token>
+
+
+https://untrained-chase-slinky.ngrok-free.dev/karaoke/player-folder-local-root.html
+
+
+To Split
+ . .venv/Scripts/activate
+  export SEPARATOR=spleeter
+  export KARAOKE_PRETRIM=1
+export KARAOKE_PRETRIM_SILENCE_DB=-35dB
+export KARAOKE_PRETRIM_MIN_SILENCE=0.3
+python karaoke/local_folder_queue.py
+
+
+   http://localhost:8787/karaoke/index-local.html
+
+   https://www.djjohal.com/
+
+  https://pagalworld.is/
+
+  export KARAOKE_LOCAL_PORT=8787
+  export SEPARATOR=spleeter
+  export KARAOKE_PRETRIM=1
+  export KARAOKE_PRETRIM_SILENCE_DB=-35dB
+  export KARAOKE_PRETRIM_MIN_SILENCE=0.3
+  export KARAOKE_LOCAL_HOST=0.0.0.0
+  export  KARAOKE_LOCAL_ROOT=/c/pers/karaoke-local
+  export KARAOKE_LOCAL_PUBLIC_BASE=http://127.0.0.1:8787

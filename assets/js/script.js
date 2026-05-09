@@ -112,8 +112,8 @@ document.documentElement.classList.add('js');
   });
 })();
 (function(){
-  const bar = document.getElementById('announce-ai');
-  const btn = document.getElementById('announce-ai-close');
+  const bar = document.getElementById('announce');
+  const btn = document.getElementById('announce-close');
   if(!bar || !btn) return;
   if(localStorage.getItem('kp_ai_bar_dismissed') !== '1') bar.hidden = false;
   btn.addEventListener('click', ()=>{

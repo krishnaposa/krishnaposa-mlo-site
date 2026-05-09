@@ -1,4 +1,14 @@
+# robots.txt for krishposa.com
+
 User-agent: *
+Allow: /
+
+# Explicitly allow OpenAI / ChatGPT crawlers so your content can be cited
+User-agent: GPTBot
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: ChatGPT-User
 Allow: /
 
 Sitemap: https://www.krishposa.com/sitemap.xml

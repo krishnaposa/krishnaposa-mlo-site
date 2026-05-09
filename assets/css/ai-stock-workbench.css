@@ -1,0 +1,90 @@
+/* Scoped to this page */
+.workbench { --bg:#0b0f17; --panel:#111827; --panel2:#0d1421; --text:#e6edf3; --muted:#94a3b8;
+  --border:#1f2a44; --blue:#1d4ed8; --blue-d:#1e40af; --green:#0f9d75; --green-d:#0b7e5e; --danger:#ef4444; }
+
+/* Cards */
+.workbench .card.dark{
+  background: linear-gradient(180deg, var(--panel), var(--panel2));
+  border:1px solid var(--border);
+  border-radius:12px; padding:16px; margin:16px 0;
+  box-shadow: 0 10px 24px rgba(0,0,0,.25);
+}
+.workbench .muted{ color:var(--muted); }
+.workbench .tiny{ font-size:.85rem; }
+
+/* Steps */
+.workbench .row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.workbench .row.gap{ gap:16px; }
+.workbench .align-center{ align-items:center; }
+.workbench .stack-on-mobile{ flex-wrap:wrap; }
+.workbench .pill{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:28px; height:28px; border-radius:999px; background:#0f172a; color:var(--text);
+  border:1px solid var(--border); font-weight:600;
+}
+
+/* Buttons */
+.workbench .btn{
+  border:1px solid var(--border); border-radius:10px; padding:10px 14px; color:var(--text);
+  background:#131c2e; cursor:pointer; transition:transform .04s ease, background .15s ease, border-color .15s ease;
+}
+.workbench .btn:hover{ background:#152039; border-color:#263a60; }
+.workbench .btn:active{ transform:translateY(1px); }
+.workbench .btn[disabled]{ opacity:.6; cursor:not-allowed; }
+.workbench .btn.btn-blue{ background:var(--blue); border-color:var(--blue-d); }
+.workbench .btn.btn-blue:hover{ background:#2252df; }
+.workbench .btn.btn-green{ background:var(--green); border-color:var(--green-d); }
+
+/* Status text */
+.workbench .status{ min-height:1.25rem; color:var(--muted); }
+.workbench .status.error{ color:var(--danger); }
+
+/* Editable tickers */
+.workbench .tickers{
+  width:100%; min-height:140px; border-radius:10px; padding:12px;
+  border:1px solid var(--border); background:#0f172a; color:var(--text);
+  outline:none; transition:border-color .15s ease, box-shadow .15s ease;
+}
+.workbench .tickers::placeholder{ color:#7b8aa7; }
+.workbench .tickers:focus{ border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.25); }
+
+/* Inline controls (Strategy + Horizon) */
+.workbench .inline-controls { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+.workbench .inline-label{ font-size:.95rem; color:var(--text); display:block; }
+.workbench .inline-field{
+  border-radius:10px; padding:10px 12px; border:1px solid var(--border);
+  background:#0f172a; color:var(--text); outline:none; min-width:220px;
+  transition:border-color .15s ease, box-shadow .15s ease;
+}
+.workbench .inline-field.long{ min-width:340px; }
+.workbench .inline-field::placeholder{ color:#7b8aa7; }
+.workbench .inline-field:focus{ border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.25); }
+
+/* Fix white dropdowns on dark themes */
+.workbench select.inline-field{
+  appearance:none; -webkit-appearance:none; -moz-appearance:none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #8aa4ff 50%),
+    linear-gradient(135deg, #8aa4ff 50%, transparent 50%),
+    linear-gradient(to right, transparent, transparent);
+  background-position:
+    calc(100% - 18px) calc(50% - 5px),
+    calc(100% - 12px) calc(50% - 5px),
+    calc(100% - 2.2rem) 0;
+  background-size:6px 6px, 6px 6px, 1px 2.4rem;
+  background-repeat:no-repeat;
+}
+.workbench select.inline-field option{
+  background:#0f172a; color:var(--text);
+}
+
+/* Results table */
+.workbench table.rank{
+  width:100%; border-collapse:collapse; background:#0b1220; border-radius:10px; overflow:hidden; font-size: 13px;
+}
+.workbench table.rank thead th{
+  background:#0f172a; position:sticky; top:0; z-index:1;
+}
+.workbench table.rank th, .workbench table.rank td{
+  border-bottom:1px solid var(--border); padding:10px 12px; text-align:left; vertical-align:top;
+}

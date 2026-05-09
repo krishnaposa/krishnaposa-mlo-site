@@ -1,0 +1,32 @@
+<section id="comments" class="container narrow comments-block">
+  <h2 class="comments-title">Comments</h2>
+
+  <!-- Existing comments (height constrained + scroll) -->
+  <div class="comments-scroll" aria-live="polite">
+    <div id="comment-list" class="comments-list"></div>
+  </div>
+
+  <!-- Form -->
+  <form id="comment-form" class="comments-form" novalidate>
+    <div class="row">
+      <label class="field">
+        <span class="label">Name</span>
+        <input id="c-name" type="text" required autocomplete="name">
+      </label>
+      <label class="field">
+        <span class="label">Email <span class="muted">(optional)</span></span>
+        <input id="c-email" type="email" autocomplete="email">
+      </label>
+    </div>
+
+    <label class="field">
+      <span class="label">Your comment</span>
+      <textarea id="c-message" rows="4" required></textarea>
+    </label>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-blue">Post comment</button>
+      <span id="c-status" class="status" aria-live="polite"></span>
+    </div>
+  </form>
+</section>

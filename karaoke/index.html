@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <!-- GTM -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-KJZPQKBM');</script>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karaoke Split – Vocals in Bluetooth, music on the speaker</title>
+
+  <!-- Base styles -->
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
+  <!-- Page styles then dark overrides -->
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
+</head>
+<body class="dark-surface">
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+
+<div id="header"></div>
+<script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
+
+<main class="container">
+
+  <!-- Upload + polling -->
+  <section class="card">
+    <h1>Karaoke Split</h1>
+    <p class="help"><strong>Why split?</strong> Route the track’s <strong>vocals</strong> to your <strong>Bluetooth</strong> earbuds (your pitch/timing reference) and the <strong>instrumental</strong> to the <strong>room speakers</strong> so you can sing karaoke more confidently. Upload a song (mp3/wav/m4a/flac/aac); processing runs in the background—keep this page open for status updates.</p>
+
+    <div class="field">
+      <label for="file">Upload file</label>
+      <input id="file" name="file" type="file" accept=".mp3,.wav,.flac,.m4a,.aac" />
+    </div>
+
+    <div class="row">
+      <button id="go" class="btn btn-blue" type="button">Submit</button>
+      <button id="clear" class="btn btn-outline" type="button">Clear</button>
+      <span id="status" class="help" aria-live="polite"></span>
+    </div>
+
+    <div class="progress" id="prog" hidden>
+      <div class="bar" id="bar"></div>
+    </div>
+
+    <div id="alert" class="error hide" role="alert"></div>
+
+    <div id="done" class="success hide">
+      <div><strong>Ready!</strong> Download:</div>
+      <ul id="links"></ul>
+    </div>
+  </section>
+
+  <!-- Player -->
+  <section id="playerCard" class="card hide">
+    <h2>Play & route audio</h2>
+    <p class="help">Typical setup: <strong>vocals → Bluetooth</strong>, <strong>band → speakers</strong>. On Chrome/Edge (desktop), pick a device for each stream. On Windows with AirPods, choose the stereo <strong>Headphones</strong> entry for vocals if both Headphones and Headset appear. Safari/iOS doesn’t support separate outputs per element.</p>
+
+    <div class="now-playing" style="margin-bottom:.5rem">
+      <strong>Now Playing:</strong> <span id="trackTitle">—</span>
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label for="vocalsOut">Vocals output</label>
+        <select id="vocalsOut"></select>
+      </div>
+      <div class="field">
+        <label for="bandOut">Band output</label>
+        <select id="bandOut"></select>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:.5rem">
+      <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
+      <button id="testVocals" class="btn btn-outline" type="button">Test Vocals</button>
+      <button id="testBand" class="btn btn-outline" type="button">Test Band</button>
+      <span id="deviceMsg" class="help" style="margin-left:.5rem" aria-live="polite"></span>
+    </div>
+
+    <div class="row" style="margin-top:.5rem">
+      <button id="play" class="btn btn-blue" type="button">Play</button>
+      <button id="pause" class="btn btn-outline" type="button">Pause</button>
+      <button id="restart" class="btn btn-outline" type="button">Restart</button>
+    </div>
+
+    <div class="row">
+      <label for="offset">Vocals advance/Delay (ms):</label>
+      <input id="offset" type="number" value="0" step="10" />
+      <span class="help">Adjust if Bluetooth lags (positive delays vocals; negative delays band).</span>
+    </div>
+
+    <!-- Hidden players (no crossorigin: blob SAS often lacks CORS for this site) -->
+    <audio id="vocalsEl" preload="auto" playsinline></audio>
+    <audio id="bandEl" preload="auto" playsinline></audio>
+  </section>
+
+  <!-- Lyrics editor (no preview) -->
+  <section class="card">
+    <h2>Lyrics</h2>
+    <p class="help">
+      Enter a <strong>Job ID</strong> to load/save lyrics for a processed track. If you just uploaded a song, the Job ID is already set.
+    </p>
+
+    <div class="field">
+      <label for="lyrJobId">Job ID</label>
+      <input id="lyrJobId" type="text" placeholder="Paste job ID (optional if you just uploaded)">
+    </div>
+
+    <div class="row">
+      <button id="loadLyrics" class="btn btn-outline" type="button">Load Lyrics</button>
+    </div>
+
+    <div class="field" style="margin-top:.5rem">
+      <label for="lyrText">Lyrics</label>
+      <textarea id="lyrText" class="lyrics-box" rows="10" placeholder="Paste or edit lyrics…"></textarea>
+    </div>
+
+    <div class="row">
+      <button id="saveLyrics" class="btn btn-blue" type="button">Save Lyrics</button>
+      <span id="lyricsMsg" class="help" aria-live="polite"></span>
+    </div>
+  </section>
+  <!-- Navigation -->
+  <section class="card" style="text-align:center; margin-top:1rem">
+    <div class="row" style="justify-content:center; flex-wrap:wrap; gap:.5rem">
+      <button class="btn btn-outline" type="button" onclick="window.location.href='player.html'">
+        Go to Player (cloud list)
+      </button>
+      <button class="btn btn-outline" type="button" onclick="window.location.href='player-folder.html'">
+        Folder player (local status + lyrics)
+      </button>
+    </div>
+  </section>
+</main>
+
+<div id="footer"></div>
+<script src="https://www.krishposa.com/assets/js/footer.js"></script>
+
+<!-- Page logic -->
+<script src="https://www.krishposa.com/assets/js/karaoke-core.js"></script>
+<script src="https://www.krishposa.com/assets/js/karaoke-azure.js"></script>
+<script src="https://www.krishposa.com/assets/js/karaoke-index.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-KJZPQKBM');</script>
+  <!-- End Google Tag Manager -->
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5fff">
+
+  <title>AI Stock Workbench | Universe + Strategy Ranking</title>
+  <meta name="description" content="Pull the cached universe, edit the tickers, then send to AI for strategy-based ranking (Long Term, LEAPs, Swing).">
+
+  <!-- Canonical -->
+  <link rel="canonical" href="https://www.krishposa.com/blogs/blog-ai-stock-workbench.html">
+
+  <!-- OG/Twitter -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="AI Stock Workbench">
+  <meta property="og:description" content="Fetch screened tickers from cache, edit the list, then rank with AI by your strategy.">
+  <meta property="og:url" content="https://www.krishposa.com/blogs/blog-ai-stock-workbench.html">
+  <meta property="og:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="AI Stock Workbench">
+  <meta name="twitter:description" content="Cache → Edit → AI Rank. A simple flow for better decisions.">
+  <meta name="twitter:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
+
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/comments.css?v=2">
+
+  <!-- Page-specific CSS -->
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/ai-stock-workbench.css?v=3">
+
+  <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
+  <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/comments.js"></script>
+
+
+</head>
+<body>
+  <!-- GTM noscript -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+
+  <div id="header"></div>
+  <script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
+
+  <main>
+    <section class="page-hero">
+      <div class="container">
+        <h1>AI Stock Workbench</h1>
+        <p class="small">Pull the cached universe, edit tickers, then get an AI-ranked list for your strategy.</p>
+      </div>
+    </section>
+
+    <section class="content">
+      <div class="container narrow workbench">
+       
+<div class="card dark">
+  <h2>How the picks are built</h2>
+  <ul class="muted">
+    <li>The universe starts with Finviz screen filters to emphasize large &amp; mega cap stocks.</li>
+    <li>Includes strong ETFs and pulls their top two holdings.</li>
+    <li>A final quality pass trims noise from the list.</li>
+    <li>The system updates the “cache” every 6 hours automatically.</li>
+    <li>You can also click <strong>Refresh Universe Cache</strong> to rebuild it on demand.</li>
+    <li>Once pulled, the list of stocks can be sent to AI to rank them based on your selected <strong>Strategy</strong> (Long Term, LEAP options, Swing, etc.).</li>
+  </ul>
+  <p class="note tiny">Education only. Not investment advice. Data and trademarks belong to their respective owners.</p>
+</div>
+        <div class="card dark">
+          <h2>Run &amp; edit</h2>
+
+          <!-- Step 1: Pull from cache -->
+          <div class="row gap">
+            <span class="pill">1</span>
+            <button id="btnUniverse" class="btn btn-blue">Pull from Cache</button>
+            <span id="statusUniverse" class="status"></span>
+          </div>
+
+          <!-- Step R: Refresh cache -->
+          <div class="row gap" style="margin-top:10px">
+            <span class="pill">R</span>
+            <button id="btnRefresh" class="btn btn-green">Refresh Universe Cache</button>
+            <span id="statusRefresh" class="status"></span>
+          </div>
+          <p class="muted tiny" style="margin-top:4px">
+            <strong>Heads up:</strong> Refresh rebuilds the universe on the server and can take time and external data calls. 
+            When it completes, click <em>Pull from Cache</em> to load the updated list.
+          </p>
+
+          <div class="row">
+            <label for="tickers"><strong>Editable tickers</strong> <span class="tiny muted">(comma or newline separated)</span></label>
+          </div>
+          <textarea id="tickers" class="tickers" placeholder="AAPL, MSFT, NVDA"></textarea>
+
+          <!-- Step 2: Rank -->
+            <div class="row gap align-center stack-on-mobile" style="margin-top:10px">
+            <span class="pill">2</span>
+
+            <div class="inline-controls">
+              <label for="strategy" class="inline-label">Strategy</label>
+              <select id="strategy" class="inline-field">
+                <!-- Core horizons -->
+                <optgroup label="Core">
+                  <option value="long_term" selected>Long Term</option>
+                  <option value="medium_term">Medium Term</option>
+                  <option value="swing">Swing (1–8 weeks)</option>
+                  <option value="day_trading">Day Trading</option>
+                </optgroup>
+
+                <!-- Options-oriented -->
+                <optgroup label="Options">
+                  <option value="leaps">LEAP Options</option>
+                  <option value="short_term_options">Short-term Options</option>
+                  <option value="covered_calls">Covered Calls</option>
+                  <option value="protective_puts">Protective Puts</option>
+                </optgroup>
+
+                <!-- Investment styles -->
+                <optgroup label="Styles">
+                  <option value="value">Value</option>
+                  <option value="growth">Growth</option>
+                  <option value="dividend_income">Dividend Income</option>
+                  <option value="quality">Quality</option>
+                  <option value="momentum">Momentum</option>
+                  <option value="contrarian">Contrarian</option>
+                </optgroup>
+
+                <!-- Thematic / sector -->
+                <optgroup label="Thematic / Sector">
+                  <option value="tech_innovation">Tech / Innovation</option>
+                  <option value="energy_transition">Energy Transition</option>
+                  <option value="defensive">Defensive</option>
+                  <option value="cyclical">Cyclical</option>
+                </optgroup>
+
+                <!-- Event-driven / tactical -->
+                <optgroup label="Event-driven / Tactical">
+                  <option value="earnings_play">Earnings Play</option>
+                  <option value="merger_arbitrage">Merger Arbitrage</option>
+                  <option value="catalyst_trading">Catalyst Trading</option>
+                  <option value="short_squeeze">Short Squeeze</option>
+                </optgroup>
+              </select>
+
+              <label for="horizonText" class="inline-label">Horizon <span class="muted tiny">(optional)</span></label>
+              <input id="horizonText" class="inline-field" type="text"
+                     placeholder="e.g., 3 years • 8 months • 30 days">
+            </div>
+
+            <button id="btnRank" class="btn btn-blue">Rank with AI</button>
+            <span id="statusRank" class="status"></span>
+          </div>
+        </div>
+
+        <div class="card dark">
+          <h2>Ranked results</h2>
+          <div id="resultsWrap">
+            <table class="rank" id="resultsTable" style="display:none">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Ticker</th>
+                  <th>Score</th>
+                  <th>Thesis</th>
+                  <th>Risks</th>
+                  <th>Suggested Action</th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+            <p id="emptyMsg" class="muted">Pull from cache, edit tickers if you want, then click <em>Rank with AI</em>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comments block -->
+    <section class="comments-block">
+      <div class="container">
+        <div class="comments-scroll">
+          <div id="comments-container" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sticky CTA -->
+    <div class="sticky-cta" role="region" aria-label="Quick actions">
+      <a class="btn" href="tel:+16784818252">Call</a>
+      <a class="btn" href="sms:+16784818252">Text</a>
+      <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book</a>
+    </div>
+  </main>
+
+  <!-- Page-specific JS -->
+  <script defer src="https://www.krishposa.com/assets/js/ai-stock-workbench.js?v=4"></script>
+
+  <div id="footer"></div>
+  <script src="https://www.krishposa.com/assets/js/footer.js"></script>
+</body>
+</html>

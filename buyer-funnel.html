@@ -32,14 +32,14 @@
   <meta name="twitter:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
 
   <!-- CSS & Favicon -->
-  <link rel="stylesheet" href="assets/css/styles.css">
-  <link rel="stylesheet" href="assets/css/header-nav.css?v=final1">
-
-  <link rel="stylesheet" href="assets/css/form-contrast.css">
-  <link rel="icon" href="assets/img/favicon.png" type="image/png">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/form-contrast.css">
+  <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
 
   <!-- Site JS -->
-  <script defer src="assets/js/script.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
+
 </head>
 <body>
   <!-- Google Tag Manager (noscript) -->
@@ -48,15 +48,7 @@
 
   <!-- Shared header -->
   <div id="header"></div>
-  <script defer src="assets/js/header.js?v=final1"></script>
-
-  <!-- Optional announce ribbon (kept consistent with index) -->
-  <div id="announce-ai" class="announce-ai" role="region" aria-label="New: AI Loan Advisor" hidden>
-    <div class="container">
-      <strong>New:</strong> Try our <a href="loan-advisor.html">AI Loan Advisor</a> for instant product guidance and estimated rate ranges.
-      <button type="button" id="announce-ai-close" aria-label="Close">×</button>
-    </div>
-  </div>
+  <script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
 
   <main>
     <!-- HERO -->
@@ -75,7 +67,7 @@
           </ul>
         </div>
         <div class="hero-photo-card">
-          <img src="assets/img/headshot.jpg" alt="Krish Posa" width="600" height="600" loading="lazy" decoding="async">
+          <img src="https://www.krishposa.com/assets/img/headshot.jpg" alt="Krish Posa" width="600" height="600" loading="lazy" decoding="async">
           <p class="small center">Your mortgage guide in Atlanta, GA</p>
         </div>
       </div>
@@ -109,27 +101,27 @@
           <div class="grid-3">
             <div class="field">
               <label for="zip">Target ZIP</label>
-              <input id="zip" name="zip" inputmode="numeric" pattern="\\d{5}" placeholder="30301" required>
+              <input id="zip" name="zip" inputmode="numeric" pattern="\d{5}" placeholder="30301" required autocomplete="postal-code">
               <p class="tiny">Helps estimate taxes and insurance</p>
             </div>
             <div class="field">
               <label for="price">Home Price</label>
-              <input id="price" name="price" inputmode="decimal" placeholder="400000" required>
+              <input id="price" name="price" inputmode="decimal" placeholder="400000" required autocomplete="off">
             </div>
             <div class="field">
               <label for="down">Down Payment</label>
-              <input id="down" name="down" inputmode="decimal" placeholder="80000 or 20%">
+              <input id="down" name="down" inputmode="decimal" placeholder="80000 or 20%" autocomplete="off">
             </div>
           </div>
 
           <div class="grid-3" style="margin-top:.75rem">
             <div class="field">
               <label for="rate">Estimated Interest Rate</label>
-              <input id="rate" name="rate" inputmode="decimal" placeholder="6.75%">
+              <input id="rate" name="rate" inputmode="decimal" placeholder="6.75%" autocomplete="off">
             </div>
             <div class="field">
               <label for="fico">Credit Score Range</label>
-              <select id="fico" name="fico" required>
+              <select id="fico" name="fico" required autocomplete="off">
                 <option value="">Select</option>
                 <option>760+</option><option>740-759</option><option>720-739</option>
                 <option>700-719</option><option>680-699</option><option>660-679</option>
@@ -138,7 +130,7 @@
             </div>
             <div class="field">
               <label for="program">Loan Program</label>
-              <select id="program" name="program">
+              <select id="program" name="program" autocomplete="off">
                 <option value="conventional">Conventional</option>
                 <option value="fha">FHA</option>
                 <option value="va">VA</option>
@@ -151,11 +143,11 @@
           <div class="grid-3" style="margin-top:.75rem">
             <div class="field">
               <label for="income">Gross Monthly Income</label>
-              <input id="income" name="income" inputmode="decimal" placeholder="8500" required>
+              <input id="income" name="income" inputmode="decimal" placeholder="8500" required autocomplete="off">
             </div>
             <div class="field">
               <label for="debts">Monthly Debts</label>
-              <input id="debts" name="debts" inputmode="decimal" placeholder="Car, cards, loans">
+              <input id="debts" name="debts" inputmode="decimal" placeholder="Car, cards, loans" autocomplete="off">
             </div>
             <div class="field" aria-hidden="true"></div>
           </div>
@@ -196,140 +188,27 @@
     <section id="preapproval" class="container wide">
       <div class="card">
         <h2 style="margin:0 0 .25rem">Pre-Approval Intake</h2>
-        <p class="small" style="margin:.25rem 0 1rem">Five minute form. Secure. I will follow up with next steps and a document checklist.</p>
+        <p class="small" style="margin:.25rem 0 1rem">Tap the button below to open the secure Google Form and submit your details.</p>
 
-        <!-- JS handles Google Forms submit; keep action="#" so page doesn't navigate -->
-        <form id="intakeForm" action="#" method="POST" novalidate>
-          <!-- Honeypot anti-spam -->
-          <input type="text" name="_gotcha" id="hp" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+        <div class="cta" style="gap:.75rem;margin-top:.5rem;flex-wrap:wrap">
+          <!-- Opens Google Form (mobile friendly) -->
+          <a
+            class="btn btn-blue"
+            id="openGoogleForm"
+            href="https://docs.google.com/forms/d/e/1FAIpQLSfKpOQUQNw5-t98jd8uH524-n5M47ICyid_5vBUCRfWdpJRTA/viewform?hl=en"
+            target="_blank"
+            rel="noopener"
+            style="min-width:240px;text-align:center"
+            >Open Pre-Approval Form</a>
 
-          <div class="grid-3">
-            <div class="field">
-              <label for="fullName">Full Name</label>
-              <input id="fullName" name="fullName" placeholder="Your name" required>
-            </div>
-            <div class="field">
-              <label for="email">Email</label>
-              <input id="email" name="email" type="email" placeholder="you@email.com" required>
-            </div>
-            <div class="field">
-              <label for="phone">Phone</label>
-              <input id="phone" name="phone" inputmode="tel" placeholder="(###) ###-####" required>
-            </div>
-          </div>
+        
+        </div>
 
-          <div class="grid-3" style="margin-top:.75rem">
-            <div class="field">
-              <label for="timeline">Buying Timeline</label>
-              <select id="timeline" name="timeline">
-                <option>ASAP</option><option>30-60 days</option><option>60-90 days</option><option>3-6 months</option><option>6+ months</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="occupancy">Occupancy</label>
-              <select id="occupancy" name="occupancy">
-                <option>Primary residence</option><option>Second home</option><option>Investment</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="source">How did you hear about me</label>
-              <select id="source" name="source">
-                <option>Realtor partner</option><option>Instagram</option><option>Facebook</option><option>Google</option><option>Friend or family</option><option>Other</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="grid-3" style="margin-top:.75rem">
-            <div class="field">
-              <label for="estPrice">Target Price</label>
-              <input id="estPrice" name="estPrice" inputmode="decimal" placeholder="400000">
-            </div>
-            <div class="field">
-              <label for="estDown">Down Payment</label>
-              <input id="estDown" name="estDown" placeholder="80000 or 20%">
-            </div>
-            <div class="field">
-              <label for="employment">Employment</label>
-              <select id="employment" name="employment">
-                <option>W2</option><option>Self-employed</option><option>1099</option><option>Mixed</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="grid-3" style="margin-top:.75rem">
-            <div class="field">
-              <label for="coBorrower">Co-Borrower</label>
-              <select id="coBorrower" name="coBorrower">
-                <option>No</option><option>Yes</option>
-              </select>
-            </div>
-            <div class="field" aria-hidden="true"></div>
-            <div class="field" aria-hidden="true"></div>
-          </div>
-
-          <div class="field" style="margin-top:.75rem">
-            <label for="notes">Notes</label>
-            <textarea id="notes" name="notes" rows="4" placeholder="Anything I should know"></textarea>
-          </div>
-
-          <!-- Hidden fields auto-filled -->
-          <input type="hidden" name="estMonthly" id="h_estMonthly">
-          <input type="hidden" name="estDTI" id="h_estDTI">
-          <input type="hidden" name="agentName" id="h_agentName">
-          <input type="hidden" name="agentEmail" id="h_agentEmail">
-          <input type="hidden" name="utm" id="h_utm">
-
-          <div class="cta" style="gap:.5rem;margin-top:1rem">
-            <button class="btn btn-blue" type="submit" id="submitBtn">Submit Pre-Approval</button>
-            <a class="btn-outline btn-green" id="bookBottom" target="_blank" rel="noopener">Book a Call</a>
-          </div>
-
-          <p id="submitMsg" class="small" style="margin-top:.5rem"></p>
-        </form>
+        <p class="tiny" style="margin-top:.5rem">Opens in a new tab. Works great on mobile.</p>
       </div>
     </section>
 
-    <!-- REALTOR CO-BRAND -->
-    <section class="container wide">
-      <div class="card" id="agentCard">
-        <h2 style="margin:0 0 .25rem">Realtor Co-Brand</h2>
-        <p class="small" style="margin:.25rem 0 1rem">Already shopping with an agent. Add their info and I will keep everyone aligned.</p>
 
-        <div class="grid-3" style="align-items:center">
-          <div class="field">
-            <label for="agent_name">Agent Name</label>
-            <input id="agent_name" placeholder="First Last">
-          </div>
-          <div class="field">
-            <label for="agent_firm">Brokerage</label>
-            <input id="agent_firm" placeholder="Firm or Team">
-          </div>
-          <div class="field">
-            <label for="agent_email">Agent Email</label>
-            <input id="agent_email" placeholder="agent@broker.com">
-          </div>
-        </div>
-
-        <div class="grid-3" style="margin-top:.75rem;align-items:end">
-          <div class="field">
-            <label for="agent_logo">Agent Logo URL</label>
-            <input id="agent_logo" placeholder="https://…/logo.png">
-          </div>
-          <div class="field" aria-hidden="true"></div>
-          <div class="cta" style="justify-content:flex-end">
-            <button class="btn" type="button" id="saveAgent">Save Agent</button>
-          </div>
-        </div>
-
-        <div class="card" style="margin-top:1rem;display:flex;gap:12px;align-items:center">
-          <img id="agentAvatar" alt="Agent logo or headshot" src="" width="64" height="64" style="border-radius:50%;object-fit:cover">
-          <div>
-            <div style="font-weight:700" id="agentName">No agent added</div>
-            <div class="small" id="agentFirm">You can add one above</div>
-          </div>
-        </div>
-      </div>
-    </section>
 
     <!-- FAQS -->
     <section class="container narrow">
@@ -381,10 +260,10 @@
 
   <!-- Shared footer -->
   <div id="footer"></div>
-  <script src="assets/js/footer.js"></script>
+  <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
   <!-- Shared mortgage helpers, then page wiring -->
-  <script defer src="assets/js/mortgage-calc.js"></script>
-  <script defer src="assets/js/buyer-funnel.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/mortgage-calc.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/buyer-funnel.js"></script>
 </body>
 </html>

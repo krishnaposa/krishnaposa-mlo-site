@@ -1,0 +1,129 @@
+sudo apt update
+sudo apt -y install python3.10 python3.10-venv ffmpeg
+python3.10 -m venv ~/venv
+source ~/venv/bin/activate
+pip install --upgrade pip wheel
+pip install demucs==4.0.1 yt-dlp==2024.8.6 azure-storage-blob==12.20.0 azure-storage-queue==12.6.0
+
+pip uninstall spleeter tensorflow numpy -y
+pip install spleeter==2.4.0 tensorflow==2.9.0 "numpy<2"
+
+Place at ~/karaoke-agent/agent.py
+
+mkdir -p ~/karaoke-agent
+nano ~/karaoke-agent/agent.py  # paste
+chmod +x ~/karaoke-agent/agent.py
+
+sudo bash -c 'cat >/etc/karaoke-agent.env' <<'EOF'
+STORAGE_CONN=<your storage connection string>
+INPUT_CONTAINER=karaoke-input
+OUTPUT_CONTAINER=karaoke-output
+STATUS_CONTAINER=karaoke-status
+QUEUE_NAME=karaoke-jobs
+EOF
+
+systemd service 
+
+sudo bash -c 'cat >/etc/systemd/system/karaoke-agent.service' <<'EOF'
+[Unit]
+Description=Karaoke Demucs Worker
+After=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/karaoke-agent
+EnvironmentFile=/etc/karaoke-agent.env
+ExecStart=/home/%i/venv/bin/python /home/%i/karaoke-agent/agent.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+enable
+sudo systemctl enable karaoke-agent@ubuntu
+sudo systemctl start  karaoke-agent@ubuntu
+sudo systemctl status karaoke-agent@ubuntu
+
+
+local worker
+
+#
+
+run
+# Python 3.10 (if not installed) – be sure to check "Add to PATH"
+
+winget install Gyan.FFmpeg
+
+# Create a clean venv
+python -m venv %USERPROFILE%\karaoke-venv
+%USERPROFILE%\karaoke-venv\Scripts\activate
+
+
+# start fresh
+rm -rf karaoke-venv
+python -m venv karaoke-venv
+.\karaoke-venv\Scripts\activate   # PowerShell: .\karaoke-venv\Scripts\Activate
+
+# make sure pip toolchain is modern
+python -m pip install --upgrade pip setuptools wheel
+
+# IMPORTANT: remove any stray TF packages first (if you tried others)
+pip uninstall -y tensorflow tensorflow-intel tensorflow-cpu tensorflow-gpu h5py protobuf || rem ignore errors
+
+# install cleanly
+pip install -r requirements.txt
+
+SEPARATOR=spleeter (default) or SEPARATOR=demucs
+	•	FFMPEG_DIR=C:\pers\ffmpeg\bin
+	•	OUTPUT_BASE=C:\pers\karaoke-out
+	•	MAX_ATTEMPTS=5, BASE_DELAY_SEC=5, MAX_DELAY_SEC=900
+
+pip install -U yt-dlp
+yt-dlp --cookies-from-browser chrome --cookies "c\pers\cookies\youtube_cookies.txt" -f "bestaudio[ext=m4a]/bestaudio/best" -x --audio-format mp3 https://www.youtube.com/watch?v=MJyKN-8UncM
+yt-dlp --cookies "C:\pers\cookies\youtube_cookies.txt" -f "bestaudio[ext=m4a]/bestaudio/best" -x --audio-format mp3 https://www.youtube.com/watch?v=MJyKN-8UncM
+
+curl -v "https://karaoke-func-bthmcvafagcncmck.canadacentral-01.azurewebsites.net/api/lyrics?title=Shayad&artist=Arijit%20Singh&duration=250" \
+  -H "Accept: application/json"
+
+
+
+  Review: how karaoke-func fits together
+API (Azure Functions, Python) under azure/functions/karaoke-func: HTTP handlers for submit, list, status, lyrics; vmreaper is a timer that deallocates the worker VM when the queue is idle and the worker has written a recent heartbeat (_last_done_epoch.txt in the status container).
+Worker (Linux VM) runs azure/virtualmachine/karaoke-agent/agent.py: reads the queue, pulls input from blob or YouTube, runs demucs, uploads vocals / no_vocals to blob, updates job status.
+Shared data plane: one Storage account with containers karaoke-input, karaoke-output, karaoke-status, karaoke-lyrics and queue karaoke-jobs. App settings use STORAGE_CONN (same connection string as the Functions runtime storage in the template).
+Gaps that blocked a “full stack” after removing the resource group
+
+There was no IaC in the repo to recreate RG + dependencies.
+shared.py required SUBSCRIPTION_ID / RESOURCE_GROUP / VM_NAME at import time, so anything importing shared failed in local setups that only had storage settings.
+submit/init.py never called ensure_vm_running(), so after deallocate the API could enqueue work without starting the VM (unless you started it manually).
+submit/init_remote.py imported ensure_vm_running from shared_local, where it does not exist.
+list/function.json and local.settings.json used // comments, which are not valid JSON (risky for tooling).
+vmreaper hard-coded "karaoke-status" instead of the configured status container name.
+What was added
+Item														Purpose
+azure/functions/karaoke-func/infra/main.bicep		One-shot RG deployment: Storage (containers + queue), Linux Consumption Function App (Python 3.10) with app settings, Ubuntu VM, NSG + public IP, role assignment so the Function App’s managed identity can start/deallocate the VM.
+azure/functions/karaoke-func/infra/deploy.ps1		Creates the RG if needed and runs az deployment group create.
+.gitignore											Ignores generated infra/main.json.
+.funcignore											Ignores infra/ so it isn’t published with the app.
+
+Deploy (after az login):
+
+cd c:\pers\krishnaposa-mlo-site\azure\functions\karaoke-func\infra
+.\deploy.ps1 -ResourceGroupName "rg-karaoke-prod" -Location "canadacentral" -SshPublicKey (Get-Content "$env:USERPROFILE\.ssh\id_ed25519.pub" -Raw)
+Then:
+
+SSH to the VM using the deployment outputs (vmPublicIp / vmSshHint).
+Install the worker using azure/virtualmachine/karaoke-agent/instructions.txt (venv, demucs, systemd, same STORAGE_CONN / container / queue names as the template).
+From azure/functions/karaoke-func, publish: func azure functionapp publish <functionAppName-from-output>.
+DefaultAzureCredential in Azure will use the Function App’s system-assigned identity for the Compute SDK once the role assignment has propagated (can take a few minutes).
+
+Code changes (behavior)
+shared.py: VM settings are read only inside ensure_vm_running / deallocate_vm via _vm_ids(), so importing shared no longer requires VM env vars until those run.
+submit/init.py: After enqueue, calls ensure_vm_running() and adds a vm field when it succeeds; failures are logged so local runs without VM config still return job_id.
+vmreaper/init.py: Uses the STATUS container from config.
+init_remote.py: Imports ensure_vm_running from shared.
+list/function.json / local.settings.json: Comment-only JSON issues removed.
+If you want, we can next add a parameter file for deploy.ps1 (cleaner than long SSH keys on the command line) or wire Application Insights into the Bicep template.

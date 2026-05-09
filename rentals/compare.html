@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-KJZPQKBM');</script>
+
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5fff">
+
+  <title>AI Rental Comparison Tool | Type Address & Pick | Krish Posa</title>
+  <meta name="description" content="Type an address, pick a validated match, and compare up to 10 rentals. Server-side AI estimates rent & expenses; analyzer computes cash flow, cap rate, CoC, DSCR.">
+  <link rel="canonical" href="https://www.krishposa.com/rentals-compare.html">
+  <meta name="robots" content="index,follow">
+
+  <!-- Social -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Krish Posa">
+  <meta property="og:title" content="AI Rentals Comparison Tool (Type & Pick)">
+  <meta property="og:description" content="Validate addresses with autocomplete and rank multiple rentals by profitability.">
+  <meta property="og:url" content="https://www.krishposa.com/rentals-compare.html">
+  <meta property="og:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- Assets -->
+  <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="https://www.krishposa.com/assets/img/apple-touch-icon.png">
+
+  <!-- Global CSS -->
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/cobrand.css?v=1">
+  <!-- Reuse rental analyzer CSS + page CSS -->
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/rent-analyzer.css?v=1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/rentals-compare.css?v=2">
+<link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
+
+    <script defer src="https://www.krishposa.com/assets/js/kp-debug.js"></script>
+
+  <!-- Global JS -->
+  <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/cobrand.js?v=1"></script>
+</head>
+<body class="dark-surface">
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+
+  <div id="header"></div>
+  <script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
+
+  <main>
+    <section class="page-hero">
+      <div class="container">
+        <h1>Rentals Comparison Tool <span class="label-ai">AI</span></h1>
+        <p class="small">Type addresses, pick validated matches, then analyze & rank up to 10 properties. Educational only.</p>
+      </div>
+    </section>
+
+    <section class="content">
+      <div class="container">
+        <div class="tool-card" itemscope itemtype="https://schema.org/WebApplication">
+          <meta itemprop="name" content="Rentals Comparison Tool">
+          <meta itemprop="applicationCategory" content="FinanceApplication">
+
+          <form id="portfolio-form" novalidate>
+            <p class="helper">Set your shared financing assumptions. These apply to every property (you can still override expenses server-side via AI prefetch).</p>
+
+            <!-- Shared financing -->
+            <h3>Shared Financing</h3>
+            <div class="grid-3">
+              <div class="field">
+                <label for="downPct">Down Payment (%)</label>
+                <input id="downPct" name="downPct" type="number" min="0" max="100" step="0.1" placeholder="25" required>
+              </div>
+              <div class="field">
+                <label for="rate">Interest Rate (%)</label>
+                <input id="rate" name="rate" type="number" min="0" max="20" step="0.01" placeholder="7.00" required>
+              </div>
+              <div class="field">
+                <label for="termYears">Term (years)</label>
+                <select id="termYears" name="termYears" required>
+                  <option value="">Select</option>
+                  <option>30</option><option>25</option><option>20</option><option>15</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="grid-3">
+              <div class="field">
+                <label for="closingCosts">Closing Costs (est.)</label>
+                <input id="closingCosts" name="closingCosts" type="number" min="0" step="500" placeholder="6000">
+              </div>
+              <div class="field">
+                <label for="pointsPct">Discount Points (%)</label>
+                <input id="pointsPct" name="pointsPct" type="number" min="0" max="5" step="0.125" placeholder="0">
+              </div>
+              <div class="field">
+                <label for="vacancyPct">Vacancy (%)</label>
+                <input id="vacancyPct" name="vacancyPct" type="number" min="0" max="50" step="0.5" placeholder="5">
+              </div>
+            </div>
+
+            <!-- Address entry -->
+            <h3>Addresses</h3>
+            <p class="helper">Type an address below and pick a validated match, or click Add to use exactly what you typed. Repeat to add up to 10. Rent is optional (AI will estimate if left blank).</p>
+
+            <div class="tool-card" style="padding:12px">
+              <div class="addr-row">
+                <div class="field addr-cell">
+                  <label for="addrSearch">Enter address</label>
+                  <input id="addrSearch" placeholder="Start typing: 3739 Jamestown Ct, Atlanta…" autocomplete="off"
+                         aria-autocomplete="list" aria-expanded="false" aria-owns="addrResults">
+                  <ul id="addrResults" class="tool-card" role="listbox" style="display:none"></ul>
+                </div>
+
+                <div class="field">
+                  <label for="addrRent">Optional monthly rent</label>
+                  <input id="addrRent" type="number" min="0" step="25" placeholder="0">
+                </div>
+
+                <div class="field">
+                  <label for="addrPrice">Purchase price</label>
+                  <input id="addrPrice" type="number" min="0" step="1000" placeholder="150000">
+                </div>
+
+                <div class="field" style="align-self:end; display:flex; gap:8px">
+                  <button class="btn" id="addAddressBtn" type="button">Add</button>
+                  <button class="btn" id="clearSearch" type="button">Clear</button>
+                </div>
+              </div>
+
+              <!-- Picked entries -->
+              <div id="pickedList" class="grid-1" style="margin-top:10px">
+                <table class="table" id="pickedTable" style="width:100%">
+                  <thead>
+                    <tr>
+                      <th style="width:34px">#</th>
+                      <th>Address</th>
+                      <th style="width:160px">Selected Rent</th>
+                      <th style="width:160px">Price</th>
+                      <th style="width:110px">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+
+              <!-- Template for row (used by JS) -->
+              <template id="pickedRowTpl">
+                <tr data-item>
+                  <td data-idx></td>
+                  <td><div data-label style="font-weight:600"></div></td>
+                  <td data-rent-readonly>$0</td>
+                  <td data-price-readonly>$0</td>
+                  <td><button class="btn" type="button" data-remove>Remove</button></td>
+                </tr>
+              </template>
+
+              <p class="helper" id="pickedCount" style="margin-top:8px">0 of 10 selected</p>
+            </div>
+
+            <div class="field" style="margin-top:10px">
+              <label><input type="checkbox" id="consent"> I agree this tool is educational only and not investment advice.</label>
+            </div>
+
+            <button class="btn" id="submitBtn" type="submit">Analyze & Rank</button>
+            <div class="error-box" id="err"></div>
+          </form>
+
+          <!-- Ranked results -->
+          <div class="result-wrap tool-card" id="portfolioResult" style="display:none">
+            <h2>Ranked Results</h2>
+            <p class="muted" id="portfolioNote"></p>
+            <div class="table-wrap">
+              <table id="portfolioTable" aria-label="Portfolio ranking" style="min-width:980px">
+                <thead>
+                  <tr>
+                    <th data-sort="rank"># <span class="sort-arrow"></span></th>
+                    <th data-sort="address">Address <span class="sort-arrow"></span></th>
+                    <th data-sort="price">Price <span class="sort-arrow"></span></th>
+                    <th data-sort="rent">Rent <span class="sort-arrow"></span></th>
+                    <th data-sort="cash_flow_monthly">Cash Flow / mo <span class="sort-arrow"></span></th>
+                    <th data-sort="cap_rate">Cap Rate <span class="sort-arrow"></span></th>
+                    <th data-sort="cash_on_cash">CoC <span class="sort-arrow"></span></th>
+                    <th data-sort="dscr">DSCR <span class="sort-arrow"></span></th>
+                    <th data-sort="total_return_5y">5-Yr Total Return <span class="sort-arrow"></span></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Sticky mobile CTA -->
+    <div class="sticky-cta" role="region" aria-label="Quick actions">
+      <a class="btn" href="tel:+16784818252">Call</a>
+      <a class="btn" href="sms:+16784818252">Text</a>
+      <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book</a>
+    </div>
+  </main>
+
+  <div id="footer"></div>
+  <script src="https://www.krishposa.com/assets/js/footer.js"></script>
+
+  <!-- Google Places (Autocomplete) -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAi0XSSjP_14ikqikccKGJFSaxuwGzgpOc&libraries=places&v=weekly&loading=async&callback=initPortfolioPlaces" async defer></script>
+
+  <!-- Page script -->
+  <script defer src="https://www.krishposa.com/assets/js/rentals-compare.js?v=4"></script>
+</body>
+</html>

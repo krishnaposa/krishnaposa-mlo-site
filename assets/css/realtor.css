@@ -1,0 +1,184 @@
+/* Co-brand strip across page */
+.cobrand-strip { background:#0b5fff; color:#fff; }
+.cobrand-strip .inner {
+  display:flex; align-items:center; gap:.75rem; justify-content:center;
+  padding:.5rem 1rem; flex-wrap:wrap;
+}
+.cobrand-strip img { height:36px; width:auto; border-radius:4px; object-fit:cover; }
+
+/* HERO: two columns side-by-side */
+.hero .hero-grid {
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:24px;
+  align-items:start;
+}
+@media (min-width: 900px) {
+  .hero .hero-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* Softer panel background + lighter border/shadow */
+.hero-card {
+  border:1px solid #e0e6f0;
+  border-radius:10px;
+  box-shadow:0 3px 10px rgba(0,0,0,.05);
+  padding:1rem;
+}
+
+/* Smaller hero heading */
+.hero-card h1 {
+  margin-top:0;
+  font-size:clamp(1.25rem, 2vw, 1.6rem);
+  line-height:1.2;
+  font-weight:700;
+  margin-bottom:.5rem;
+}
+
+/* Krish photo smaller */
+.hero-card .hero-photo-card img {
+  width:100%;
+  max-width:300px;
+  height:auto;
+  border-radius:10px;
+  margin:0 auto;
+  display:block;
+}
+
+.hero-card .avatar { width:380px; height:380px; border-radius:8px; object-fit:cover; }
+.hero-card .realtor-logo { width:150px; height:150px; border-radius:8px; object-fit:cover; }
+.hero-card .meta { font-size:.9rem; color:#666; }
+
+/* Smaller, subdued Krish button */
+.btn-subtle {
+  display:inline-block; padding:.35rem .8rem; font-size:.85rem;
+  background:#e9efff; color:#0b5fff; border-radius:6px; text-decoration:none;
+  border:1px solid #d7e2ff;
+}
+.btn-subtle:hover { background:#dfe7ff; }
+
+.home-tools .card { border-radius:12px; }
+.sticky-cta {
+  position:sticky; bottom:0;
+  display:flex; gap:8px; justify-content:center;
+  padding:.5rem; background:#fff; border-top:1px solid #eee;
+}
+
+/* --- Realtor partners grid & cards --- */
+.realtor-grid {
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+/* Card look (no light background) */
+.realtor-card {
+  position: relative;
+  background: transparent;
+  border:1px solid #d7e2ff;
+  border-radius:12px;
+  padding:1.25rem;
+  text-align:center;
+  transition: border-color .2s ease, transform .15s ease;
+}
+.realtor-card:hover {
+  border-color:#0b5fff;
+  transform: translateY(-2px);
+}
+
+/* Make the whole card clickable (overlay link) */
+.realtor-card .card-link {
+  position:absolute; inset:0;
+  z-index:1;
+  border-radius:12px;
+}
+.realtor-card .card-link:focus { outline: 2px solid #0b5fff; outline-offset: 3px; }
+
+/* Visual content sits above overlay so buttons remain clickable */
+.realtor-card .content { position:relative; z-index:2; }
+
+.realtor-card img {
+  max-width:120px; max-height:120px;
+  border-radius:8px; object-fit:cover;
+  display:block; margin:0 auto .75rem;
+}
+
+/* Ensure realtor name is visible on dark backgrounds */
+.realtor-card h2 {
+  margin:.25rem 0 .25rem;
+  font-size:1.15rem; line-height:1.25;
+  font-weight:700;
+  color:#fff;
+}
+
+/* Description text with softer contrast */
+.realtor-card p {
+  color:#ccc;
+  font-size:.95rem; margin:.25rem 0;
+}
+
+/* Button row inside card */
+.realtor-card .actions {
+  margin-top:.75rem;
+  display:flex; gap:.5rem; flex-wrap:wrap; justify-content:center;
+}
+.realtor-card .btn,
+.realtor-card .btn-outline { padding:.45rem .9rem; font-size:.9rem; }
+
+/* Optional hover hint */
+.realtor-card:hover { cursor:pointer; }
+
+/* ============================
+   Realtor form tweaks
+   ============================ */
+
+/* Constrain the application card so the form doesn't feel too wide */
+#apply .card {
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+/* Grid */
+.form-grid { display:grid; gap:12px; grid-template-columns:1fr; }
+@media (min-width: 900px) {
+  .form-grid { grid-template-columns: 1fr 1fr; column-gap:16px; }
+  .span-2 { grid-column:1 / -1; }
+}
+
+/* Field + label + inputs on dark page */
+.field { display:flex; flex-direction:column; gap:.35rem; }
+.field label { font-weight:600; color:#e5e7eb; }
+
+/* Inputs readable on dark bg */
+.field input,
+.field textarea {
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:8px;
+  padding:.65rem .75rem;
+  font:inherit;
+  background:#0f172a;          /* dark slate */
+}
+.field input::placeholder,
+.field textarea::placeholder { color:#94a3b8; }
+
+.field input:focus,
+.field textarea:focus {
+  outline:none;
+  border-color:#0b5fff;
+  box-shadow:0 0 0 3px rgba(11,95,255,.18);
+}
+
+/* Helper text (e.g., phone tip) — make sure it never overlaps */
+.field .help {
+  position: static !important;
+  display:block;
+  margin-top:.2rem;
+  color:#cbd5e1;
+  line-height:1.25;
+  max-width:38ch;
+  word-wrap:break-word;
+  width: auto
+}
+
+/* Error text */
+.error { color:#fecaca; font-size:.9rem; margin-top:.1rem; }

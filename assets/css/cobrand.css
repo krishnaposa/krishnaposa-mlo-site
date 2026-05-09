@@ -1,0 +1,37 @@
+/* /assets/css/cobrand.css */
+
+/* Container strip */
+.cobrand-strip {
+  background-color: #0b5fff;
+  color: #fff;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  width: 100%;
+}
+
+/* Inner flex wrapper */
+.cobrand-strip .inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  flex-wrap: wrap;
+}
+
+/* Images inside the strip */
+.cobrand-strip img {
+  height: 36px;
+  width: auto;
+  border-radius: 4px;
+  object-fit: cover;
+  display: inline-block;
+}
+
+/* Text spans */
+.cobrand-strip span {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  color: #fff; /* force white text */
+}

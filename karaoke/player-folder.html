@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-KJZPQKBM');</script>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karaoke Player — folder (lyrics)</title>
+
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/karaoke.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
+  <style>
+    #lyricsSynced {
+      max-height: 320px;
+      overflow: auto;
+      margin-top: .5rem;
+      padding: .75rem 1rem;
+      border-radius: 6px;
+      background: rgba(0,0,0,.22);
+      line-height: 1.55;
+      font-size: 1.05rem;
+    }
+    #lyricsSynced .lyrics-line {
+      opacity: .45;
+      transition: opacity .12s ease;
+    }
+    #lyricsSynced .lyrics-line.active {
+      opacity: 1;
+      font-weight: 600;
+      color: #8ec5ff;
+    }
+  </style>
+</head>
+<body class="dark-surface">
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+
+<div id="header"></div>
+<script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
+
+<main class="container">
+
+  <section class="card">
+    <h1>Karaoke Player — project folder</h1>
+    <p class="help">Choose the <strong>top project folder</strong> so the picker includes <code>output/&lt;jobId&gt;/vocals.wav</code> and <code>no_vocals.wav</code>, plus optional <code>lyrics/&lt;jobId&gt;.json</code> (with <code>original_name</code> and <code>text</code>). Each job folder under <code>output/</code> is one song.</p>
+
+    <div class="row" style="flex-wrap:wrap; gap:.5rem; align-items:center">
+      <input type="file" id="projectFolder" webkitdirectory directory multiple style="display:none" aria-hidden="true">
+      <button type="button" id="pickProjectFolder" class="btn btn-blue">Choose folder…</button>
+      <span id="folderScanSummary" class="help" aria-live="polite"></span>
+    </div>
+
+    <div class="field" id="songPickWrap" style="margin-top:.75rem" hidden>
+      <label for="folderSongPick">Song</label>
+      <select id="folderSongPick"></select>
+    </div>
+    <div class="row" style="margin-top:.5rem">
+      <span id="folderLoadStatus" class="help" aria-live="polite"></span>
+    </div>
+
+    <div class="now-playing" style="margin-top:.75rem">
+      <strong>Now playing:</strong> <span id="trackTitle">—</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Lyrics</h2>
+    <p class="help">From <code>lyrics/&lt;jobId&gt;.json</code> the <code>text</code> field is shown (with line breaks). <strong>LRC</strong> syncs to the vocals clock when timed lyrics are available.</p>
+    <pre id="lyricsBox" class="help" style="white-space:pre-wrap; max-height:260px; overflow:auto; margin-top:.5rem">—</pre>
+    <div id="lyricsSynced" hidden></div>
+  </section>
+
+  <section class="card">
+    <h2>Route outputs</h2>
+    <p class="help">Route <strong>vocals → Bluetooth</strong> and <strong>band → speakers</strong>. Click <strong>Enable device list</strong> first (Chrome/Edge desktop).</p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="vocalsOut">Vocals output</label>
+        <select id="vocalsOut"></select>
+      </div>
+      <div class="field">
+        <label for="bandOut">Band output</label>
+        <select id="bandOut"></select>
+      </div>
+    </div>
+    <div class="row" style="margin-top:.5rem">
+      <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
+      <button id="testVocals" class="btn btn-outline" type="button">Test Vocals</button>
+      <button id="testBand" class="btn btn-outline" type="button">Test Band</button>
+      <span id="deviceMsg" class="help" style="margin-left:.5rem" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Play</h2>
+    <p class="help" style="margin-top:0">After stems load, route outputs and press Play. Adjust offset if Bluetooth lags.</p>
+    <div class="row" style="margin-bottom:.5rem">
+      <button id="play" class="btn btn-blue" type="button">Play</button>
+      <button id="pause" class="btn btn-outline" type="button">Pause</button>
+      <button id="restart" class="btn btn-outline" type="button">Restart</button>
+      <button id="syncNow" class="btn btn-outline" type="button">Sync now</button>
+    </div>
+    <div class="row">
+      <label for="offset">Vocals advance/Delay (ms):</label>
+      <input id="offset" type="number" value="0" step="10" style="width:120px">
+      <span class="help">Positive delays vocals; negative delays band.</span>
+    </div>
+    <audio id="vocalsEl" preload="auto" playsinline></audio>
+    <audio id="bandEl" preload="auto" playsinline></audio>
+  </section>
+
+  <div class="row" style="justify-content:space-between; flex-wrap:wrap; gap:.5rem">
+    <a class="btn btn-outline" href="/karaoke/index.html">← Uploader</a>
+    <a class="btn btn-outline" href="/karaoke/player-folder-local-root.html">Same stems via local API →</a>
+    <a class="btn btn-outline" href="/karaoke/player-local.html">Local stems only →</a>
+    <a class="btn btn-outline" href="/karaoke/player.html">Cloud list player →</a>
+  </div>
+</main>
+
+<div id="footer"></div>
+<script src="https://www.krishposa.com/assets/js/footer.js"></script>
+
+<script>window.KARAOKE_MODE = 'player-folder';</script>
+<script src="https://www.krishposa.com/assets/js/karaoke-core.js"></script>
+<script src="https://www.krishposa.com/assets/js/karaoke-player-folder.js"></script>
+</body>
+</html>

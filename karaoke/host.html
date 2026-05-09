@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karaoke Host</title>
+  <link rel="stylesheet" href="../assets/css/styles.css">
+  <link rel="stylesheet" href="../assets/css/karaoke.css">
+</head>
+<body>
+<main class="container">
+  <section class="card">
+    <h1>Host</h1>
+    <p class="help">
+      You hear <strong>vocals + band</strong> together here (default: laptop speakers).
+      Audience devices only stream <strong>vocals</strong> on the audience page.
+    </p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="roomId">Room ID</label>
+        <input id="roomId" type="text" value="room1">
+      </div>
+      <div class="field">
+        <label for="hostName">Host Name</label>
+        <input id="hostName" type="text" value="Host">
+      </div>
+    </div>
+    <div class="row">
+      <button id="refreshList" class="btn btn-outline" type="button">Refresh songs</button>
+      <span id="status" class="help"></span>
+    </div>
+    <div class="field" style="margin-top:.5rem">
+      <label for="songPick">Song</label>
+      <select id="songPick"></select>
+    </div>
+    <div class="now-playing" style="margin-top:.5rem">
+      <strong>Now playing:</strong> <span id="trackTitle">—</span>
+    </div>
+    <div class="row" style="margin-top:.5rem">
+      <button id="play" class="btn btn-blue" type="button">Play</button>
+      <button id="pause" class="btn btn-outline" type="button">Pause</button>
+      <button id="restart" class="btn btn-outline" type="button">Restart</button>
+      <button id="publishNow" class="btn btn-outline" type="button">Publish now</button>
+    </div>
+    <div class="row">
+      <label for="offset">Vocals advance/delay (ms):</label>
+      <input id="offset" type="number" value="0" step="10" style="width:120px">
+      <span class="help">Positive delays vocals vs band (same as main player).</span>
+    </div>
+    <div class="grid-2" style="margin-top:.75rem">
+      <div class="field">
+        <label for="vocalsOut">Vocals output</label>
+        <select id="vocalsOut"></select>
+      </div>
+      <div class="field">
+        <label for="bandOut">Band output</label>
+        <select id="bandOut"></select>
+      </div>
+    </div>
+    <div class="row" style="margin-top:.5rem">
+      <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
+      <span id="deviceMsg" class="help" style="margin-left:.5rem">Pick the same device for both for “everything on speakers.”</span>
+    </div>
+    <div class="field" style="margin-top:.5rem">
+      <label for="listenerUrl">Audience URL</label>
+      <input id="listenerUrl" type="text" readonly>
+    </div>
+    <p class="help" style="margin-top:.5rem">Vocals (reference for sync + published to room)</p>
+    <audio id="vocalsEl" preload="auto" playsinline></audio>
+    <p class="help" style="margin-top:.5rem">Band / instrumental (host only)</p>
+    <audio id="bandEl" preload="auto" playsinline></audio>
+  </section>
+</main>
+<script>window.KARAOKE = window.KARAOKE || {};</script>
+<script src="../assets/js/karaoke-api-base.js?v=1"></script>
+<script src="../assets/js/karaoke-core.js"></script>
+<script src="../assets/js/karaoke-host.js?v=3"></script>
+</body>
+</html>

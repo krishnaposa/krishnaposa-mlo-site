@@ -1,0 +1,266 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "4829062556482344661"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Region for Container Apps, ACR, and Log Analytics."
+      }
+    },
+    "projectName": {
+      "type": "string",
+      "defaultValue": "karaoke",
+      "metadata": {
+        "description": "Short prefix for resource names."
+      }
+    },
+    "storageConnectionString": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Azure Storage connection string (same STORAGE_CONN as Function App / local_worker)."
+      }
+    },
+    "deployContainerApp": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "When true, deploys the Container App (image must exist in ACR or registry). When false, only ACR + environment."
+      }
+    },
+    "containerImage": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Full image reference, e.g. myregistry.azurecr.io/karaoke-worker:latest"
+      }
+    },
+    "queueName": {
+      "type": "string",
+      "defaultValue": "karaoke-jobs",
+      "metadata": {
+        "description": "Queue name for KEDA and worker (must match Function App QUEUE_NAME)."
+      }
+    },
+    "queueLengthPerReplica": {
+      "type": "int",
+      "defaultValue": 1,
+      "metadata": {
+        "description": "Target messages per replica for queue scaling."
+      }
+    },
+    "minReplicas": {
+      "type": "int",
+      "defaultValue": 0,
+      "minValue": 0,
+      "metadata": {
+        "description": "Min replicas (0 allows scale-to-zero when queue is empty)."
+      }
+    },
+    "maxReplicas": {
+      "type": "int",
+      "defaultValue": 5,
+      "minValue": 1,
+      "metadata": {
+        "description": "Max concurrent worker replicas."
+      }
+    },
+    "workerCpu": {
+      "type": "string",
+      "defaultValue": "2",
+      "metadata": {
+        "description": "Container vCPU (e.g. 1, 2)."
+      }
+    },
+    "workerMemory": {
+      "type": "string",
+      "defaultValue": "4Gi",
+      "metadata": {
+        "description": "Container memory, e.g. 4Gi (ratio rules apply per ACA SKU)."
+      }
+    }
+  },
+  "variables": {
+    "suffix": "[uniqueString(resourceGroup().id, parameters('projectName'))]",
+    "logName": "[format('{0}-aca-log-{1}', parameters('projectName'), variables('suffix'))]",
+    "envName": "[format('{0}-aca-env-{1}', parameters('projectName'), variables('suffix'))]",
+    "acrNameRaw": "[format('kp{0}{1}', replace(parameters('projectName'), '-', ''), variables('suffix'))]",
+    "acrName": "[if(greater(length(variables('acrNameRaw')), 50), take(variables('acrNameRaw'), 50), variables('acrNameRaw'))]",
+    "appName": "[format('{0}-worker-{1}', parameters('projectName'), variables('suffix'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2022-10-01",
+      "name": "[variables('logName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('envName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "appLogsConfiguration": {
+          "destination": "log-analytics",
+          "logAnalyticsConfiguration": {
+            "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', variables('logName')), '2022-10-01').customerId]",
+            "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', variables('logName')), '2022-10-01').primarySharedKey]"
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ContainerRegistry/registries",
+      "apiVersion": "2023-07-01",
+      "name": "[variables('acrName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Basic"
+      },
+      "properties": {
+        "adminUserEnabled": true
+      }
+    },
+    {
+      "condition": "[parameters('deployContainerApp')]",
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('appName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', variables('envName'))]",
+        "configuration": {
+          "activeRevisionsMode": "Single",
+          "registries": "[if(and(parameters('deployContainerApp'), contains(parameters('containerImage'), reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').loginServer)), createArray(createObject('server', reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').loginServer, 'username', listCredentials(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').username, 'passwordSecretRef', 'acr-pull-password')), createArray())]",
+          "secrets": "[if(and(parameters('deployContainerApp'), contains(parameters('containerImage'), reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').loginServer)), createArray(createObject('name', 'storage-connection', 'value', parameters('storageConnectionString')), createObject('name', 'acr-pull-password', 'value', listCredentials(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').passwords[0].value)), createArray(createObject('name', 'storage-connection', 'value', parameters('storageConnectionString'))))]"
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "karaoke-worker",
+              "image": "[parameters('containerImage')]",
+              "env": [
+                {
+                  "name": "STORAGE_CONN",
+                  "secretRef": "storage-connection"
+                },
+                {
+                  "name": "QUEUE_NAME",
+                  "value": "[parameters('queueName')]"
+                },
+                {
+                  "name": "INPUT_CONTAINER",
+                  "value": "karaoke-input"
+                },
+                {
+                  "name": "OUTPUT_CONTAINER",
+                  "value": "karaoke-output"
+                },
+                {
+                  "name": "STATUS_CONTAINER",
+                  "value": "karaoke-status"
+                },
+                {
+                  "name": "OUTPUT_BASE",
+                  "value": "/tmp/karaoke-out"
+                },
+                {
+                  "name": "QUEUE_VISIBILITY_TIMEOUT",
+                  "value": "3600"
+                },
+                {
+                  "name": "SEPARATOR",
+                  "value": "spleeter"
+                },
+                {
+                  "name": "DEMUCS_MODEL",
+                  "value": "htdemucs_ft"
+                },
+                {
+                  "name": "LOG_LEVEL",
+                  "value": "INFO"
+                }
+              ],
+              "resources": {
+                "cpu": "[json(parameters('workerCpu'))]",
+                "memory": "[parameters('workerMemory')]"
+              }
+            }
+          ],
+          "scale": {
+            "minReplicas": "[parameters('minReplicas')]",
+            "maxReplicas": "[parameters('maxReplicas')]",
+            "rules": [
+              {
+                "name": "karaoke-jobs",
+                "custom": {
+                  "type": "azure-queue",
+                  "metadata": {
+                    "queueName": "[parameters('queueName')]",
+                    "queueLength": "[string(parameters('queueLengthPerReplica'))]"
+                  },
+                  "auth": [
+                    {
+                      "secretRef": "storage-connection",
+                      "triggerParameter": "connection"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrName'))]",
+        "[resourceId('Microsoft.App/managedEnvironments', variables('envName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "acrName": {
+      "type": "string",
+      "value": "[variables('acrName')]"
+    },
+    "acrLoginServer": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').loginServer]"
+    },
+    "managedEnvironmentName": {
+      "type": "string",
+      "value": "[variables('envName')]"
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logName'))]"
+    },
+    "containerAppName": {
+      "type": "string",
+      "value": "[if(parameters('deployContainerApp'), variables('appName'), '')]"
+    },
+    "containerAppId": {
+      "type": "string",
+      "value": "[if(parameters('deployContainerApp'), resourceId('Microsoft.App/containerApps', variables('appName')), '')]"
+    }
+  }
+}

@@ -1,0 +1,506 @@
+(function(){
+  const FN_BASE = 'https://rent-analyzer-fn-eheqhra2d6bwd6fm.canadacentral-01.azurewebsites.net';
+
+  // ---- KP Debug logger (uses kp-debug.js if present; falls back to console) ----
+  const KPDBG = (window.KP && window.KP.debug)
+    ? window.KP.debug.ns('Compare')
+    : {
+        info:  (...a) => console.log('[Compare]', ...a),
+        warn:  (...a) => console.warn('[Compare]', ...a),
+        error: (...a) => console.error('[Compare]', ...a),
+        table: (o) => console.table(o),
+        group: (label, fn) => { console.groupCollapsed('[Compare] ' + label); try { fn && fn(); } finally { console.groupEnd(); } },
+        time: (l) => console.time('[Compare] ' + l),
+        timeEnd: (l) => console.timeEnd('[Compare] ' + l),
+      };
+
+  // DOM
+  const form        = document.getElementById('portfolio-form');
+  const err         = document.getElementById('err');
+  const submitBtn   = document.getElementById('submitBtn');
+
+  const addrSearch  = document.getElementById('addrSearch');
+  const addrResults = document.getElementById('addrResults'); // no-op in manual mode
+  const addrRent    = document.getElementById('addrRent');
+  const addrPrice   = document.getElementById('addrPrice');
+  const addBtn      = document.getElementById('addAddressBtn');
+  const clearBtn    = document.getElementById('clearSearch');
+
+  const pickedCount     = document.getElementById('pickedCount');
+  const pickedTableBody = document.querySelector('#pickedTable tbody');
+  const pickedRowTpl    = document.getElementById('pickedRowTpl');
+
+  const portRes   = document.getElementById('portfolioResult');
+  const portNote  = document.getElementById('portfolioNote');
+  const portTbl   = document.querySelector('#portfolioTable tbody');
+  const portHead  = document.querySelector('#portfolioTable thead');
+
+  // helpers
+  const dollars = (n)=> Number(n||0).toLocaleString(undefined,{style:'currency',currency:'USD'});
+  const pct     = (n, d=2)=> `${Number(n||0).toFixed(d)}%`;
+  const num     = (v)=> { const x = Number(v); return Number.isFinite(x) ? x : 0; };
+  function showErr(m){ err.textContent = m; err.style.display = 'block'; KPDBG.warn('UI error shown:', m); }
+  function hideErr(){ err.style.display = 'none'; }
+
+  // ---------------- Places (NEW only, optional) / Manual mode by default ----------------
+  // We do NOT touch legacy classes, so there are no console warnings.
+  let NewAutocompleteSuggestion = null;
+  let sessionToken = null;
+
+  // Build a clean one-line address without duplicating city/state/zip if already present
+  function formatAddr(i){
+    const base = (i?.address || '').trim();
+    if (!base) return [i?.address, i?.city, i?.state, i?.zip].filter(Boolean).join(', ');
+
+    const lower = base.toLowerCase();
+    const parts = [base];
+    const maybeAdd = (s) => {
+      if (!s) return;
+      const str = String(s).trim();
+      if (!str) return;
+      if (!lower.includes(str.toLowerCase())) parts.push(str);
+    };
+    maybeAdd(i?.city);
+    maybeAdd(i?.state);
+    maybeAdd(i?.zip);
+    return parts.join(', ');
+  }
+
+  function initPlaces(){
+    try {
+      NewAutocompleteSuggestion = window.google?.maps?.places?.AutocompleteSuggestion || null;
+      if (NewAutocompleteSuggestion && window.google?.maps?.places?.AutocompleteSessionToken) {
+        sessionToken = new google.maps.places.AutocompleteSessionToken();
+      }
+      KPDBG.info('Places initialized (manual mode default). token?', !!sessionToken);
+    } catch (e) {
+      KPDBG.warn('Places init skipped (manual mode).', e);
+    }
+  }
+  window.initPortfolioPlaces = initPlaces; // safe even if script tag calls it
+
+  // Manual mode: keep suggestions hidden
+  addrSearch.addEventListener('input', ()=>{
+    addrResults.style.display='none';
+    addrSearch.setAttribute('aria-expanded','false');
+  });
+
+  // Manual add (Enter or Add button)
+  addrSearch.addEventListener('keydown', (e)=>{
+    if (e.key === 'Enter') { e.preventDefault(); addManualCurrent(); }
+  });
+  addBtn.addEventListener('click', addManualCurrent);
+
+  // ---------- Robust parser (no comma required) ----------
+  // Heuristics:
+  // - ZIP: last 5-digit token (optionally allowing ZIP+4 trailing)
+  // - STATE: last 2-letter token (A–Z) near the end (e.g., “GA”)
+  // - CITY (if no comma structure): take the rightmost 1–3 alphabetic tokens BEFORE the state,
+  //   skipping common street words; stop when a token contains a digit.
+  const STREET_WORDS = new Set([
+    'st','street','rd','road','ave','avenue','dr','drive','ln','lane','ct','court','blvd','boulevard',
+    'way','hwy','highway','pkwy','parkway','pl','place','trl','trail','ter','terrace','sq','square',
+    'cir','circle','cv','cove','pass','pk','park'
+  ]);
+
+  function parseCityStateZip(label){
+    const raw = String(label || '').trim();
+    if (!raw) return { city:'', state:'', zip:'' };
+
+    const tokens = raw.split(/[,\s]+/).filter(Boolean); // no comma required
+    // ZIP
+    let zip = '';
+    for (let i = tokens.length - 1; i >= 0; i--){
+      const t = tokens[i];
+      const m = t.match(/^\d{5}(?:-\d{4})?$/);
+      if (m){ zip = m[0].slice(0,5); break; }
+    }
+    // STATE (two letters, prefer the one closest to the zip or end)
+    let state = '';
+    let stateIdx = -1;
+    for (let i = tokens.length - 1; i >= 0; i--){
+      const t = tokens[i];
+      if (/^[A-Za-z]{2}$/.test(t)){ state = t.toUpperCase(); stateIdx = i; break; }
+    }
+
+    // CITY
+    let city = '';
+    if (stateIdx > 0){
+      // If there IS a comma, use “previous chunk” strategy first (very reliable)
+      if (raw.includes(',')){
+        const parts = raw.split(',').map(s=>s.trim()).filter(Boolean);
+        const statePartIdx = parts.findIndex(p => new RegExp(`\\b${state}\\b`, 'i').test(p));
+        if (statePartIdx > 0){
+          city = parts[statePartIdx - 1].trim();
+        }
+      }
+      // If no comma or failed above, use token heuristic before STATE
+      if (!city){
+        const cityTokens = [];
+        for (let i = stateIdx - 1; i >= 0; i--){
+          const t = tokens[i];
+          if (/\d/.test(t)) break;                  // stop at any number (street number)
+          const low = t.toLowerCase();
+          if (STREET_WORDS.has(low)){               // stop when we cross back into street segment
+            if (cityTokens.length) break;
+            continue;
+          }
+          if (!/^[A-Za-z.\-]+$/.test(t)) break;     // keep alphabetic-ish only
+          cityTokens.unshift(t);                    // build from right to left
+          if (cityTokens.length >= 3) break;        // most cities are <=3 tokens
+        }
+        city = cityTokens.join(' ').trim();
+      }
+    }
+
+    KPDBG.info('parseCityStateZip()', { input: raw, tokens, city, state, zip });
+    return { city, state, zip };
+  }
+  function addManualCurrent(){
+    const label = (addrSearch.value||'').trim();
+    const price = num(addrPrice.value);
+    const rent  = num(addrRent.value);
+    KPDBG.info('Add manual address clicked/enter', { label, price, rent });
+    if (!label){ showErr('Enter an address to add.'); return; }
+    if (!price){ showErr('Enter a purchase price for this address.'); return; }
+
+    const parsed = parseCityStateZip(label);
+    KPDBG.info('Parsed city/state/zip', parsed);
+
+    addPicked({ label, address: label, ...parsed }, rent, price);
+    afterPickReset();
+  }
+
+  function afterPickReset(){
+    addrSearch.value=''; addrRent.value=''; addrPrice.value='';
+    addrResults.innerHTML=''; addrResults.style.display='none';
+    addrSearch.setAttribute('aria-expanded','false');
+    KPDBG.info('Cleared add controls');
+  }
+  clearBtn.addEventListener('click', afterPickReset);
+
+  // ---------------- Picked list table ----------------
+  function pickedItems(){
+    const items = Array.from(pickedTableBody.querySelectorAll('tr[data-item]')).map((row)=>({
+      label: row.querySelector('[data-label]')?.textContent || '',
+      address: row.dataset.address || '',
+      city: row.dataset.city || '',
+      state: row.dataset.state || '',
+      zip: row.dataset.zip || '',
+      rent: Number(row.dataset.rent || 0),
+      price: Number(row.dataset.price || 0)
+    }));
+    return items;
+  }
+
+  function addPicked(addr, rent, price){
+    const count = pickedTableBody.querySelectorAll('tr[data-item]').length;
+    if (count >= 10){ showErr('You can add up to 10 properties.'); return; }
+
+    KPDBG.group(`Add picked row: ${addr.label}`, ()=>{
+      KPDBG.info('addr', addr);
+      KPDBG.info('rent', rent, 'price', price);
+    });
+
+    const node = pickedRowTpl.content.firstElementChild.cloneNode(true);
+    node.querySelector('[data-label]').textContent = addr.label;
+    node.querySelector('[data-rent-readonly]').textContent  = dollars(rent || 0);
+    node.querySelector('[data-price-readonly]').textContent = dollars(price || 0);
+
+    node.dataset.address = addr.address || '';
+    node.dataset.city    = addr.city    || '';
+    node.dataset.state   = addr.state   || '';
+    node.dataset.zip     = addr.zip     || '';
+    node.dataset.rent    = String(rent || 0);
+    node.dataset.price   = String(price || 0);
+
+    node.querySelector('[data-remove]').addEventListener('click', ()=>{
+      KPDBG.info('Remove picked row', { label: addr.label });
+      node.remove(); updatePickedCountAndIndex();
+    });
+
+    pickedTableBody.appendChild(node);
+    updatePickedCountAndIndex();
+  }
+
+  function updatePickedCountAndIndex(){
+    const rows = Array.from(pickedTableBody.querySelectorAll('tr[data-item]'));
+    rows.forEach((row, idx)=> { const idxCell = row.querySelector('[data-idx]'); if (idxCell) idxCell.textContent = String(idx+1); });
+    pickedCount.textContent = `${rows.length} of 10 selected`;
+    KPDBG.info('Picked list count/index updated', { count: rows.length });
+  }
+
+  // ---------------- Server calls ----------------
+  async function postJSON(url, body){
+    KPDBG.group(`POST ${url}`, ()=> KPDBG.table(body));
+    KPDBG.time(`fetch:${url}`);
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+      .catch(err => { KPDBG.error('fetch failed', err); throw err; });
+    KPDBG.timeEnd(`fetch:${url}`);
+
+    if (!res.ok){
+      const t = await res.text().catch(()=> '');
+      KPDBG.error('non-OK response', res.status, t);
+      throw new Error(t || `Request failed: ${res.status}`);
+    }
+    const json = await res.json().catch(err => { KPDBG.error('json parse failed', err); throw err; });
+    KPDBG.info('response ok');
+    return json;
+  }
+
+  async function maybePrefetch(picked, price){
+    const hasLocation = !!(picked.state || picked.zip);
+    if (!hasLocation) { KPDBG.warn('Prefetch skipped — missing state/zip', picked); return null; }
+    try{
+      const payload = {
+        inputs: {
+          address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
+          propertyType: '', units: 1, purchasePrice: price, ownerOccupied: false
+        }
+      };
+      KPDBG.info('Prefetch start', { address: picked.address });
+      const out = await postJSON(`${FN_BASE}/api/rent-prefetch`, payload);
+      KPDBG.info('Prefetch ok', { hasAppreciation: !!out?.ai?.appreciation, hasRent: !!out?.ai?.rent?.est });
+      return out;
+    } catch (e){
+      KPDBG.warn('Prefetch failed', e);
+      return null;
+    }
+  }
+
+  async function analyzeOne(shared, picked){
+    const price = Number(picked.price || 0);
+    if (!price) throw new Error(`Missing price for: ${picked.label}`);
+
+    KPDBG.group(`Analyze: ${picked.label}`, ()=> KPDBG.info('shared', shared, 'picked', picked));
+
+    const prefetch = await maybePrefetch(picked, price);
+
+    const inputs = {
+      address: picked.address, city: picked.city, state: picked.state, zip: picked.zip,
+      propertyType: '', units: 1, purchasePrice: price,
+      downPct: shared.downPct, rate: shared.rate, termYears: shared.termYears,
+      closingCosts: shared.closingCosts, pointsPct: shared.pointsPct,
+      rent: Number(picked.rent || (prefetch?.ai?.rent?.est || 0)),
+      otherIncome: 0, vacancyPct: shared.vacancyPct
+    };
+
+    KPDBG.time(`analyze:${picked.label}`);
+    const analyzed = await postJSON(`${FN_BASE}/api/rent-analyzer`, { inputs, prefetch });
+    KPDBG.timeEnd(`analyze:${picked.label}`);
+    KPDBG.info('Analyze ok', { metrics: analyzed?.metrics, prefetch: !!prefetch });
+    analyzed.prefetch = prefetch || null;
+    return analyzed;
+  }
+
+  // ---------------- Render ranked table + sorting ----------------
+  let lastResults = [];
+  let lastOrder   = null;
+
+  function derive5yTotalReturn(item){
+    const direct = Number(item.metrics?.totalReturnPctProjected ?? NaN);
+    if (!Number.isNaN(direct)) return direct;
+
+    const appr = item.prefetch?.ai?.appreciation || null;
+    if (appr) {
+      if (Array.isArray(appr.horizon_years) && Array.isArray(appr.pct)) {
+        const idx = appr.horizon_years.findIndex((y)=> Number(y) === 5);
+        if (idx >= 0 && Number.isFinite(Number(appr.pct[idx]))) return Number(appr.pct[idx]) * 100;
+      }
+      if (Array.isArray(appr.pct_5y) && appr.pct_5y.length) return Number(appr.pct_5y[0]) * 100;
+      if (typeof appr.pct_5y === 'number')  return Number(appr.pct_5y) * 100;
+      if (typeof appr.total_return_5y === 'number') return Number(appr.total_return_5y) * 100;
+    }
+    // not received
+    return null;
+  }
+
+  function renderTable(results, order, aiMeta){
+    KPDBG.group('Render table', ()=>{
+      KPDBG.info('aiMeta', aiMeta);
+      KPDBG.info('order', order);
+      KPDBG.table(results.map(r => ({
+        address: formatAddr(r.inputs),
+        price: r.metrics?.price,
+        rent: r.inputs?.rent ?? r.prefetch?.ai?.rent?.est ?? 0,
+        coc: r.metrics?.cashOnCash,
+        dscr: r.metrics?.dscr
+      })));
+    });
+
+    lastResults = results.slice();
+    lastOrder   = Array.isArray(order) ? order.slice() : null;
+
+    portTbl.innerHTML = '';
+    const list = lastOrder ? lastOrder.map(i=> lastResults[i]) : lastResults;
+
+    let notReceivedCount = 0;
+
+    list.forEach((r, i)=>{
+      const addr  = formatAddr(r.inputs);
+      const fiveY = derive5yTotalReturn(r); // %
+      if (fiveY == null) notReceivedCount++;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td style="max-width:520px; white-space:normal">${addr}</td>
+        <td>${dollars(r.metrics?.price)}</td>
+        <td>${dollars(r.inputs?.rent || r.prefetch?.ai?.rent?.est || 0)}</td>
+        <td>${dollars(r.metrics?.cashFlowMonthly)}</td>
+        <td>${Number(r.metrics?.capRate||0).toFixed(2)}%</td>
+        <td>${Number(r.metrics?.cashOnCash||0).toFixed(1)}%</td>
+        <td>${Number(r.metrics?.dscr||0).toFixed(2)}</td>
+        <td>${fiveY != null ? Number(fiveY).toFixed(1) + '%' : 'Not Received'}</td>`;
+      portTbl.appendChild(tr);
+    });
+
+    if (notReceivedCount) {
+      KPDBG.warn(`5y appreciation Not Received for ${notReceivedCount} row(s).`);
+    }
+
+    portNote.textContent = aiMeta?.ok
+      ? (aiMeta.summary ? `Ranked by AI · ${aiMeta.summary}` : 'Ranked by AI (investment attractiveness).')
+      : 'AI ranking unavailable — sorted by Cash-on-Cash then Monthly Cash Flow.';
+    portRes.style.display = 'block';
+  }
+
+  // Sorting
+  let sortState = { key: 'rank', dir: 'asc' };
+
+  function applySort(key){
+    if (!lastResults.length) return;
+    KPDBG.info('Apply sort', { key, dir: sortState.dir });
+
+    // Build array of {idx, item}
+    const arr = (lastOrder ? lastOrder : lastResults.map((_,i)=> i)).map(idx => ({ idx, item: lastResults[idx] }));
+
+    const getField = (obj) => {
+      switch (key) {
+        case 'rank': return arr.indexOf(obj);
+        case 'address':           return formatAddr(obj.item.inputs).toLowerCase();
+        case 'price':             return Number(obj.item.metrics?.price || 0);
+        case 'rent':              return Number(obj.item.inputs?.rent || obj.item.prefetch?.ai?.rent?.est || 0);
+        case 'cash_flow_monthly': return Number(obj.item.metrics?.cashFlowMonthly || 0);
+        case 'cap_rate':          return Number(obj.item.metrics?.capRate || 0);
+        case 'cash_on_cash':      return Number(obj.item.metrics?.cashOnCash || 0);
+        case 'dscr':              return Number(obj.item.metrics?.dscr || 0);
+        case 'total_return_5y':   return derive5yTotalReturn(obj.item); // may be null
+        default: return 0;
+      }
+    };
+
+    arr.sort((a,b)=>{
+      const vaRaw = getField(a), vbRaw = getField(b);
+      // strings
+      if (typeof vaRaw === 'string' || typeof vbRaw === 'string') {
+        return sortState.dir === 'asc'
+          ? String(vaRaw).localeCompare(String(vbRaw))
+          : String(vbRaw).localeCompare(String(vaRaw));
+      }
+      // numbers (nulls go to bottom regardless of direction)
+      const va = (vaRaw == null) ? (sortState.dir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY) : Number(vaRaw);
+      const vb = (vbRaw == null) ? (sortState.dir === 'asc' ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY) : Number(vbRaw);
+      return sortState.dir === 'asc' ? (va - vb) : (vb - va);
+    });
+
+    const newOrder = arr.map(x => x.idx);
+    KPDBG.info('Sorted order indices', newOrder);
+    renderTable(lastResults, newOrder, { ok: !!lastOrder });
+  }
+
+  function attachSortHandlers(){
+    if (!portHead) return;
+    portHead.querySelectorAll('th[data-sort]').forEach(th=>{
+      th.style.cursor = 'pointer';
+      th.addEventListener('click', ()=>{
+        const key = th.getAttribute('data-sort');
+        KPDBG.info('Header click', { key });
+        if (sortState.key === key) {
+          sortState.dir = (sortState.dir === 'asc' ? 'desc' : 'asc');
+        } else {
+          sortState.key = key;
+          sortState.dir = 'asc';
+        }
+        applySort(sortState.key);
+        // set visual arrows
+        portHead.querySelectorAll('.sort-arrow').forEach(el=> el.textContent = '');
+        const arrow = th.querySelector('.sort-arrow');
+        if (arrow) arrow.textContent = sortState.dir === 'asc' ? '▲' : '▼';
+      });
+    });
+  }
+  attachSortHandlers();
+
+  // ---------------- Submit ----------------
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault(); hideErr(); portRes.style.display='none'; portTbl.innerHTML='';
+
+    try{
+      const shared = {
+        downPct:num(document.getElementById('downPct').value),
+        rate:num(document.getElementById('rate').value),
+        termYears:num(document.getElementById('termYears').value),
+        closingCosts:num(document.getElementById('closingCosts').value),
+        pointsPct:num(document.getElementById('pointsPct').value),
+        vacancyPct:num(document.getElementById('vacancyPct').value || 5)
+      };
+      KPDBG.group('Submit clicked', ()=> {
+        KPDBG.info('shared inputs', shared);
+        KPDBG.info('consent', document.getElementById('consent')?.checked);
+        KPDBG.info('picked items', pickedItems());
+      });
+
+      if (!document.getElementById('consent').checked) throw new Error('Please accept the educational-only consent.');
+      if (!shared.downPct || !shared.rate || !shared.termYears) throw new Error('Down %, Rate, and Term are required.');
+
+      const items = pickedItems();
+      if (!items.length) throw new Error('Please add at least one address.');
+      if (items.length > 10) throw new Error('Up to 10 properties supported.');
+      if (items.some(x => !x.price)) throw new Error('Each address needs a purchase price.');
+
+      submitBtn.disabled = true; submitBtn.textContent = 'Analyzing…';
+
+      const results = [];
+      KPDBG.time('analyze:all');
+      for (const p of items){
+        const out = await analyzeOne(shared, p);
+        results.push(out);
+      }
+      KPDBG.timeEnd('analyze:all');
+
+      try{
+        KPDBG.time('rank:server');
+        const rankResp = await postJSON(`${FN_BASE}/api/portfolio-rank`, { items: results, aiMode: 'auto' });
+        KPDBG.timeEnd('rank:server');
+        const order = Array.isArray(rankResp.order) ? rankResp.order : null;
+        KPDBG.info('Server rank ok', { order, summary: rankResp.summary });
+        renderTable(results, order, { ok: !!rankResp.ok, summary: rankResp.summary });
+      } catch (rankErr) {
+        KPDBG.warn('Server rank failed, using client fallback', rankErr);
+        const idx = results.map((_, i)=> i);
+        idx.sort((i, j)=>{
+          const a = results[i].metrics||{}, b = results[j].metrics||{};
+          const c1 = Number(a.cashOnCash||0), c2 = Number(b.cashOnCash||0);
+          if (c2 !== c1) return c2 - c1;
+          const f1 = Number(a.cashFlowMonthly||0), f2 = Number(b.cashFlowMonthly||0);
+          return f2 - f1;
+        });
+        renderTable(results, idx, { ok:false, summary:'' });
+      }
+
+      // default sort indicator to AI rank (#)
+      const thRank = portHead?.querySelector('th[data-sort="rank"] .sort-arrow');
+      if (thRank) thRank.textContent = '▲';
+      sortState = { key: 'rank', dir: 'asc' };
+
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({ event:'portfolio_analyzer_submit', count: items.length });
+
+    } catch (ex){
+      KPDBG.error('Submit error', ex);
+      showErr(ex.message || 'Something went wrong.');
+    } finally {
+      submitBtn.disabled = false; submitBtn.textContent = 'Analyze & Rank';
+    }
+  });
+})();

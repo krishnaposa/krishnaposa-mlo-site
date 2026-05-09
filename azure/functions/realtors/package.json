@@ -1,0 +1,14 @@
+{
+  "name": "realtorSubmit",
+  "version": "1.0.0",
+  "description": "Azure Function to save realtor info to Cosmos DB and send ACS emails",
+  "engines": { "node": ">=18" },
+  "main": "index.js",
+  "scripts": {
+    "start": "func start"
+  },
+  "dependencies": {
+    "@azure/cosmos": "^4.2.0",
+    "@azure/communication-email": "^1.0.0"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "version": "2.0",
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "maxTelemetryItemsPerSecond": 5
+      }
+    },
+    "logLevel": {
+      "default": "Information",
+      "Function": "Information",
+      "Host.Results": "Information",
+      "Host.Aggregator": "Information"
+    }
+  },
+  "extensions": {
+    "http": {
+      "routePrefix": "api",
+      "maxOutstandingRequests": 200,
+      "maxConcurrentRequests": 100,
+      "dynamicThrottlesEnabled": true
+    },
+    "timers": {
+      "scheduleMonitor": {
+        "enabled": true,
+        "useMonitor": true
+      }
+    }
+  },
+  "functionTimeout": "00:05:00",
+  "healthMonitor": {
+    "enabled": true,
+    "healthCheckInterval": "00:01:00",
+    "healthCheckWindow": "00:10:00",
+    "healthCheckThreshold": 6,
+    "counterThreshold": 0.80
+  }
+}
