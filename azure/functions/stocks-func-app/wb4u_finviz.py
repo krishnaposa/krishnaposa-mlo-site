@@ -1,6 +1,7 @@
 import time
 import logging
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
+from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
 from finviz.screener import Screener
@@ -120,3 +121,48 @@ def getStocksSymbols(cap: List[str], sortOrder: str = "-epsyoy1") -> List[str]:
     except Exception as e:
         logging.exception(f"[finviz] getStocksSymbols error: {e}")
     return symbols
+
+
+def parse_finviz_screener_url(url: str, *, default_sort: str = "-marketcap") -> Tuple[List[str], str]:
+    """
+    Extract Finviz filter tokens and sort order from a screener URL (same as the site's ?f=...&o=...).
+
+    Examples:
+      https://finviz.com/screener.ashx?v=111&f=cap_midover,ta_highlow52w_nh&o=-marketcap
+    """
+    raw = (url or "").strip()
+    if not raw:
+        return [], default_sort
+    if raw.startswith("/"):
+        raw = "https://finviz.com" + raw
+    elif not raw.lower().startswith("http"):
+        raw = "https://finviz.com/" + raw.lstrip("/")
+    parsed = urlparse(raw)
+    qs = parse_qs(parsed.query)
+    f_raw = (qs.get("f") or [""])[0]
+    f_raw = unquote(str(f_raw).replace("+", ","))
+    filters = [x.strip() for x in f_raw.split(",") if x.strip()]
+    order = (qs.get("o") or [default_sort])[0] or default_sort
+    return filters, order
+
+
+def symbols_from_screener_url(
+    url: str,
+    *,
+    max_symbols: int = 60,
+    default_sort: Optional[str] = None,
+) -> List[str]:
+    """
+    Run the Finviz screener implied by a pasted browser URL and return tickers (same order as screen).
+
+    Requires query parameter ``f=`` (comma-separated Finviz filter codes).
+    """
+    ds = default_sort if default_sort is not None else "-marketcap"
+    filters, order = parse_finviz_screener_url(url, default_sort=ds)
+    if not filters:
+        raise ValueError(
+            "No Finviz filters in URL — paste a full screener link including "
+            "?f=filter1,filter2,... (see Finviz URL while viewing your screen)."
+        )
+    syms = getStocksSymbols(filters, sortOrder=order)
+    return syms[: max(1, int(max_symbols))]

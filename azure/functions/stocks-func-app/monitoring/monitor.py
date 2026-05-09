@@ -569,6 +569,17 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         })
 
     stamp = today.strftime("%Y-%m-%d")
+
+    momentum_section_html = None
+    if os.getenv("MOMENTUM_PORTFOLIO_ENABLED", "0") == "1":
+        try:
+            from .momentum_portfolio import format_momentum_email_section, run_momentum_daily
+
+            momentum_section_html = format_momentum_email_section(run_momentum_daily())
+        except Exception as e:
+            logger.warning("[momentum] daily update failed: %s", e)
+            momentum_section_html = f"<p><i>Momentum portfolio error: {e}</i></p>"
+
     send_email_report_with_sims(
         stamp=stamp,
         universe_tickers=universe_tickers,
@@ -584,6 +595,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         opt_rows=[],       # placeholder — still valid
         wheel_rows=wheel_rows,
         perf_rows=perf_rows,  # new table
+        momentum_section_html=momentum_section_html,
         subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),
     )
 

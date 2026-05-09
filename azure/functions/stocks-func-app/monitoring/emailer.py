@@ -284,6 +284,7 @@ def send_email_report_with_sims(*,
     opt_rows: Optional[List[Dict]] = None,    # ticker, expiry, dte, k1, k2, debit, oi1, oi2, combo_spread
     wheel_rows: Optional[List[Dict]] = None,  # cash-secured put wheel candidates
     perf_rows: Optional[List[Dict]] = None,   # ticker, perf_5d, perf_1m, perf_6m
+    momentum_section_html: Optional[str] = None,  # monitoring.momentum_portfolio HTML fragment
     subj_prefix: str = "Daily Stock Picks"
 ):
     if os.getenv("SEND_EMAIL", "0") != "1":
@@ -319,6 +320,13 @@ def send_email_report_with_sims(*,
     html_wheel_tickers = _list_html(wheel_tickers)
     html_sims = _sim_table_html(sim_rows)
     html_perf = _perf_table_html(perf_rows)
+    if momentum_section_html:
+        html_momentum_block = (
+            "<h3>Momentum RS portfolio (52w RS · trailing stop)</h3>"
+            f"<div>{momentum_section_html}</div>"
+        )
+    else:
+        html_momentum_block = ""
     # Disabled for now: LEAPS/debit-spread AI sections are not rendered.
     # html_spreads = _list_html(ai_spreads_list)
     # html_leaps = _list_html(ai_leaps_list)
@@ -365,6 +373,8 @@ def send_email_report_with_sims(*,
 
       <h3>Performance (Price Change)</h3>
       {html_perf}
+
+      {html_momentum_block}
 
       <!-- Disabled for now: LEAPS/debit-spread AI sections. -->
       <!--
