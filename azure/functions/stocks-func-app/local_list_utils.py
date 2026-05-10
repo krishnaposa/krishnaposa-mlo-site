@@ -1,6 +1,6 @@
 # local_list_utils.py
 import os, json, logging
-from typing import List, Tuple, Dict, Optional
+from typing import Any, List, Tuple, Dict, Optional
 
 try:
     from azure.storage.blob import BlobServiceClient, ContentSettings

@@ -273,7 +273,7 @@ def send_email_report_with_sims(*,
     wheel_rows: Optional[List[Dict]] = None,  # cash-secured put wheel candidates
     perf_rows: Optional[List[Dict]] = None,   # ticker, perf_5d, perf_1m, perf_6m
     momentum_section_html: Optional[str] = None,  # monitoring.momentum_portfolio HTML fragment
-    holdings_exit_alert_tickers: Optional[List[str]] = None,  # removed from holdings_list (trailing/RS) — subject line
+    holdings_exit_alert_tickers: Optional[List[str]] = None,  # trailing/RS exit tickers (subject line; list not auto-edited unless configured)
     momentum_exited_tickers: Optional[List[str]] = None,  # set when momentum ran; None if feature off
     subj_prefix: str = "Daily Stock Picks"
 ):
@@ -362,7 +362,7 @@ def send_email_report_with_sims(*,
       <div>{html_trend_entries}</div>
 
       <h3>Holdings — trailing stop &amp; RS exits (holdings_list.json)</h3>
-      <div><i>Same rules as momentum: trailing stop off high_seen; exit if RS percentile &lt; threshold (default 70). Removals update the blob list.</i></div>
+      <div><i>Same rules as momentum: trailing stop off high_seen; exit if RS percentile &lt; threshold (default 70). holdings_list.json is only changed automatically if HOLDINGS_LIST_REMOVE_ON_EXIT=1.</i></div>
       <div>{html_holdings_trailing}</div>
 
       {html_momentum_block}

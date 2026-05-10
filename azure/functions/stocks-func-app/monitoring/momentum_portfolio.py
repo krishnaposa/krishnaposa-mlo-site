@@ -5,6 +5,7 @@ Separate from the main quant monitor; optional daily hook updates JSON and feeds
 
 Holdings list (holdings_list.json) uses the same trailing-stop + RS exit rules via run_holdings_trailing_daily()
 (state: holdings_trailing_state.json). Disable with HOLDINGS_TRAILING_EXITS_ENABLED=0.
+Set HOLDINGS_LIST_REMOVE_ON_EXIT=1 to drop exited tickers from holdings_list.json automatically (default: manual edits only).
 
 Env:
   MOMENTUM_PORTFOLIO_ENABLED=1   — run update + include email section
@@ -185,7 +186,8 @@ def get_rs_ratings(tickers: List[str]) -> pd.Series:
 def run_holdings_trailing_daily() -> Dict[str, Any]:
     """
     Trailing stop + RS percentile exits for symbols in holdings_list.json (blob).
-    Persists high_seen in holdings_trailing_state.json; removes exited tickers from holdings_list.json.
+    Persists high_seen in holdings_trailing_state.json.
+    By default does NOT edit holdings_list.json — remove tickers there manually unless HOLDINGS_LIST_REMOVE_ON_EXIT=1.
     Uses same thresholds as momentum: MOMENTUM_RS_EXIT_THRESHOLD (default 70), MOMENTUM_TRAILING_STOP_PCT.
     """
     out: Dict[str, Any] = {
@@ -277,10 +279,11 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
         state.pop(t, None)
 
     if to_delete:
-        remaining = sorted(hold_set - exited_set)
-        save_holdings_list(remaining, meta={"source": "holdings_trailing_exit"})
-        out["list_saved"] = True
-        updates_made = True
+        if os.getenv("HOLDINGS_LIST_REMOVE_ON_EXIT", "0") == "1":
+            remaining = sorted(hold_set - exited_set)
+            save_holdings_list(remaining, meta={"source": "holdings_trailing_exit"})
+            out["list_saved"] = True
+        updates_made = True  # state popped for exits — persist trailing state
 
     if updates_made:
         try:
@@ -291,8 +294,8 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
             out["messages"].append(msg)
             logger.warning("[holdings_trailing] %s", msg)
 
-    remaining_tickers = sorted(hold_set - exited_set)
-    for t in remaining_tickers:
+    # Table: all symbols still in holdings_list (exits alert only; list blob unchanged unless REMOVE_ON_EXIT).
+    for t in sorted(hold_set):
         hi = float((state.get(t) or {}).get("high_seen") or 0.0)
         cp = float(closes[t].dropna().iloc[-1]) if t in closes.columns else float("nan")
         rs_v = rs_ratings.get(t)
@@ -330,7 +333,10 @@ def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
     msg_html = "".join(f"<div style='margin:2px 0'>{_esc(m)}</div>" for m in msgs)
 
     if exited:
-        msg_html += f"<div style='margin-top:6px'><b>Removed from holdings_list:</b> {_esc(', '.join(exited))}</div>"
+        msg_html += (
+            f"<div style='margin-top:6px'><b>Exit signal today:</b> {_esc(', '.join(exited))} "
+            f"<span style='font-size:11px;color:#666'>(holdings_list.json is not auto-edited — remove manually.)</span></div>"
+        )
 
     table = ""
     if rows:

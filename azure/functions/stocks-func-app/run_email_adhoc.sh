@@ -17,12 +17,29 @@ fi
 # Email settings. Use a Gmail app password, not your normal Gmail password.
 export SEND_EMAIL="1"
 export EMAIL_FROM="krishna.posa@gmail.com"
-export EMAIL_PASSWORD="${EMAIL_PASSWORD:-<gmail-app-password>}"
+export EMAIL_PASSWORD="ivwy ubxh jzjd atmr"
 export EMAIL_TO="krishnaposa@gmail.com"
 export EMAIL_SUBJECT_PREFIX="Adhoc Stock Picks"
 
 # Required for universe/local-list Blob access.
 export MONITOR_STORAGE="${MONITOR_STORAGE:-<azure-storage-connection-string>}"
+
+# --- Momentum RS portfolio (trailing stop + RS exit; email section) ---
+# Persists to blob momentum_portfolio.json (override container/name if needed).
+export MOMENTUM_PORTFOLIO_ENABLED="${MOMENTUM_PORTFOLIO_ENABLED:-1}"
+export MOMENTUM_FINVIZ_URL="${MOMENTUM_FINVIZ_URL:-https://finviz.com/screener.ashx?v=111&f=cap_mid,sh_price_o5,ta_highlow52w_nh&ft=3}"
+# Used when the URL has no &o= sort param (yfinance/Finviz screener order).
+export MOMENTUM_FINVIZ_SORT="${MOMENTUM_FINVIZ_SORT:--marketcap}"
+export MOMENTUM_PORTFOLIO_SIZE="${MOMENTUM_PORTFOLIO_SIZE:-20}"
+export MOMENTUM_RS_EXIT_THRESHOLD="${MOMENTUM_RS_EXIT_THRESHOLD:-70}"
+export MOMENTUM_TRAILING_STOP_PCT="${MOMENTUM_TRAILING_STOP_PCT:-0.15}"
+# After successful blob save, also write ./momentum_portfolio.json (handy for local).
+export MOMENTUM_PORTFOLIO_MIRROR_LOCAL="${MOMENTUM_PORTFOLIO_MIRROR_LOCAL:-1}"
+
+# Holdings list: same trailing/RS rules; state in holdings_trailing_state.json.
+# holdings_list.json is NOT auto-edited on exit (you remove tickers manually). Set to 1 to auto-drop exits from the blob:
+export HOLDINGS_LIST_REMOVE_ON_EXIT="${HOLDINGS_LIST_REMOVE_ON_EXIT:-0}"
+export HOLDINGS_TRAILING_EXITS_ENABLED="${HOLDINGS_TRAILING_EXITS_ENABLED:-1}"
 
 # Optional wheel strategy knobs.
 export WHEEL_ENABLED="1"
