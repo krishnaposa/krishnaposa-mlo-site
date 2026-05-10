@@ -128,67 +128,6 @@ def _opt_table_html(rows: Optional[List[Dict]], max_rows: int = 40) -> str:
     return "".join(html)
 
 
-def _wheel_table_html(rows: Optional[List[Dict]], max_rows: int = 20) -> str:
-    if not rows:
-        return "<i>No wheel candidates</i>"
-
-    def _fmt_money(x):
-        try:
-            return f"${float(x):.2f}"
-        except Exception:
-            return "—"
-
-    def _fmt_pct(x):
-        try:
-            return f"{float(x)*100:.1f}%"
-        except Exception:
-            return "—"
-
-    def _fmt_num(x):
-        try:
-            return f"{float(x):.1f}"
-        except Exception:
-            return "—"
-
-    head = rows[:max_rows]
-    html = [
-        "<table border='0' cellspacing='0' cellpadding='4'>",
-        "<thead><tr>",
-        "<th align='left'>Ticker</th>",
-        "<th align='left'>Expiry</th>",
-        "<th align='right'>DTE</th>",
-        "<th align='right'>Spot</th>",
-        "<th align='right'>Put K</th>",
-        "<th align='right'>Credit</th>",
-        "<th align='right'>ROC</th>",
-        "<th align='right'>Ann.</th>",
-        "<th align='right'>B/E</th>",
-        "<th align='right'>Buffer</th>",
-        "<th align='right'>OI</th>",
-        "<th align='right'>Spread</th>",
-        "<th align='right'>Score</th>",
-        "</tr></thead><tbody>",
-    ]
-    for r in head:
-        html.append(
-            f"<tr><td>{r.get('ticker','')}</td>"
-            f"<td>{r.get('expiry','')}</td>"
-            f"<td align='right'>{r.get('dte','')}</td>"
-            f"<td align='right'>{_fmt_money(r.get('spot'))}</td>"
-            f"<td align='right'>{_fmt_money(r.get('strike'))}</td>"
-            f"<td align='right'>{_fmt_money(r.get('credit'))}</td>"
-            f"<td align='right'>{_fmt_pct(r.get('roc'))}</td>"
-            f"<td align='right'>{_fmt_pct(r.get('ann_return'))}</td>"
-            f"<td align='right'>{_fmt_money(r.get('breakeven'))}</td>"
-            f"<td align='right'>{_fmt_pct(r.get('buffer'))}</td>"
-            f"<td align='right'>{_fmt_num(r.get('oi'))}</td>"
-            f"<td align='right'>{_fmt_pct(r.get('spread'))}</td>"
-            f"<td align='right'>{_fmt_num(r.get('score'))}</td></tr>"
-        )
-    html.append("</tbody></table>")
-    return "".join(html)
-
-
 def _trend_table_html(rows: Optional[List[Dict]], max_rows: int = 30) -> str:
     if not rows:
         return "<i>No trend rows</i>"
@@ -267,6 +206,7 @@ def send_email_report_with_sims(*,
     alltime_high_trend_rows: Optional[List[Dict]] = None,
     trend_entry_list: Optional[List[str]] = None,
     trend_entry_rows: Optional[List[Dict]] = None,
+    holdings_list_tickers: Optional[List[str]] = None,  # current symbols from holdings_list.json (display only)
     holdings_trailing_section_html: Optional[str] = None,  # holdings_list: trailing stop + RS exits
     sim_rows: Optional[List[Dict]] = None,    # ticker, mc30, hmm_bull, ml_prob
     opt_rows: Optional[List[Dict]] = None,    # ticker, expiry, dte, k1, k2, debit, oi1, oi2, combo_spread
@@ -275,7 +215,6 @@ def send_email_report_with_sims(*,
     momentum_section_html: Optional[str] = None,  # monitoring.momentum_portfolio HTML fragment
     momentum_sim_rows: Optional[List[Dict]] = None,  # MC/HMM/ML for current momentum book only
     momentum_perf_rows: Optional[List[Dict]] = None,
-    momentum_wheel_rows: Optional[List[Dict]] = None,  # wheel puts for momentum tickers only
     holdings_exit_alert_tickers: Optional[List[str]] = None,  # trailing/RS exit tickers (subject line; list not auto-edited unless configured)
     momentum_exited_tickers: Optional[List[str]] = None,  # set when momentum ran; None if feature off
     subj_prefix: str = "Daily Stock Picks"
@@ -318,6 +257,10 @@ def send_email_report_with_sims(*,
     html_alltime_high_value = _list_html(alltime_high_value_list or [])
     html_strong_buy_entries = _list_html(strong_buy_entries)
     html_trend_entries = _list_html(trend_entries)
+    _hl = list(holdings_list_tickers) if holdings_list_tickers else []
+    html_holdings_symbols = (
+        _list_html(_hl) if _hl else "<i>No symbols in holdings_list.json</i>"
+    )
     html_holdings_trailing = (
         holdings_trailing_section_html
         if (holdings_trailing_section_html or "").strip()
@@ -348,14 +291,6 @@ def send_email_report_with_sims(*,
     else:
         html_momentum_perf = _perf_table_html(momentum_perf_rows)
 
-    if momentum_wheel_rows is None:
-        html_momentum_wheel = "<i>Momentum portfolio not run — wheel N/A.</i>"
-    elif not momentum_wheel_rows:
-        html_momentum_wheel = (
-            "<i>No wheel candidates for momentum tickers (option filters or not in scored universe).</i>"
-        )
-    else:
-        html_momentum_wheel = _wheel_table_html(momentum_wheel_rows, max_rows=40)
     # Disabled for now: LEAPS/debit-spread AI sections are not rendered.
     # html_spreads = _list_html(ai_spreads_list)
     # html_leaps = _list_html(ai_leaps_list)
@@ -388,6 +323,8 @@ def send_email_report_with_sims(*,
       <div>{html_trend_entries}</div>
 
       <h3>Holdings — trailing stop &amp; RS exits (holdings_list.json)</h3>
+      <div><b>Current holdings_list symbols</b></div>
+      <div>{html_holdings_symbols}</div>
       <div><i>Same rules as momentum: trailing stop off high_seen; exit if RS percentile &lt; threshold (default 70). holdings_list.json is only changed automatically if HOLDINGS_LIST_REMOVE_ON_EXIT=1.</i></div>
       <div>{html_holdings_trailing}</div>
 
@@ -398,10 +335,6 @@ def send_email_report_with_sims(*,
 
       <h3>Momentum — Performance (current book)</h3>
       {html_momentum_perf}
-
-      <h3>Momentum — Wheel (cash-secured puts, current book)</h3>
-      <div><i>Same option-chain rules as main wheel; restricted to tickers still in the momentum portfolio.</i></div>
-      {html_momentum_wheel}
 
       <h3>Wheel Stocks</h3>
       <div>{html_wheel_tickers}</div>
