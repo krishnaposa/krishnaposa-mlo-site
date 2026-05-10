@@ -273,6 +273,9 @@ def send_email_report_with_sims(*,
     wheel_rows: Optional[List[Dict]] = None,  # cash-secured put wheel candidates
     perf_rows: Optional[List[Dict]] = None,   # ticker, perf_5d, perf_1m, perf_6m
     momentum_section_html: Optional[str] = None,  # monitoring.momentum_portfolio HTML fragment
+    momentum_sim_rows: Optional[List[Dict]] = None,  # MC/HMM/ML for current momentum book only
+    momentum_perf_rows: Optional[List[Dict]] = None,
+    momentum_wheel_rows: Optional[List[Dict]] = None,  # wheel puts for momentum tickers only
     holdings_exit_alert_tickers: Optional[List[str]] = None,  # trailing/RS exit tickers (subject line; list not auto-edited unless configured)
     momentum_exited_tickers: Optional[List[str]] = None,  # set when momentum ran; None if feature off
     subj_prefix: str = "Daily Stock Picks"
@@ -330,6 +333,29 @@ def send_email_report_with_sims(*,
         )
     else:
         html_momentum_block = ""
+
+    if momentum_sim_rows is None:
+        html_momentum_sims = "<i>Momentum portfolio not run (disabled or error).</i>"
+    elif not momentum_sim_rows:
+        html_momentum_sims = "<i>No open momentum positions — no simulator rows.</i>"
+    else:
+        html_momentum_sims = _sim_table_html(momentum_sim_rows)
+
+    if momentum_perf_rows is None:
+        html_momentum_perf = "<i>Momentum portfolio not run (disabled or error).</i>"
+    elif not momentum_perf_rows:
+        html_momentum_perf = "<i>No open momentum positions — no performance rows.</i>"
+    else:
+        html_momentum_perf = _perf_table_html(momentum_perf_rows)
+
+    if momentum_wheel_rows is None:
+        html_momentum_wheel = "<i>Momentum portfolio not run — wheel N/A.</i>"
+    elif not momentum_wheel_rows:
+        html_momentum_wheel = (
+            "<i>No wheel candidates for momentum tickers (option filters or not in scored universe).</i>"
+        )
+    else:
+        html_momentum_wheel = _wheel_table_html(momentum_wheel_rows, max_rows=40)
     # Disabled for now: LEAPS/debit-spread AI sections are not rendered.
     # html_spreads = _list_html(ai_spreads_list)
     # html_leaps = _list_html(ai_leaps_list)
@@ -366,6 +392,16 @@ def send_email_report_with_sims(*,
       <div>{html_holdings_trailing}</div>
 
       {html_momentum_block}
+
+      <h3>Momentum — Simulators (current book)</h3>
+      {html_momentum_sims}
+
+      <h3>Momentum — Performance (current book)</h3>
+      {html_momentum_perf}
+
+      <h3>Momentum — Wheel (cash-secured puts, current book)</h3>
+      <div><i>Same option-chain rules as main wheel; restricted to tickers still in the momentum portfolio.</i></div>
+      {html_momentum_wheel}
 
       <h3>Wheel Stocks</h3>
       <div>{html_wheel_tickers}</div>

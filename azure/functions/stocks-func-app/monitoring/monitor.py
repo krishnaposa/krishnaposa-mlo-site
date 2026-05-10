@@ -57,6 +57,65 @@ def _shrink_df(df: pd.DataFrame) -> pd.DataFrame:
     return d
 
 
+def _wheel_rows_for_symbols(out: pd.DataFrame, today: datetime.date, symbols: list[str]) -> list[dict]:
+    """Cash-secured put wheel rows for specific tickers that appear in ``out`` (same logic as main wheel loop)."""
+    rows: list[dict] = []
+    want = sorted({str(s).upper().strip() for s in symbols if str(s).strip()})
+    for t in want:
+        match = out[out["ticker"].astype(str).str.upper() == t]
+        if match.empty:
+            logger.warning("[wheel][momentum] %s not in scored universe — skip wheel row", t)
+            continue
+        r = match.iloc[0]
+        try:
+            opt = cash_secured_put_candidate(
+                t,
+                min_dte=WHEEL_MIN_DTE,
+                max_dte=WHEEL_MAX_DTE,
+                pct_otm=WHEEL_PUT_OTM_PCT,
+                today=today,
+            )
+            if not opt.get("ok"):
+                continue
+            open_interest = float(opt.get("open_interest", 0.0) or 0.0)
+            spread_pct = float(opt.get("spread_pct", np.nan))
+            if open_interest < WHEEL_MIN_OI:
+                continue
+            if not np.isfinite(spread_pct) or spread_pct > WHEEL_MAX_SPREAD_PCT:
+                continue
+            dte_earn = opt.get("days_to_earnings")
+            if WHEEL_BLOCK_EARNINGS and dte_earn is not None and 0 <= int(dte_earn) <= EARNINGS_BLOCK_DAYS:
+                continue
+            score = score_wheel_put_row(r, opt)
+            rows.append({
+                "ticker": t,
+                "score": score,
+                "expiry": opt.get("expiry"),
+                "dte": opt.get("dte"),
+                "spot": opt.get("spot"),
+                "strike": opt.get("strike"),
+                "credit": opt.get("mid_credit"),
+                "roc": opt.get("return_on_cash"),
+                "ann_return": opt.get("annualized_return"),
+                "breakeven": opt.get("break_even"),
+                "buffer": opt.get("downside_buffer"),
+                "oi": opt.get("open_interest"),
+                "volume": opt.get("volume"),
+                "iv": opt.get("implied_volatility"),
+                "spread": opt.get("spread_pct"),
+                "earnings_days": dte_earn,
+                "rsi": r.get("rsi14"),
+                "rel_volume": r.get("rel_volume_20"),
+                "debt_to_equity": r.get("debt_to_equity"),
+                "insider_ownership": r.get("insider_ownership"),
+                "rev_growth": r.get("rev_growth"),
+                "earn_growth": r.get("earn_growth"),
+            })
+        except Exception as e:
+            logger.debug("[wheel][momentum] skipped %s: %s", t, e)
+    return sorted(rows, key=lambda x: x.get("score", 0.0), reverse=True)
+
+
 def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     if today is None:
         today = datetime.date.today()
@@ -95,7 +154,30 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         for t in (alltime_high_value_list + trend_entry_list + wheel_finviz_list)
         if str(t).strip()
     }
-    merged_tickers = sorted(set(local_list) | set(universe_tickers) | set(holdings_list) | wheel_seed_tickers)
+    # Include current momentum book so Simulators / Performance / wheel rows can join on `out`.
+    # (Otherwise only names that also appear in local list / universe / Finviz show up.)
+    momentum_portfolio_syms: set[str] = set()
+    if os.getenv("MOMENTUM_PORTFOLIO_ENABLED", "1") == "1":
+        try:
+            from momentum_portfolio_utils import load_momentum_portfolio
+
+            _mom = load_momentum_portfolio()
+            momentum_portfolio_syms = {str(k).upper().strip() for k in _mom if str(k).strip()}
+            if momentum_portfolio_syms:
+                logger.info(
+                    "[momentum] %d portfolio tickers merged into monitor universe",
+                    len(momentum_portfolio_syms),
+                )
+        except Exception as e:
+            logger.warning("[momentum] could not load portfolio for universe merge: %s", e)
+
+    merged_tickers = sorted(
+        set(local_list)
+        | set(universe_tickers)
+        | set(holdings_list)
+        | wheel_seed_tickers
+        | momentum_portfolio_syms
+    )
     end = today + datetime.timedelta(days=1)
     start = today - datetime.timedelta(days=420)
     frames = fetch_prices_batched(merged_tickers, start, end)
@@ -585,6 +667,9 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     momentum_section_html = None
     momentum_exited_tickers: list[str] | None = None
+    momentum_sim_rows: list | None = None
+    momentum_perf_rows: list | None = None
+    momentum_wheel_rows: list | None = None
     if os.getenv("MOMENTUM_PORTFOLIO_ENABLED", "1") == "1":
         try:
             from .momentum_portfolio import format_momentum_email_section, run_momentum_daily
@@ -592,6 +677,40 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
             momentum_result = run_momentum_daily()
             momentum_section_html = format_momentum_email_section(momentum_result)
             momentum_exited_tickers = list(momentum_result.get("exited") or [])
+            mom_syms = [
+                str(r.get("ticker", "")).upper().strip()
+                for r in (momentum_result.get("holdings_rows") or [])
+                if str(r.get("ticker", "")).strip()
+            ]
+            if mom_syms:
+                mu = {s.upper() for s in mom_syms}
+                mom_df = out[out["ticker"].astype(str).str.upper().isin(mu)]
+                momentum_sim_rows = [
+                    {
+                        "ticker": str(r["ticker"]),
+                        "mc30": r["mc_p_up_30d"],
+                        "hmm_bull": r["hmm_prob_bull"],
+                        "ml_prob": r["ml_prob_up_30d"],
+                    }
+                    for _, r in mom_df.iterrows()
+                ]
+                momentum_perf_rows = [
+                    {
+                        "ticker": str(r["ticker"]),
+                        "perf_5d": float(r.get("ret_5d", 0)) * 100,
+                        "perf_1m": float(r.get("ret_21d", 0)) * 100,
+                        "perf_6m": float(r.get("ret_120", 0)) * 100,
+                    }
+                    for _, r in mom_df.iterrows()
+                ]
+                if WHEEL_ENABLED:
+                    momentum_wheel_rows = _wheel_rows_for_symbols(out, today, mom_syms)
+                else:
+                    momentum_wheel_rows = []
+            else:
+                momentum_sim_rows = []
+                momentum_perf_rows = []
+                momentum_wheel_rows = []
         except Exception as e:
             logger.warning("[momentum] daily update failed: %s", e)
             momentum_section_html = f"<p><i>Momentum portfolio error: {e}</i></p>"
@@ -613,6 +732,9 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         wheel_rows=wheel_rows,
         perf_rows=perf_rows,  # new table
         momentum_section_html=momentum_section_html,
+        momentum_sim_rows=momentum_sim_rows,
+        momentum_perf_rows=momentum_perf_rows,
+        momentum_wheel_rows=momentum_wheel_rows,
         holdings_exit_alert_tickers=holdings_trailing_exited,
         momentum_exited_tickers=momentum_exited_tickers,
         subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),

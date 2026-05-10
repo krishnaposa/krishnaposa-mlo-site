@@ -379,6 +379,8 @@ def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
 def run_momentum_daily() -> Dict[str, Any]:
     """
     Update trailing highs, exits, persist JSON. Returns a dict for logging + email HTML.
+    Persists to blob/local every successful run so storage matches the email snapshot,
+    even when no highs/exits occurred that day.
     """
     out: Dict[str, Any] = {
         "enabled": True,
@@ -458,9 +460,19 @@ def run_momentum_daily() -> Dict[str, Any]:
         out["exited"].append(ticker)
         updates_made = True
 
-    if updates_made:
-        save_momentum_portfolio(portfolio, meta={"source": "daily_momentum"})
+    try:
+        save_momentum_portfolio(
+            portfolio,
+            meta={
+                "source": "daily_momentum",
+                "daily_snapshot": True,
+            },
+        )
         out["portfolio_saved"] = True
+    except Exception as e:
+        msg = f"Momentum portfolio save failed: {e}"
+        out["messages"].append(msg)
+        logger.warning("[momentum] %s", msg)
 
     # Holdings snapshot for email table
     for ticker in sorted(portfolio.keys()):
