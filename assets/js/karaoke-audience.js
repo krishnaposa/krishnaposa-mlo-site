@@ -6,7 +6,10 @@
 
   (async function main() {
     const API_BASE = await window.karaokeResolveApiBase();
-    const endpoints = { session: API_BASE + "/api/audience/session" };
+    const endpoints = {
+      session: API_BASE + "/api/audience/session",
+      list: API_BASE + "/api/list",
+    };
 
     const q = new URLSearchParams(window.location.search);
     const roomIdEl = document.getElementById("roomId");
@@ -17,14 +20,107 @@
     const audioModeEl = document.getElementById("audioMode");
     const plainEl = document.getElementById("lyricsPlain");
     const syncedEl = document.getElementById("lyricsSynced");
+    const catalogEl = document.getElementById("availableSongs");
+    const catalogStatusEl = document.getElementById("catalogStatus");
 
     let timer = null;
+    let catalogTimer = null;
     let currentJob = "";
+    let catalogPlayingJobId = "";
+    let catalogItems = [];
     let lrcLines = [];
     let lastSession = null;
 
     function setStatus(t) {
       if (statusEl) statusEl.textContent = t || "";
+    }
+
+    function normalizeHumanTitle(raw) {
+      let s = String(raw || "").trim();
+      if (!s) return "";
+      s = s.replace(/[_\s-]*(?:64|96|128|160|192|256|320)\s*kbps[_\s-]*/gi, " ");
+      s = s.replace(/\.(mp3|wav|m4a|flac|aac|ogg)$/i, "");
+      s = s.replace(/[_]+/g, " ");
+      return s.replace(/\s{2,}/g, " ").trim();
+    }
+
+    function buildSongDisplayLabel(item) {
+      const title = normalizeHumanTitle((item && item.title) || "");
+      const artist = (item && item.artist && String(item.artist).trim()) || "";
+      const movie = (item && item.movie && String(item.movie).trim()) || "";
+      const language = (item && item.language && String(item.language).trim()) || "";
+      const category = (item && item.category && String(item.category).trim()) || "";
+      const tags = Array.isArray(item && item.tags)
+        ? item.tags.slice(0, 2).map((x) => String(x || "").trim()).filter(Boolean)
+        : [];
+      const primary = title || item.job_id;
+      const meta = [];
+      if (artist) meta.push(artist);
+      if (movie) meta.push(movie);
+      if (language) meta.push(language);
+      if (category) meta.push(category);
+      if (tags.length) meta.push(tags.join(", "));
+      return meta.length ? primary + " — " + meta.join(" | ") : primary;
+    }
+
+    function sortCatalogItems(items) {
+      return items.slice().sort((a, b) => {
+        const ua = String(a.updated || "");
+        const ub = String(b.updated || "");
+        if (ua !== ub) return ub.localeCompare(ua);
+        return String(a.job_id || "").localeCompare(String(b.job_id || ""));
+      });
+    }
+
+    function renderCatalog() {
+      if (!catalogEl) return;
+      catalogEl.innerHTML = "";
+      if (!catalogItems.length) return;
+      const dupCount = new Map();
+      catalogItems.forEach((it) => {
+        const lab = buildSongDisplayLabel(it);
+        dupCount.set(lab, (dupCount.get(lab) || 0) + 1);
+      });
+      catalogItems.forEach((it) => {
+        const li = document.createElement("li");
+        li.dataset.jobId = it.job_id || "";
+        let label = buildSongDisplayLabel(it);
+        if ((dupCount.get(label) || 0) > 1) label += " [" + (it.job_id || "") + "]";
+        li.textContent = label;
+        catalogEl.appendChild(li);
+      });
+    }
+
+    function updatePlayingHighlight() {
+      if (!catalogEl) return;
+      catalogEl.querySelectorAll("li").forEach((li) => {
+        li.classList.toggle(
+          "now-playing",
+          !!catalogPlayingJobId && li.dataset.jobId === catalogPlayingJobId
+        );
+      });
+    }
+
+    async function refreshCatalog() {
+      if (!catalogEl || !catalogStatusEl) return;
+      try {
+        const r = await fetch(endpoints.list, { mode: "cors" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const d = await r.json();
+        const items = Array.isArray(d.items) ? d.items : [];
+        catalogItems = sortCatalogItems(items);
+        catalogStatusEl.textContent = catalogItems.length
+          ? catalogItems.length +
+            " song(s) on this server — the host picks what plays in the room. Highlight = current room selection."
+          : "No finished songs yet (host must split tracks first).";
+        renderCatalog();
+        updatePlayingHighlight();
+      } catch (e) {
+        catalogStatusEl.textContent =
+          "Could not load song list: " + (e && e.message ? e.message : String(e));
+        catalogItems = [];
+        catalogEl.innerHTML = "";
+      }
     }
 
     function parseLrc(s) {
@@ -116,10 +212,13 @@
       }
       const d = await r.json();
       if (!d.found || !d.session) {
+        catalogPlayingJobId = "";
         setStatus("Waiting for host...");
+        updatePlayingHighlight();
         return;
       }
       const s = d.session;
+      catalogPlayingJobId = s.job_id || "";
       setStatus("Connected to " + (s.host_name || "host") + " / " + (s.title || s.job_id || ""));
       const isNewSong = s.job_id && s.job_id !== currentJob;
       if (isNewSong) {
@@ -155,10 +254,12 @@
         vocalsEl.pause();
         if (bandEl && !bandEl.paused) bandEl.pause();
       }
+      updatePlayingHighlight();
     }
 
     joinBtn.addEventListener("click", function () {
       if (timer) clearInterval(timer);
+      refreshCatalog().catch(() => {});
       poll().catch((e) => setStatus(String(e)));
       timer = setInterval(function () {
         poll().catch(() => {});
@@ -192,5 +293,11 @@
     }
     const roomFromQuery = (q.get("room") || "").trim();
     if (roomFromQuery) roomIdEl.value = roomFromQuery;
+
+    refreshCatalog().catch(() => {});
+    if (catalogTimer) clearInterval(catalogTimer);
+    catalogTimer = setInterval(function () {
+      refreshCatalog().catch(() => {});
+    }, 8000);
   })();
 })();

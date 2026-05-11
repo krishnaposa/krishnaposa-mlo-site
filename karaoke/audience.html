@@ -37,6 +37,30 @@
       font-weight: 700;
       color: #1d4ed8;
     }
+    #availableSongs {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: 280px;
+      overflow: auto;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    #availableSongs li {
+      padding: 0.35rem 0.65rem;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 0.95rem;
+      color: #334155;
+    }
+    #availableSongs li:last-child {
+      border-bottom: none;
+    }
+    #availableSongs li.now-playing {
+      background: #dbeafe;
+      font-weight: 600;
+      color: #1e40af;
+    }
   </style>
 </head>
 <body>
@@ -61,12 +85,18 @@
     <audio id="bandEl" preload="auto" hidden></audio>
   </section>
   <section class="card">
+    <h2>Available songs</h2>
+    <p class="help">Only the <strong>host</strong> can start or change the stream. Ask them (in person or chat) which song you want next—this list is so you know what exists on the server, not to pick tracks yourself.</p>
+    <p id="catalogStatus" class="help">Loading catalog…</p>
+    <ul id="availableSongs" aria-label="Songs ready to play on this server"></ul>
+  </section>
+  <section class="card">
     <h2>Lyrics</h2>
     <pre id="lyricsPlain" style="white-space:pre-wrap">—</pre>
     <div id="lyricsSynced" hidden></div>
   </section>
 </main>
 <script src="/assets/js/karaoke-api-base.js?v=2"></script>
-<script src="/assets/js/karaoke-audience.js?v=3"></script>
+<script src="/assets/js/karaoke-audience.js?v=4"></script>
 </body>
 </html>
