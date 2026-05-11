@@ -208,3 +208,25 @@ export MONITOR_STORAGE='...'   # your connection string
 export CONTAINER=signals
 export BLOB=holdings_list.json
 az storage blob download --connection-string "$MONITOR_STORAGE"  --container-name "$CONTAINER" --name "$BLOB" --file remote_holdings.json
+
+
+
+# Set from portal or: az storage account show-connection-string -g RG -n ACCOUNT --query connectionString -o tsv
+export STORAGE_CONN="<your-connection-string>"
+
+az storage blob download \
+  --connection-string "$STORAGE_CONN" \
+  --container-name signals \
+  --name momentum_portfolio.json \
+  --output none \
+  --file - 2>/dev/null
+
+az storage blob download \
+  --connection-string "$STORAGE_CONN" \
+  --container-name signals \
+  --name holdings_list.json \
+  --output none \
+  --file - 2>/dev/null
+
+
+az storage blob upload --connection-string "$STORAGE_CONN" --container-name signals --name holdings_list.json --file .\holdings_list.json --overwrite true --content-type "application/json"
