@@ -15,8 +15,10 @@ Implements the same routes the web UI expects:
   GET|POST /api/lyrics — load/save lyrics by job_id (JSON; compatible with karaoke-azure.js)
   GET  /api/list       — { "items": [ { job_id, title, updated, vocals_url, band_url } ] } (like cloud)
 
-  Optional static (default on): GET / → redirect; GET /karaoke/*.html|*.htm|*.txt and GET /assets/* from the
-  repo next to this file — so one ngrok tunnel to KARAOKE_LOCAL_PORT can serve both API and pages.
+  Optional static (default on): GET / → 302 redirect to ``/karaoke/audience.html`` by default. Override with
+  KARAOKE_ROOT_REDIRECT (URL path only, e.g. ``/karaoke/player-folder-local-root.html`` for the folder player —
+  never a Windows ``C:\\...`` path). GET /karaoke/*.html|*.htm|*.txt and GET /assets/* from the repo next to
+  this file — one ngrok tunnel to KARAOKE_LOCAL_PORT can serve both API and pages.
   Disable with KARAOKE_SERVE_REPO_STATIC=0.
   Optional HTTP Basic auth for the host UI only: set both KARAOKE_HOST_HTML_USER and KARAOKE_HOST_HTML_PASSWORD
   (non-empty) to require them for GET/HEAD /karaoke/host.html. Other pages and /api/* are unchanged.
@@ -79,6 +81,52 @@ LYRICS_DIR = ROOT / "lyrics"
 HOST = os.environ.get("KARAOKE_LOCAL_HOST", "127.0.0.1")
 PORT = int(os.environ.get("KARAOKE_LOCAL_PORT", "8787"))
 PUBLIC_BASE = os.environ.get("KARAOKE_LOCAL_PUBLIC_BASE", f"http://{HOST}:{PORT}").rstrip("/")
+
+_DEFAULT_ROOT_REDIRECT = "/karaoke/audience.html"
+
+
+def _root_redirect_path() -> str:
+    """
+    302 target for GET/HEAD ``/`` when repo static serving is enabled.
+
+    Must be a **URL path** on this server (e.g. ``/karaoke/audience.html``), not a Windows filesystem path.
+    If ``KARAOKE_ROOT_REDIRECT`` is set to ``C:/...`` (common mistake from Git Bash / docs), we fall back to
+    the default redirect and log a warning.
+    """
+    raw = os.environ.get("KARAOKE_ROOT_REDIRECT")
+    loc = (raw or "").strip().replace("\\", "/")
+    if not loc:
+        return _DEFAULT_ROOT_REDIRECT
+    if loc.startswith("http://") or loc.startswith("https://"):
+        try:
+            u = urllib.parse.urlparse(loc)
+            out = u.path or "/"
+            if u.query:
+                out += "?" + u.query
+            if u.fragment:
+                out += "#" + u.fragment
+            loc = out if out.startswith("/") else "/" + out.lstrip("/")
+        except Exception:
+            LOG.warning("KARAOKE_ROOT_REDIRECT invalid URL %r; using default", raw)
+            return _DEFAULT_ROOT_REDIRECT
+    # Windows drive path (e.g. C:/Program Files/Git/...) — invalid as Location on http://host:port/
+    if re.match(r"^[A-Za-z]:/", loc):
+        LOG.warning(
+            "KARAOKE_ROOT_REDIRECT=%r looks like a filesystem path; use a URL path e.g. /karaoke/audience.html",
+            raw,
+        )
+        return _DEFAULT_ROOT_REDIRECT
+    if not loc.startswith("/"):
+        loc = "/" + loc.lstrip("/")
+    if re.match(r"^/[A-Za-z]:/", loc):
+        LOG.warning(
+            "KARAOKE_ROOT_REDIRECT=%r produced invalid path %r; use /karaoke/audience.html",
+            raw,
+            loc,
+        )
+        return _DEFAULT_ROOT_REDIRECT
+    return loc
+
 
 # Non-empty user + password → HTTP Basic auth for /karaoke/host.html only (GET/HEAD).
 def _host_html_basic_credentials() -> Optional[Tuple[str, str]]:
@@ -1183,7 +1231,7 @@ class Handler(BaseHTTPRequestHandler):
         if p in ("/", ""):
             if _serve_repo_static_enabled():
                 self.send_response(302)
-                self.send_header("Location", "/karaoke/player-folder-local-root.html")
+                self.send_header("Location", _root_redirect_path())
                 for k, v in self._cors().items():
                     self.send_header(k, v)
                 self.send_header("Content-Length", "0")
@@ -1256,7 +1304,7 @@ class Handler(BaseHTTPRequestHandler):
             if not _serve_repo_static_enabled():
                 return False
             self.send_response(302)
-            self.send_header("Location", "/karaoke/player-folder-local-root.html")
+            self.send_header("Location", _root_redirect_path())
             for k, v in self._cors().items():
                 self.send_header(k, v)
             self.send_header("Content-Length", "0")
@@ -1497,9 +1545,9 @@ def main() -> None:
     LOG.info("Serving %s — submit/status/lyrics compatible with karaoke/index-local.html", PUBLIC_BASE)
     if _serve_repo_static_enabled():
         LOG.info(
-            "Repo static files enabled — e.g. %s/karaoke/player-folder-local-root.html (single ngrok → this port). "
+            "Repo static files enabled — GET / -> 302 %s (override with KARAOKE_ROOT_REDIRECT). "
             "Set KARAOKE_SERVE_REPO_STATIC=0 to disable. Static under assets/: scope=%s (set KARAOKE_STATIC_ASSETS_SCOPE=karaoke to limit).",
-            PUBLIC_BASE,
+            _root_redirect_path(),
             _static_assets_scope(),
         )
 
