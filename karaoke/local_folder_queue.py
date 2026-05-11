@@ -18,6 +18,8 @@ Implements the same routes the web UI expects:
   Optional static (default on): GET / → redirect; GET /karaoke/*.html|*.htm|*.txt and GET /assets/* from the
   repo next to this file — so one ngrok tunnel to KARAOKE_LOCAL_PORT can serve both API and pages.
   Disable with KARAOKE_SERVE_REPO_STATIC=0.
+  Optional HTTP Basic auth for the host UI only: set both KARAOKE_HOST_HTML_USER and KARAOKE_HOST_HTML_PASSWORD
+  (non-empty) to require them for GET/HEAD /karaoke/host.html. Other pages and /api/* are unchanged.
   Narrow which repo files are served under assets/: KARAOKE_STATIC_ASSETS_SCOPE=karaoke — only karaoke*.js,
   header.js, footer.js under assets/js/ and styles.css, karaoke.css, dark-surface.css under assets/css/.
   (Ngrok itself cannot path-filter a tunnel; use this env or a local reverse proxy if you need that.)
@@ -37,7 +39,9 @@ Then open karaoke/index-local.html (set KARAOKE_API_BASE to match, default http:
 """
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import importlib.util
 import json
 import logging
@@ -75,6 +79,23 @@ LYRICS_DIR = ROOT / "lyrics"
 HOST = os.environ.get("KARAOKE_LOCAL_HOST", "127.0.0.1")
 PORT = int(os.environ.get("KARAOKE_LOCAL_PORT", "8787"))
 PUBLIC_BASE = os.environ.get("KARAOKE_LOCAL_PUBLIC_BASE", f"http://{HOST}:{PORT}").rstrip("/")
+
+# Non-empty user + password → HTTP Basic auth for /karaoke/host.html only (GET/HEAD).
+def _host_html_basic_credentials() -> Optional[Tuple[str, str]]:
+    u = (os.environ.get("KARAOKE_HOST_HTML_USER") or "").strip()
+    p = (os.environ.get("KARAOKE_HOST_HTML_PASSWORD") or "").strip()
+    if not u or not p:
+        return None
+    return (u, p)
+
+
+def _is_host_html_path(path: str) -> bool:
+    try:
+        p = urllib.parse.unquote(path or "")
+    except Exception:
+        return False
+    return p.rstrip("/").lower() == "/karaoke/host.html"
+
 
 SEPARATOR = os.environ.get("SEPARATOR", "spleeter").lower().strip()
 # htdemucs_ft = higher quality, slower. Use DEMUCS_MODEL=htdemucs for a noticeable speed-up (still good stems).
@@ -1032,6 +1053,50 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:
         self._send(204, None)
 
+    def _send_401_basic_host(self) -> None:
+        msg = b"Authentication required for karaoke host.\n"
+        self.send_response(401)
+        for k, v in self._cors().items():
+            self.send_header(k, v)
+        self.send_header("WWW-Authenticate", 'Basic realm="Karaoke host"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(msg)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(msg)
+
+    def _host_html_basic_auth_ok(self) -> bool:
+        creds = _host_html_basic_credentials()
+        if not creds:
+            return True
+        exp_u, exp_p = creds
+        auth = (self.headers.get("Authorization") or "").strip()
+        if not auth.startswith("Basic "):
+            self._send_401_basic_host()
+            return False
+        try:
+            raw = base64.b64decode(auth[6:].strip(), validate=False)
+            decoded = raw.decode("utf-8")
+        except Exception:
+            self._send_401_basic_host()
+            return False
+        if ":" not in decoded:
+            self._send_401_basic_host()
+            return False
+        got_u, _, got_rest = decoded.partition(":")
+        got_p = got_rest
+        if got_u != exp_u:
+            self._send_401_basic_host()
+            return False
+        try:
+            ok = hmac.compare_digest(got_p.encode("utf-8"), exp_p.encode("utf-8"))
+        except TypeError:
+            ok = False
+        if not ok:
+            self._send_401_basic_host()
+            return False
+        return True
+
     def _try_send_api_out(self, path: str, *, send_body: bool) -> bool:
         """Serve WAV stems for the HTML5 audio element (GET + Range, HEAD). Returns False if not this route."""
         if not path.startswith("/api/out/"):
@@ -1125,6 +1190,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
 
+        if _is_host_html_path(p):
+            if not self._host_html_basic_auth_ok():
+                return
+
         fp = _static_file_for_url(self.path)
         if fp and fp.is_file():
             try:
@@ -1193,6 +1262,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return True
+        if _is_host_html_path(p):
+            if not self._host_html_basic_auth_ok():
+                return True
         fp = _static_file_for_url(self.path)
         if not fp:
             return False
