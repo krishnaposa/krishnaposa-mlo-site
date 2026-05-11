@@ -14,9 +14,11 @@ Env:
   MOMENTUM_PORTFOLIO_MIRROR_LOCAL=1 — after successful blob save, also write local file
   MOMENTUM_FINVIZ_URL            — optional Finviz screener URL (?f=...) to auto-seed new slots up to PORTFOLIO_SIZE
   MOMENTUM_FINVIZ_SORT          — default sort if URL has no &o= (default -marketcap)
-  MOMENTUM_RS_ENTRY_THRESHOLD    — default 90 (documented for future seeding)
-  MOMENTUM_RS_EXIT_THRESHOLD     — default 70
+  MOMENTUM_RS_ENTRY_THRESHOLD    — default 90 (Finviz seed filter when MOMENTUM_FINVIZ_RS_FILTER=1)
+  MOMENTUM_RS_EXIT_THRESHOLD     — default 70 (exit when RS is strictly below this; RS == threshold does not exit)
   MOMENTUM_TRAILING_STOP_PCT     — default 0.15
+  MOMENTUM_FINVIZ_RS_FILTER      — default 1: only Finviz-seed names with RS %ile >= entry threshold
+  MOMENTUM_RS_MIN_TRADING_DAYS  — min bars of history for RS (default 120) or RS is N/A (no RS exit)
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -68,10 +71,21 @@ RS_ENTRY_THRESHOLD = float(os.getenv("MOMENTUM_RS_ENTRY_THRESHOLD", "90"))
 RS_EXIT_THRESHOLD = float(os.getenv("MOMENTUM_RS_EXIT_THRESHOLD", "70"))
 TRAILING_STOP_PCT = float(os.getenv("MOMENTUM_TRAILING_STOP_PCT", "0.15"))
 PORTFOLIO_SIZE = int(os.getenv("MOMENTUM_PORTFOLIO_SIZE", "20"))
+RS_MIN_TRADING_DAYS = int(os.getenv("MOMENTUM_RS_MIN_TRADING_DAYS", "120"))
+FINVIZ_RS_FILTER = os.getenv("MOMENTUM_FINVIZ_RS_FILTER", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
-def _close_panel(tickers: List[str], *, period: str, interval: str) -> pd.DataFrame:
-    """Normalized Close columns: one column per ticker (uppercase names)."""
+def _close_panel(
+    tickers: List[str], *, period: str, interval: str, adjusted: bool = True
+) -> pd.DataFrame:
+    """
+    One column per ticker (uppercase). When adjusted=True (default), yfinance returns
+    split/dividend-adjusted closes so trailing levels and 1y returns match total-return math.
+    """
     if not tickers:
         return pd.DataFrame()
     tix = [str(t).upper().strip() for t in tickers if str(t).strip()]
@@ -81,7 +95,7 @@ def _close_panel(tickers: List[str], *, period: str, interval: str) -> pd.DataFr
         interval=interval,
         progress=False,
         threads=False,
-        auto_adjust=False,
+        auto_adjust=adjusted,
     )
     if raw is None or raw.empty:
         return pd.DataFrame()
@@ -141,6 +155,33 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         )
         return
 
+    if FINVIZ_RS_FILTER:
+        bench_for_rs = list(dict.fromkeys([*portfolio.keys(), *need]))
+        rs_all = get_rs_ratings(bench_for_rs)
+        filtered_syms: List[str] = []
+        below_thr = 0
+        nan_rs = 0
+        for sym in need:
+            rv = rs_all.get(sym)
+            if rv is None or pd.isna(rv):
+                nan_rs += 1
+                continue
+            if float(rv) >= RS_ENTRY_THRESHOLD:
+                filtered_syms.append(sym)
+            else:
+                below_thr += 1
+        if not filtered_syms:
+            out["messages"].append(
+                f"Finviz RS filter: no symbols meet RS ≥ {RS_ENTRY_THRESHOLD:g} "
+                f"({below_thr} below threshold, {nan_rs} insufficient RS data)."
+            )
+            return
+        out["messages"].append(
+            f"Finviz RS filter: {len(filtered_syms)}/{len(need)} pass RS ≥ {RS_ENTRY_THRESHOLD:g} "
+            f"({below_thr} below, {nan_rs} no RS)."
+        )
+        need = filtered_syms
+
     closes_seed = _close_panel(need, period="5d", interval="1d")
     added: List[str] = []
     for sym in need:
@@ -167,19 +208,43 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         out["messages"].append("Finviz seed: could not price any new symbols via Yahoo.")
 
 
+def _total_returns_from_adjusted_panel(closes: pd.DataFrame, *, min_bars: int) -> pd.Series:
+    """
+    Per ticker: total return from first valid adjusted close to last valid close in the panel.
+    Tickers with fewer than ``min_bars`` observations get NaN (no RS until history is sufficient).
+    """
+    out: Dict[str, float] = {}
+    for col in closes.columns:
+        s = closes[col].dropna()
+        if len(s) < min_bars:
+            out[str(col)] = np.nan
+            continue
+        lo = float(s.iloc[0])
+        hi = float(s.iloc[-1])
+        if lo <= 0 or not np.isfinite(lo) or not np.isfinite(hi):
+            out[str(col)] = np.nan
+        else:
+            out[str(col)] = (hi / lo) - 1.0
+    return pd.Series(out, dtype=float)
+
+
 def get_rs_ratings(tickers: List[str]) -> pd.Series:
     """
-    Percentile RS vs peers over ~1y: rank of total return among tickers + SPY.
+    Relative strength on a 0–100 scale: percentile rank of ~1y **adjusted** total returns among
+    the given tickers plus SPY (same calendar panel from Yahoo ``period=1y``).
+
+    Exits compare with strict ``RS < MOMENTUM_RS_EXIT_THRESHOLD`` (equality does not exit).
+    Insufficient history yields NaN — those names do not trigger an RS exit until bars ≥ minimum.
     """
     if not tickers:
         return pd.Series(dtype=float)
     tix = list(dict.fromkeys([str(t).upper().strip() for t in tickers if str(t).strip()]))
     bench = list(dict.fromkeys(tix + ["SPY"]))
-    closes = _close_panel(bench, period="1y", interval="1d")
+    closes = _close_panel(bench, period="1y", interval="1d", adjusted=True)
     if closes.empty:
         return pd.Series(dtype=float)
-    ret = (closes.iloc[-1] / closes.iloc[0]) - 1.0
-    rs = ret.rank(pct=True) * 100.0
+    rets = _total_returns_from_adjusted_panel(closes, min_bars=max(RS_MIN_TRADING_DAYS, 20))
+    rs = rets.rank(pct=True, method="average", ascending=True) * 100.0
     return rs
 
 
@@ -226,7 +291,11 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
         return out
 
     rs_ratings = get_rs_ratings(tickers)
-    out["rs_series"] = {k: float(v) for k, v in rs_ratings.items() if k in tickers}
+    out["rs_series"] = {
+        k: float(v)
+        for k, v in rs_ratings.items()
+        if k in tickers and pd.notna(v)
+    }
 
     to_delete: List[str] = []
     updates_made = False
@@ -369,7 +438,7 @@ def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
         f"<div style='font-size:11px;color:#666;margin-bottom:6px'>"
         f"Source: holdings_list.json · State: {_esc(str(result.get('state_file','')))} · "
         f"Exit RS &lt; {RS_EXIT_THRESHOLD:g} · Trailing {TRAILING_STOP_PCT:.0%} · "
-        f"RS = return percentile vs holdings + SPY (1y)"
+        f"RS = adjusted 1y return percentile vs holdings + SPY (min {RS_MIN_TRADING_DAYS} bars)"
         f"</div>"
     )
 
@@ -410,7 +479,11 @@ def run_momentum_daily() -> Dict[str, Any]:
         return out
 
     rs_ratings = get_rs_ratings(tickers)
-    out["rs_series"] = {k: float(v) for k, v in rs_ratings.items() if k in tickers}
+    out["rs_series"] = {
+        k: float(v)
+        for k, v in rs_ratings.items()
+        if k in tickers and pd.notna(v)
+    }
 
     to_delete: List[str] = []
     updates_made = False
@@ -546,7 +619,7 @@ def format_momentum_email_section(result: Dict[str, Any]) -> str:
         f"<div style='font-size:11px;color:#666;margin-bottom:6px'>"
         f"Storage: {_esc(str(result.get('portfolio_file','')))} · "
         f"Exit RS &lt; {RS_EXIT_THRESHOLD:g} · Trailing {TRAILING_STOP_PCT:.0%} · "
-        f"RS = return percentile vs basket+SPY (1y)"
+        f"RS = adjusted 1y return percentile vs book + SPY (min {RS_MIN_TRADING_DAYS} bars)"
         f"</div>"
     )
 
