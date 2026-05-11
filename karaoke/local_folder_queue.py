@@ -944,6 +944,67 @@ def worker_loop() -> None:
         time.sleep(2)
 
 
+def _api_out_resolve_file(job_id: str, fname: str) -> Optional[Path]:
+    """Return path to stem WAV for /api/out/{job_id}/vocals.wav|no_vocals.wav, or None."""
+    if fname not in ("vocals.wav", "no_vocals.wav"):
+        return None
+    fp = OUTPUT_DIR / job_id / fname
+    if fname == "no_vocals.wav" and not fp.is_file():
+        alt = OUTPUT_DIR / job_id / "accompaniment.wav"
+        if alt.is_file():
+            fp = alt
+    return fp if fp.is_file() else None
+
+
+def _parse_bytes_range(range_header: Optional[str], total: int) -> str | tuple[int, int]:
+    """
+    Interpret a single ``Range: bytes=…`` value for ``total`` bytes.
+    Return ``"full"`` for a 200 response of the entire file,
+    ``(start, end)`` inclusive for 206,
+    or ``"416"`` if the range is unsatisfiable.
+    """
+    if total <= 0:
+        return "full"
+    if not range_header:
+        return "full"
+    rh = range_header.strip()
+    if not rh.lower().startswith("bytes="):
+        return "full"
+    spec = rh[6:].strip()
+    if "," in spec:
+        return "full"
+    if "-" not in spec:
+        return "full"
+    left, _, right = spec.partition("-")
+    left, right = left.strip(), right.strip()
+    try:
+        if not left and not right:
+            return "full"
+        if not left:
+            suffix = int(right)
+            if suffix <= 0:
+                return "full"
+            start = max(0, total - suffix)
+            end = total - 1
+            return (start, end) if (start, end) != (0, total - 1) else "full"
+        start = int(left)
+        if start >= total:
+            return "416"
+        if not right:
+            end = total - 1
+        else:
+            end = int(right)
+        if end >= total:
+            end = total - 1
+        if start > end:
+            return "416"
+        if start == 0 and end >= total - 1:
+            return "full"
+        return (start, end)
+    except ValueError:
+        return "full"
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -971,6 +1032,70 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:
         self._send(204, None)
 
+    def _try_send_api_out(self, path: str, *, send_body: bool) -> bool:
+        """Serve WAV stems for the HTML5 audio element (GET + Range, HEAD). Returns False if not this route."""
+        if not path.startswith("/api/out/"):
+            return False
+        rest = path[len("/api/out/") :].strip("/")
+        parts = rest.split("/")
+        if len(parts) != 2:
+            self.send_error(404)
+            return True
+        job_id, fname = parts[0], parts[1]
+        fp = _api_out_resolve_file(job_id, fname)
+        if fp is None:
+            self.send_error(404)
+            return True
+        try:
+            total = fp.stat().st_size
+        except OSError:
+            self.send_error(500)
+            return True
+
+        pr = _parse_bytes_range(self.headers.get("Range"), total)
+        if pr == "416":
+            self.send_response(416)
+            for k, v in self._cors().items():
+                self.send_header(k, v)
+            self.send_header("Content-Range", f"bytes */{total}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return True
+
+        if pr == "full":
+            start, end = 0, total - 1
+            code = 200
+        else:
+            start, end = pr[0], pr[1]
+            code = 206
+
+        length = end - start + 1
+        self.send_response(code)
+        for k, v in self._cors().items():
+            self.send_header(k, v)
+        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(length))
+        if code == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{total}")
+        self.end_headers()
+        if not send_body:
+            return True
+        try:
+            with open(fp, "rb") as f:
+                f.seek(start)
+                remaining = length
+                chunk = 256 * 1024
+                while remaining > 0:
+                    buf = f.read(min(chunk, remaining))
+                    if not buf:
+                        break
+                    self.wfile.write(buf)
+                    remaining -= len(buf)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        return True
+
     def do_HEAD(self) -> None:
         """``curl -I`` sends HEAD; stdlib default would return 501 for API/static checks."""
         parsed = urllib.parse.urlparse(self.path)
@@ -987,6 +1112,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         p = parsed.path or ""
+        if self._try_send_api_out(p, send_body=False):
+            return
+
         if p in ("/", ""):
             if _serve_repo_static_enabled():
                 self.send_response(302)
@@ -1193,33 +1321,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, raw)
             return
 
-        if path.startswith("/api/out/"):
-            rest = path[len("/api/out/") :].strip("/")
-            parts = rest.split("/")
-            if len(parts) != 2:
-                self.send_error(404)
-                return
-            job_id, fname = parts[0], parts[1]
-            if fname not in ("vocals.wav", "no_vocals.wav"):
-                self.send_error(404)
-                return
-            fp = OUTPUT_DIR / job_id / fname
-            if fname == "no_vocals.wav" and not fp.is_file():
-                alt = OUTPUT_DIR / job_id / "accompaniment.wav"
-                if alt.is_file():
-                    fp = alt
-            if not fp.is_file():
-                self.send_error(404)
-                return
-            data = fp.read_bytes()
-            self.send_response(200)
-            for k, v in self._cors().items():
-                self.send_header(k, v)
-            self.send_header("Content-Type", "audio/wav")
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header("Accept-Ranges", "bytes")
-            self.end_headers()
-            self.wfile.write(data)
+        if self._try_send_api_out(path, send_body=True):
             return
 
         if self._maybe_serve_repo_static():
