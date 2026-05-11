@@ -94,6 +94,35 @@ class AudienceHandler(lfq.Handler):
         saved = _audience_upsert(room_id, patch)
         self._send(200, json.dumps({"ok": True, "session": saved}, ensure_ascii=False).encode("utf-8"))
 
+    def do_HEAD(self) -> None:
+        parsed = urllib.parse.urlparse(self.path)
+        path_norm = parsed.path.rstrip("/")
+        if path_norm == "/api/audience/session":
+            qs = urllib.parse.parse_qs(parsed.query)
+            room_id = ((qs.get("room_id") or [""])[0] or "").strip()
+            if not room_id:
+                raw = json.dumps({"error": "room_id required"}).encode()
+                self.send_response(400)
+                for k, v in self._cors().items():
+                    self.send_header(k, v)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                return
+            data = _audience_get(room_id)
+            if not data:
+                raw = json.dumps({"found": False, "room_id": room_id}).encode("utf-8")
+            else:
+                raw = json.dumps({"found": True, "session": data}, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            for k, v in self._cors().items():
+                self.send_header(k, v)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            return
+        super().do_HEAD()
+
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path_norm = parsed.path.rstrip("/")

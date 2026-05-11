@@ -971,6 +971,52 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:
         self._send(204, None)
 
+    def do_HEAD(self) -> None:
+        """``curl -I`` sends HEAD; stdlib default would return 501 for API/static checks."""
+        parsed = urllib.parse.urlparse(self.path)
+        path_norm = parsed.path.rstrip("/")
+
+        if path_norm == "/api/config":
+            raw = json.dumps({"public_base": PUBLIC_BASE}).encode("utf-8")
+            self.send_response(200)
+            for k, v in self._cors().items():
+                self.send_header(k, v)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            return
+
+        p = parsed.path or ""
+        if p in ("/", ""):
+            if _serve_repo_static_enabled():
+                self.send_response(302)
+                self.send_header("Location", "/karaoke/player-folder-local-root.html")
+                for k, v in self._cors().items():
+                    self.send_header(k, v)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+
+        fp = _static_file_for_url(self.path)
+        if fp and fp.is_file():
+            try:
+                sz = fp.stat().st_size
+            except OSError:
+                self.send_error(500)
+                return
+            ctype = mimetypes.guess_type(str(fp))[0] or "application/octet-stream"
+            self.send_response(200)
+            for k, v in self._cors().items():
+                self.send_header(k, v)
+            if ctype.startswith("text/"):
+                self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(sz))
+            self.end_headers()
+            return
+
+        self.send_error(501, "Unsupported method ('HEAD')")
+
     def _handle_get_lyrics(self, parsed: urllib.parse.ParseResult) -> None:
         qs = urllib.parse.parse_qs(parsed.query)
 
