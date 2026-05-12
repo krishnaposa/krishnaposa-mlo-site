@@ -97,6 +97,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     }
     # Include current momentum book so Simulators / Performance / wheel rows can join on `out`.
     # (Otherwise only names that also appear in local list / universe / Finviz show up.)
+    # Momentum Finviz (MOMENTUM_FINVIZ_URL) is separate from wheel / trend / ATH Finviz sources above.
     momentum_portfolio_syms: set[str] = set()
     if os.getenv("MOMENTUM_PORTFOLIO_ENABLED", "1") == "1":
         try:

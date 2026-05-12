@@ -12,13 +12,13 @@ Env:
   MOMENTUM_PORTFOLIO_FILE        — local JSON path fallback (default: stocks-func-app/momentum_portfolio.json)
   MOMENTUM_PORTFOLIO_CONTAINER / MOMENTUM_PORTFOLIO_BLOB_NAME — Azure Blob (same pattern as local_list)
   MOMENTUM_PORTFOLIO_MIRROR_LOCAL=1 — after successful blob save, also write local file
-  MOMENTUM_FINVIZ_URL            — optional Finviz screener URL (?f=...) to auto-seed new slots up to PORTFOLIO_SIZE
+  MOMENTUM_FINVIZ_URL            — Finviz screener URL (?f=...) for momentum only (separate from WHEEL_* Finviz)
   MOMENTUM_FINVIZ_SORT          — default sort if URL has no &o= (default -marketcap)
   MOMENTUM_RS_ENTRY_THRESHOLD    — default 90 (Finviz seed filter when MOMENTUM_FINVIZ_RS_FILTER=1)
   MOMENTUM_RS_EXIT_THRESHOLD     — default 70 (exit when RS is strictly below this; RS == threshold does not exit)
+  RS math: 1y daily Close, pct_change → (1+r).prod()-1, divide by SPY compound return, rank(pct)*100 (see get_rs_ratings)
   MOMENTUM_TRAILING_STOP_PCT     — default 0.15
   MOMENTUM_FINVIZ_RS_FILTER      — default 1: only Finviz-seed names with RS %ile >= entry threshold
-  MOMENTUM_RS_MIN_TRADING_DAYS  — min bars of history for RS (default 120) or RS is N/A (no RS exit)
 """
 
 from __future__ import annotations
@@ -71,7 +71,6 @@ RS_ENTRY_THRESHOLD = float(os.getenv("MOMENTUM_RS_ENTRY_THRESHOLD", "90"))
 RS_EXIT_THRESHOLD = float(os.getenv("MOMENTUM_RS_EXIT_THRESHOLD", "70"))
 TRAILING_STOP_PCT = float(os.getenv("MOMENTUM_TRAILING_STOP_PCT", "0.15"))
 PORTFOLIO_SIZE = int(os.getenv("MOMENTUM_PORTFOLIO_SIZE", "20"))
-RS_MIN_TRADING_DAYS = int(os.getenv("MOMENTUM_RS_MIN_TRADING_DAYS", "120"))
 FINVIZ_RS_FILTER = os.getenv("MOMENTUM_FINVIZ_RS_FILTER", "1").strip().lower() in (
     "1",
     "true",
@@ -139,6 +138,9 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         out["messages"].append("Finviz screener returned no symbols.")
         return
 
+    sym_list_norm = [str(s).upper().strip() for s in sym_list if str(s).strip()]
+    out["finviz_screen_symbols"] = sym_list_norm
+
     cap_left = PORTFOLIO_SIZE - len(portfolio)
     if cap_left <= 0:
         out["messages"].append(
@@ -146,8 +148,7 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         )
         return
 
-    need = [str(s).upper().strip() for s in sym_list if str(s).strip()]
-    need = [s for s in need if s not in portfolio][:cap_left]
+    need = [s for s in sym_list_norm if s not in portfolio][:cap_left]
 
     if not need:
         out["messages"].append(
@@ -155,13 +156,20 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         )
         return
 
+    need_pre_rs = list(need)
+    out["finviz_seed_pre_rs_rows"] = []
+
     if FINVIZ_RS_FILTER:
-        bench_for_rs = list(dict.fromkeys([*portfolio.keys(), *need]))
-        rs_all = get_rs_ratings(bench_for_rs)
+        # RS %ile for seeding: Finviz new-slot names + SPY only (not current book — matches original design).
+        rs_all = get_rs_ratings(need_pre_rs)
+        for sym in need_pre_rs:
+            rv = rs_all.get(sym)
+            rs_f = float(rv) if rv is not None and pd.notna(rv) else None
+            out["finviz_seed_pre_rs_rows"].append({"ticker": sym, "rs": rs_f})
         filtered_syms: List[str] = []
         below_thr = 0
         nan_rs = 0
-        for sym in need:
+        for sym in need_pre_rs:
             rv = rs_all.get(sym)
             if rv is None or pd.isna(rv):
                 nan_rs += 1
@@ -177,10 +185,12 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
             )
             return
         out["messages"].append(
-            f"Finviz RS filter: {len(filtered_syms)}/{len(need)} pass RS ≥ {RS_ENTRY_THRESHOLD:g} "
+            f"Finviz RS filter: {len(filtered_syms)}/{len(need_pre_rs)} pass RS ≥ {RS_ENTRY_THRESHOLD:g} "
             f"({below_thr} below, {nan_rs} no RS)."
         )
         need = filtered_syms
+    else:
+        out["finviz_seed_pre_rs_rows"] = [{"ticker": s, "rs": None} for s in need_pre_rs]
 
     closes_seed = _close_panel(need, period="5d", interval="1d")
     added: List[str] = []
@@ -208,44 +218,62 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         out["messages"].append("Finviz seed: could not price any new symbols via Yahoo.")
 
 
-def _total_returns_from_adjusted_panel(closes: pd.DataFrame, *, min_bars: int) -> pd.Series:
-    """
-    Per ticker: total return from first valid adjusted close to last valid close in the panel.
-    Tickers with fewer than ``min_bars`` observations get NaN (no RS until history is sufficient).
-    """
-    out: Dict[str, float] = {}
-    for col in closes.columns:
-        s = closes[col].dropna()
-        if len(s) < min_bars:
-            out[str(col)] = np.nan
-            continue
-        lo = float(s.iloc[0])
-        hi = float(s.iloc[-1])
-        if lo <= 0 or not np.isfinite(lo) or not np.isfinite(hi):
-            out[str(col)] = np.nan
-        else:
-            out[str(col)] = (hi / lo) - 1.0
-    return pd.Series(out, dtype=float)
-
-
 def get_rs_ratings(tickers: List[str]) -> pd.Series:
     """
-    Relative strength on a 0–100 scale: percentile rank of ~1y **adjusted** total returns among
-    the given tickers plus SPY (same calendar panel from Yahoo ``period=1y``).
+    Relative strength (reference script):
 
-    Exits compare with strict ``RS < MOMENTUM_RS_EXIT_THRESHOLD`` (equality does not exit).
-    Insufficient history yields NaN — those names do not trigger an RS exit until bars ≥ minimum.
+    1. Download **1y** daily **Close** for ``tickers`` + **SPY** (always appended; deduped).
+    2. ``returns = data.pct_change()`` then drop rows with missing values.
+    3. ``cum_returns = (1 + returns).prod() - 1`` per column (compound over the window).
+    4. ``rs_scores = cum_returns / cum_returns['SPY']`` (strength vs SPY over the same window).
+    5. ``rank(pct=True) * 100`` on those scores within this peer set.
+
+    **Entry:** pass Finviz candidates only (same as ``calculate_rs_rating(candidates)``).
+
+    **Exit:** pass open position tickers only (same as ``calculate_rs_rating(list(current_positions.keys()))``).
+
+    Exits still compare with strict ``RS < MOMENTUM_RS_EXIT_THRESHOLD`` elsewhere.
     """
     if not tickers:
         return pd.Series(dtype=float)
     tix = list(dict.fromkeys([str(t).upper().strip() for t in tickers if str(t).strip()]))
     bench = list(dict.fromkeys(tix + ["SPY"]))
-    closes = _close_panel(bench, period="1y", interval="1d", adjusted=True)
-    if closes.empty:
+    raw = yf.download(
+        bench,
+        period="1y",
+        interval="1d",
+        progress=False,
+        threads=False,
+        auto_adjust=False,
+    )
+    if raw is None or raw.empty:
         return pd.Series(dtype=float)
-    rets = _total_returns_from_adjusted_panel(closes, min_bars=max(RS_MIN_TRADING_DAYS, 20))
-    rs = rets.rank(pct=True, method="average", ascending=True) * 100.0
-    return rs
+    if isinstance(raw.columns, pd.MultiIndex):
+        data = raw["Close"].copy()
+    else:
+        if "Close" not in raw.columns:
+            return pd.Series(dtype=float)
+        sym = str(bench[0]).upper()
+        data = pd.DataFrame({sym: raw["Close"].values}, index=raw.index)
+    data.columns = [str(c).upper() for c in data.columns]
+    if "SPY" not in data.columns:
+        return pd.Series(dtype=float)
+
+    returns = data.pct_change()
+    returns = returns.dropna()
+    if returns.empty:
+        return pd.Series(dtype=float)
+
+    cum_returns = (1 + returns).prod(axis=0) - 1.0
+    benchmark_ret = cum_returns.get("SPY")
+    if benchmark_ret is None or pd.isna(benchmark_ret) or abs(float(benchmark_ret)) < 1e-12:
+        return pd.Series(dtype=float)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rs_scores = cum_returns / float(benchmark_ret)
+    rs_scores = rs_scores.replace([np.inf, -np.inf], np.nan)
+    out = rs_scores.rank(pct=True, method="average", ascending=True) * 100.0
+    return out
 
 
 def run_holdings_trailing_daily() -> Dict[str, Any]:
@@ -438,7 +466,7 @@ def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
         f"<div style='font-size:11px;color:#666;margin-bottom:6px'>"
         f"Source: holdings_list.json · State: {_esc(str(result.get('state_file','')))} · "
         f"Exit RS &lt; {RS_EXIT_THRESHOLD:g} · Trailing {TRAILING_STOP_PCT:.0%} · "
-        f"RS = adjusted 1y return percentile vs holdings + SPY (min {RS_MIN_TRADING_DAYS} bars)"
+        f"RS = compound 1y Close returns vs SPY, pct-rank among holdings + SPY (reference script)"
         f"</div>"
     )
 
@@ -573,6 +601,84 @@ def run_momentum_daily() -> Dict[str, Any]:
     return out
 
 
+def _format_finviz_pre_rs_email_html(result: Dict[str, Any]) -> str:
+    """Email HTML: Finviz screener list + new-slot candidates before RS entry filter."""
+    screen = result.get("finviz_screen_symbols") or []
+    rows = result.get("finviz_seed_pre_rs_rows") or []
+    if not screen and not rows:
+        return ""
+
+    parts: List[str] = [
+        "<h4 style='margin:14px 0 6px;font-size:14px'>Finviz screen (before RS entry filter)</h4>"
+    ]
+    if screen:
+        preview = ", ".join(screen[:50])
+        if len(screen) > 50:
+            preview += f" … (+{len(screen) - 50} more)"
+        parts.append(
+            "<div style='font-size:12px;margin-bottom:8px'>"
+            f"<b>Screener tickers</b> ({len(screen)} — Finviz order; list length capped by screener fetch):<br>"
+            f"<span style='font-family:ui-monospace,monospace'>{_esc(preview)}</span></div>"
+        )
+    if rows:
+        gate = (
+            f"RS ≥ {RS_ENTRY_THRESHOLD:g} required to seed"
+            if FINVIZ_RS_FILTER
+            else "RS entry filter off (MOMENTUM_FINVIZ_RS_FILTER=0) — all below subject to Yahoo pricing"
+        )
+        parts.append(
+            "<div style='font-size:12px;margin-bottom:4px'>"
+            f"<b>New-slot candidates</b> (not already in momentum book; {gate}). "
+            "RS %ile = compound 1y Close returns vs SPY, then pct-rank among <b>these Finviz candidates + SPY only</b> "
+            "(same formula as open positions; book not in this peer set for seeding). "
+            f"<span style='color:#444'>This table only gates <i>new seeds</i>; open positions still exit if "
+            f"RS &lt; {RS_EXIT_THRESHOLD:g} (MOMENTUM_RS_EXIT_THRESHOLD) or trailing stop hits.</span></div>"
+        )
+        ent_col = (
+            f"Seed if RS≥{RS_ENTRY_THRESHOLD:g}?"
+            if FINVIZ_RS_FILTER
+            else "RS gate"
+        )
+        parts.extend(
+            [
+                "<table border='0' cellspacing='0' cellpadding='4' style='font-size:12px'>",
+                "<thead><tr><th align='left'>Ticker</th><th align='right'>RS %ile</th>"
+                f"<th align='left'>{_esc(ent_col)}</th></tr></thead><tbody>",
+            ]
+        )
+        for r in rows[:40]:
+            t = str(r.get("ticker", ""))
+            rs = r.get("rs")
+            if rs is not None and isinstance(rs, (int, float)) and rs == rs and np.isfinite(rs):
+                rs_s = f"{float(rs):.1f}"
+                if FINVIZ_RS_FILTER:
+                    thr = RS_ENTRY_THRESHOLD
+                    fv = float(rs)
+                    flag = f"yes (≥{thr:g})" if fv >= thr else f"no (<{thr:g})"
+                else:
+                    flag = "—"
+            else:
+                rs_s = "—"
+                flag = "no data" if FINVIZ_RS_FILTER else "—"
+            parts.append(
+                "<tr>"
+                f"<td>{_esc(t)}</td>"
+                f"<td align='right'>{_esc(rs_s)}</td>"
+                f"<td>{_esc(flag)}</td>"
+                "</tr>"
+            )
+        if len(rows) > 40:
+            parts.append(
+                f"<tr><td colspan='3'><i>… {len(rows) - 40} more</i></td></tr>"
+            )
+        parts.append("</tbody></table>")
+    elif screen:
+        parts.append(
+            "<div style='font-size:12px;color:#666'>Portfolio full or no new slots — candidate table omitted.</div>"
+        )
+    return "".join(parts)
+
+
 def format_momentum_email_section(result: Dict[str, Any]) -> str:
     """HTML fragment for send_email_report_with_sims."""
     # Default missing key to on — only skip when explicitly disabled.
@@ -615,15 +721,22 @@ def format_momentum_email_section(result: Dict[str, Any]) -> str:
     else:
         table = "<i>No open momentum positions.</i>"
 
+    momf = result.get("finviz_screen_symbols") or []
+    rs_note = (
+        "open book + SPY (momentum table). Finviz block = seed RS (candidates+SPY)."
+        if momf
+        else "open book + SPY"
+    )
     meta = (
         f"<div style='font-size:11px;color:#666;margin-bottom:6px'>"
         f"Storage: {_esc(str(result.get('portfolio_file','')))} · "
         f"Exit RS &lt; {RS_EXIT_THRESHOLD:g} · Trailing {TRAILING_STOP_PCT:.0%} · "
-        f"RS = adjusted 1y return percentile vs book + SPY (min {RS_MIN_TRADING_DAYS} bars)"
+        f"RS = compound 1y Close vs SPY, pct-rank vs {_esc(rs_note)}"
         f"</div>"
     )
 
-    return f"{meta}{msg_html}<div style='margin-top:10px'>{table}</div>"
+    finviz_pre = _format_finviz_pre_rs_email_html(result)
+    return f"{meta}{finviz_pre}{msg_html}<div style='margin-top:10px'>{table}</div>"
 
 
 def _esc(s: str) -> str:
