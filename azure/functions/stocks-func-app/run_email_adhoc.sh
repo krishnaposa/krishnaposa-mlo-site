@@ -43,7 +43,8 @@ export HOLDINGS_TRAILING_EXITS_ENABLED="${HOLDINGS_TRAILING_EXITS_ENABLED:-1}"
 
 # Optional wheel strategy knobs.
 export WHEEL_ENABLED="1"
-export WHEEL_DEBUG="1"
+# WHEEL_DEBUG=1 prints extra wheel/Finviz pipeline INFO — noisy for adhoc email runs.
+export WHEEL_DEBUG="${WHEEL_DEBUG:-0}"
 export WHEEL_INCLUDE_FINVIZ="1"
 export WHEEL_FINVIZ_TOPN="25"
 export WHEEL_USE_EQUITY_FILTERS="0"
@@ -69,5 +70,9 @@ export WHEEL_MIN_MARKET_CAP="10000000000"
 export WHEEL_MAX_RSI="70"
 export EARNINGS_BLOCK_DAYS="45"
 export WHEEL_BLOCK_EARNINGS="1"
+
+# Quieter console: uncomment to hide most monitor INFO (ERROR/CRITICAL still show; logger.WARNING is dropped by run_daily_monitor unless DAILY_MONITOR_SHOW_WARNINGS=1).
+# export DAILY_MONITOR_LOG_LEVEL=WARNING
+# To show logger.WARNING lines again: export DAILY_MONITOR_SHOW_WARNINGS=1
 
 python run_daily_monitor.py

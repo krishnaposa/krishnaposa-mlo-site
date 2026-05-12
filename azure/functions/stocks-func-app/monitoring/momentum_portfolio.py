@@ -20,6 +20,7 @@ Env:
   MOMENTUM_TRAILING_STOP_PCT     — default 0.15
   MOMENTUM_FINVIZ_RS_FILTER      — default 1: only Finviz-seed names with RS %ile >= entry threshold
   Same-day Finviz seeds: RS exit is skipped until the next daily run (trailing stop still applies).
+  Finviz momentum seeding prints staged lists to stdout under prefix ``[momentum Finviz]`` (raw URL list, new-slot filter, RS / Yahoo).
 """
 
 from __future__ import annotations
@@ -110,6 +111,20 @@ def _close_panel(
     return closes
 
 
+def _print_momentum_finviz_stage(label: str, syms: List[str], *, max_show: int = 150) -> None:
+    """Console trace for Finviz momentum seeding (stdout / Azure log stream)."""
+    u = [str(s).upper().strip() for s in syms if str(s).strip()]
+    n = len(u)
+    if n == 0:
+        print(f"[momentum Finviz] {label}: (empty)")
+        return
+    if n <= max_show:
+        body = ", ".join(u)
+    else:
+        body = ", ".join(u[:max_show]) + f" … (+{n - max_show} more)"
+    print(f"[momentum Finviz] {label} ({n}): {body}")
+
+
 def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, Any]) -> None:
     """
     Fill empty slots in portfolio using tickers from a Finviz screener URL (wb4u_finviz).
@@ -144,6 +159,7 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
 
     sym_list_norm = [str(s).upper().strip() for s in sym_list if str(s).strip()]
     out["finviz_screen_symbols"] = sym_list_norm
+    _print_momentum_finviz_stage("raw screener (from URL, capped by fetch)", sym_list_norm)
 
     cap_left = PORTFOLIO_SIZE - len(portfolio)
     if cap_left <= 0:
@@ -153,6 +169,10 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         return
 
     need = [s for s in sym_list_norm if s not in portfolio][:cap_left]
+    _print_momentum_finviz_stage(
+        f"after new-slot filter (not in book; first {cap_left} empty slots)",
+        need,
+    )
 
     if not need:
         out["messages"].append(
@@ -182,6 +202,18 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
                 filtered_syms.append(sym)
             else:
                 below_thr += 1
+        rs_parts: List[str] = []
+        for sym in need_pre_rs:
+            rv = rs_all.get(sym)
+            if rv is not None and pd.notna(rv):
+                rs_parts.append(f"{sym}={float(rv):.1f}")
+            else:
+                rs_parts.append(f"{sym}=—")
+        print("[momentum Finviz] RS %ile by ticker (Finviz new-slot set + SPY peer rank): " + ", ".join(rs_parts))
+        _print_momentum_finviz_stage(
+            f"after RS entry filter (keep RS ≥ {RS_ENTRY_THRESHOLD:g})",
+            filtered_syms,
+        )
         if not filtered_syms:
             out["messages"].append(
                 f"Finviz RS filter: no symbols meet RS ≥ {RS_ENTRY_THRESHOLD:g} "
@@ -195,6 +227,10 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         need = filtered_syms
     else:
         out["finviz_seed_pre_rs_rows"] = [{"ticker": s, "rs": None} for s in need_pre_rs]
+        print(
+            "[momentum Finviz] RS entry filter disabled (MOMENTUM_FINVIZ_RS_FILTER=0); "
+            "same list as new-slot step."
+        )
 
     closes_seed = _close_panel(need, period="5d", interval="1d")
     added: List[str] = []
@@ -210,6 +246,14 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         px = float(series.iloc[-1])
         portfolio[sym] = {"high_seen": px}
         added.append(sym)
+
+    skipped_yahoo = [s for s in need if s not in added]
+    _print_momentum_finviz_stage("after Yahoo 5d Close gate (actually seeded)", added)
+    if skipped_yahoo:
+        _print_momentum_finviz_stage(
+            "skipped at Yahoo / portfolio cap (not seeded this run)",
+            skipped_yahoo,
+        )
 
     out["seeded_this_run"] = list(added)
 

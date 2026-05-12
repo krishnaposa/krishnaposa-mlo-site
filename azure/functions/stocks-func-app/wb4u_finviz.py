@@ -49,6 +49,7 @@ def _fetch_screener(filters: List[str], table: str, order: str) -> List[Dict[str
     Wrap finviz Screener with retries + timeouts. Returns a list of dict rows.
     """
     last_err = None
+    logging.info(f"[finviz] fetching screener with filters: {filters}, table: {table}, order: {order}")
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             # finviz library uses requests under the hood; set global headers via requests
