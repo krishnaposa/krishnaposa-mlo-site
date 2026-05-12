@@ -27,7 +27,7 @@ export MONITOR_STORAGE="${MONITOR_STORAGE:-<azure-storage-connection-string>}"
 # --- Momentum RS portfolio (trailing stop + RS exit; email section) ---
 # Persists to blob momentum_portfolio.json (override container/name if needed).
 export MOMENTUM_PORTFOLIO_ENABLED="${MOMENTUM_PORTFOLIO_ENABLED:-1}"
-export MOMENTUM_FINVIZ_URL="${MOMENTUM_FINVIZ_URL:-https://finviz.com/screener.ashx?v=111&f=cap_mid,sh_price_o5,ta_highlow52w_nh&ft=3}"
+export MOMENTUM_FINVIZ_URL="${MOMENTUM_FINVIZ_URL:-https://finviz.com/screener.ashx?v=111&f=cap_midover,sh_price_o5,ta_highlow52w_nh&ft=3}"
 # Used when the URL has no &o= sort param (yfinance/Finviz screener order).
 export MOMENTUM_FINVIZ_SORT="${MOMENTUM_FINVIZ_SORT:--marketcap}"
 export MOMENTUM_PORTFOLIO_SIZE="${MOMENTUM_PORTFOLIO_SIZE:-20}"
