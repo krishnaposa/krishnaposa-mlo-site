@@ -43,16 +43,13 @@
       </div>
     </div>
     <p class="help" style="margin-top:.5rem;margin-bottom:0">
-      The browser may ask for access when this page opens so output names (including Bluetooth) can be listed.
-      Choose the <strong>same</strong> device for both rows for the full mix there, or use the button to refresh the list.
+      Enable bluetooth on laptop and click to have song sent to bluetooth earbuds.
     </p>
     <div class="row" style="margin-top:.5rem">
       <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
       <span id="deviceMsg" class="help" style="margin-left:.5rem"></span>
     </div>
-    <p class="help" style="margin-top:.75rem">Vocals (reference for sync + sent to the room when publishing)</p>
     <audio id="vocalsEl" preload="auto" playsinline></audio>
-    <p class="help" style="margin-top:.5rem">Band / instrumental (host only)</p>
     <audio id="bandEl" preload="auto" playsinline></audio>
   </section>
 
@@ -106,7 +103,7 @@
 </main>
 <script>window.KARAOKE = window.KARAOKE || {};</script>
 <script src="/assets/js/karaoke-api-base.js?v=2"></script>
-<script src="/assets/js/karaoke-core.js?v=4"></script>
+<script src="/assets/js/karaoke-core.js?v=5"></script>
 <script src="/assets/js/karaoke-host.js?v=5"></script>
 </body>
 </html>

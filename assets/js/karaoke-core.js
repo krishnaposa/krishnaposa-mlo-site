@@ -75,7 +75,7 @@
         setDeviceMsg('Could not list outputs: ' + (e && e.message ? e.message : String(e)));
         throw e;
       }
-      if (initBtn) initBtn.textContent = count ? 'Device list ready' : 'Device list (default only)';
+      if (initBtn) initBtn.textContent = count ? 'Refresh bluetooth/speakers' : 'Device list (default only)';
       hookDeviceChangeOnce();
     }
     initBtn?.addEventListener('click', () => {
