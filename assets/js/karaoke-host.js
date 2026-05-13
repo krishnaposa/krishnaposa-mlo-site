@@ -26,6 +26,8 @@
     const listenerUrlEl = document.getElementById("listenerUrl");
     const refreshBtn = document.getElementById("refreshList");
     const publishBtn = document.getElementById("publishNow");
+    const hostLyricsPlain = document.getElementById("hostLyricsPlain");
+    const hostLyricsSynced = document.getElementById("hostLyricsSynced");
 
     const PB = K.initPlaybackControls({ autoInitDevices: true });
 
@@ -33,6 +35,84 @@
     let current = null;
     let currentLyrics = { synced: false, lrc: "", text: "" };
     let timer = null;
+    let hostLrcCleanup = null;
+    let hostLrcParsed = [];
+
+    function stopHostLyricsSync() {
+      if (typeof hostLrcCleanup === "function") {
+        try {
+          hostLrcCleanup();
+        } catch (_) {
+          /* ignore */
+        }
+      }
+      hostLrcCleanup = null;
+      hostLrcParsed = [];
+    }
+
+    function renderHostLrcLines(container, lines) {
+      container.innerHTML = "";
+      lines.forEach((line, i) => {
+        const div = document.createElement("div");
+        div.className = "line";
+        div.dataset.idx = String(i);
+        div.textContent = line.text || " ";
+        container.appendChild(div);
+      });
+    }
+
+    function tickHostLyrics() {
+      if (!hostLrcParsed.length || !hostLyricsSynced || hostLyricsSynced.hidden || !vocalsEl) return;
+      const t = vocalsEl.currentTime || 0;
+      let idx = 0;
+      for (let i = 0; i < hostLrcParsed.length; i++) {
+        if (hostLrcParsed[i].t <= t) idx = i;
+        else break;
+      }
+      const els = hostLyricsSynced.querySelectorAll(".line");
+      els.forEach((el, i) => el.classList.toggle("active", i === idx));
+      const active = els[idx];
+      if (active && typeof active.scrollIntoView === "function") {
+        active.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function startHostLyricsSync(parsed) {
+      stopHostLyricsSync();
+      hostLrcParsed = parsed;
+      if (!vocalsEl || !parsed.length) return;
+      function tick() {
+        tickHostLyrics();
+      }
+      vocalsEl.addEventListener("timeupdate", tick);
+      vocalsEl.addEventListener("seeked", tick);
+      hostLrcCleanup = function () {
+        vocalsEl.removeEventListener("timeupdate", tick);
+        vocalsEl.removeEventListener("seeked", tick);
+      };
+      tick();
+    }
+
+    function applyHostLyricsUI() {
+      if (!hostLyricsPlain || !hostLyricsSynced) return;
+      const hasLrc = currentLyrics.synced && String(currentLyrics.lrc || "").trim();
+      if (hasLrc) {
+        const parsed = K.parseLRC(currentLyrics.lrc);
+        if (parsed.length) {
+          hostLyricsPlain.hidden = true;
+          hostLyricsSynced.hidden = false;
+          renderHostLrcLines(hostLyricsSynced, parsed);
+          startHostLyricsSync(parsed);
+          return;
+        }
+      }
+      stopHostLyricsSync();
+      hostLyricsSynced.hidden = true;
+      hostLyricsSynced.innerHTML = "";
+      hostLyricsPlain.hidden = false;
+      const plain = String(currentLyrics.text || "").trim();
+      hostLyricsPlain.textContent = plain ? plain : "—";
+    }
 
     function apiOrigin() {
       try {
@@ -128,15 +208,24 @@
     }
 
     async function loadLyrics(jobId) {
-      const u = new URL(endpoints.lyrics);
-      u.searchParams.set("job_id", jobId);
-      const r = await fetch(u.toString(), { mode: "cors" });
-      const d = await r.json();
-      currentLyrics = {
-        synced: !!d.synced,
-        lrc: d.lrc || "",
-        text: d.text || "",
-      };
+      currentLyrics = { synced: false, lrc: "", text: "" };
+      applyHostLyricsUI();
+      try {
+        const u = new URL(endpoints.lyrics);
+        u.searchParams.set("job_id", jobId);
+        const r = await fetch(u.toString(), { mode: "cors" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const d = await r.json();
+        currentLyrics = {
+          synced: !!d.synced,
+          lrc: d.lrc || "",
+          text: d.text || "",
+        };
+      } catch (e) {
+        console.warn("loadLyrics", e);
+        currentLyrics = { synced: false, lrc: "", text: "" };
+      }
+      applyHostLyricsUI();
     }
 
     async function publishSession() {
@@ -167,6 +256,16 @@
       const id = songPickEl.value;
       current = items.find((x) => x.job_id === id) || null;
       if (!current) {
+        stopHostLyricsSync();
+        currentLyrics = { synced: false, lrc: "", text: "" };
+        if (hostLyricsPlain) {
+          hostLyricsPlain.hidden = false;
+          hostLyricsPlain.textContent = "—";
+        }
+        if (hostLyricsSynced) {
+          hostLyricsSynced.hidden = true;
+          hostLyricsSynced.innerHTML = "";
+        }
         PB.setSources("", "");
         setStatus("");
         return;
