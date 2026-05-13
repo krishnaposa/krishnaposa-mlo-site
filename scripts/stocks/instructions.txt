@@ -1,0 +1,3 @@
+python momentum-analyzer.py --seed-from-finviz          # replace positions with Finviz top names (up to 20)
+python momentum-analyzer.py --seed-from-finviz --merge  # add new names only, respect size cap
+python momentum-analyzer.py                              # daily update (unchanged flow)
