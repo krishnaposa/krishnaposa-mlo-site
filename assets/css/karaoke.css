@@ -173,6 +173,17 @@ input:focus,select:focus,textarea:focus{
   border-right:none;
 }
 
+/* ===== Host page: two stacked sections ===== */
+.host-section-play h2{
+  margin-top:.25rem;
+  font-size:1.2rem;
+  font-weight:700;
+}
+.host-section-publish > h2{
+  font-size:1.35rem;
+  font-weight:800;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce){
   .btn,.progress .bar{transition:none}

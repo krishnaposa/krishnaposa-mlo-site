@@ -9,22 +9,13 @@
 </head>
 <body>
 <main class="container">
-  <section class="card">
+  <section class="card host-section-play">
     <h1>Host</h1>
+    <h2>Play on speakers or Bluetooth</h2>
     <p class="help">
-      You hear <strong>vocals + band</strong> together here (default: laptop speakers).
-      Audience devices only stream <strong>vocals</strong> on the audience page.
+      You hear <strong>vocals + band</strong> together here. Pick the <strong>same output</strong> for both tracks
+      to send the full mix to one device (for example a Bluetooth speaker or car audio).
     </p>
-    <div class="grid-2">
-      <div class="field">
-        <label for="roomId">Room ID</label>
-        <input id="roomId" type="text" value="room1">
-      </div>
-      <div class="field">
-        <label for="hostName">Host Name</label>
-        <input id="hostName" type="text" value="Host">
-      </div>
-    </div>
     <div class="row">
       <button id="refreshList" class="btn btn-outline" type="button">Refresh songs</button>
       <span id="status" class="help"></span>
@@ -40,12 +31,6 @@
       <button id="play" class="btn btn-blue" type="button">Play</button>
       <button id="pause" class="btn btn-outline" type="button">Pause</button>
       <button id="restart" class="btn btn-outline" type="button">Restart</button>
-      <button id="publishNow" class="btn btn-outline" type="button">Publish now</button>
-    </div>
-    <div class="row">
-      <label for="offset">Vocals advance/delay (ms):</label>
-      <input id="offset" type="number" value="0" step="10" style="width:120px">
-      <span class="help">Positive delays vocals vs band (same as main player).</span>
     </div>
     <div class="grid-2" style="margin-top:.75rem">
       <div class="field">
@@ -57,23 +42,52 @@
         <select id="bandOut"></select>
       </div>
     </div>
+    <p class="help" style="margin-top:.5rem;margin-bottom:0">
+      The browser may ask for access when this page opens so output names (including Bluetooth) can be listed.
+      Choose the <strong>same</strong> device for both rows for the full mix there, or use the button to refresh the list.
+    </p>
     <div class="row" style="margin-top:.5rem">
       <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
-      <span id="deviceMsg" class="help" style="margin-left:.5rem">Pick the same device for both for “everything on speakers.”</span>
+      <span id="deviceMsg" class="help" style="margin-left:.5rem"></span>
+    </div>
+    <p class="help" style="margin-top:.75rem">Vocals (reference for sync + sent to the room when publishing)</p>
+    <audio id="vocalsEl" preload="auto" playsinline></audio>
+    <p class="help" style="margin-top:.5rem">Band / instrumental (host only)</p>
+    <audio id="bandEl" preload="auto" playsinline></audio>
+  </section>
+
+  <section class="card host-section-publish">
+    <h2>Publish to audience</h2>
+    <p class="help">
+      Audience devices only stream <strong>vocals</strong> on the audience page. Set the room and link below, then use <strong>Publish now</strong> to refresh what listeners see (song choice also updates the room when you pick a track).
+    </p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="roomId">Room ID</label>
+        <input id="roomId" type="text" value="room1">
+      </div>
+      <div class="field">
+        <label for="hostName">Host Name</label>
+        <input id="hostName" type="text" value="Host">
+      </div>
     </div>
     <div class="field" style="margin-top:.5rem">
       <label for="listenerUrl">Audience URL</label>
       <input id="listenerUrl" type="text" readonly>
     </div>
-    <p class="help" style="margin-top:.5rem">Vocals (reference for sync + published to room)</p>
-    <audio id="vocalsEl" preload="auto" playsinline></audio>
-    <p class="help" style="margin-top:.5rem">Band / instrumental (host only)</p>
-    <audio id="bandEl" preload="auto" playsinline></audio>
+    <div class="row" style="margin-top:.5rem">
+      <label for="offset">Vocals advance/delay (ms):</label>
+      <input id="offset" type="number" value="0" step="10" style="width:120px">
+      <span class="help">Positive delays vocals vs band (same as main player).</span>
+    </div>
+    <div class="row" style="margin-top:.75rem">
+      <button id="publishNow" class="btn btn-blue" type="button">Publish now</button>
+    </div>
   </section>
 </main>
 <script>window.KARAOKE = window.KARAOKE || {};</script>
 <script src="/assets/js/karaoke-api-base.js?v=2"></script>
-<script src="/assets/js/karaoke-core.js"></script>
-<script src="/assets/js/karaoke-host.js?v=3"></script>
+<script src="/assets/js/karaoke-core.js?v=4"></script>
+<script src="/assets/js/karaoke-host.js?v=4"></script>
 </body>
 </html>

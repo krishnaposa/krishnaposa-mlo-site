@@ -27,7 +27,7 @@
     const refreshBtn = document.getElementById("refreshList");
     const publishBtn = document.getElementById("publishNow");
 
-    const PB = K.initPlaybackControls();
+    const PB = K.initPlaybackControls({ autoInitDevices: true });
 
     let items = [];
     let current = null;

@@ -12,7 +12,9 @@
   K.currentJobId = null;
   K.setJobId = (id) => { K.currentJobId = id || null; };
 
-  K.initPlaybackControls = function initPlaybackControls () {
+  K.initPlaybackControls = function initPlaybackControls (opts) {
+    const o = opts && typeof opts === 'object' ? opts : {};
+    const autoInitDevices = !!o.autoInitDevices;
     const vEl = K.$('vocalsEl');
     const bEl = K.$('bandEl');
     const playBtn = K.$('play');
@@ -27,6 +29,7 @@
     const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
     let isLoaded = false, isPlaying = false, driftTimer = null;
     let _lastBlobV = '', _lastBlobB = '';
+    let deviceChangeHooked = false;
 
     function setDeviceMsg(t){ if (deviceMsg) deviceMsg.textContent = t || ''; }
     async function ensurePermission(){
@@ -56,14 +59,35 @@
       else { addDefault(vOut); addDefault(bOut); setDeviceMsg('No discrete outputs reported. Using system default.'); }
       return outs.length;
     }
-    initBtn?.addEventListener('click', async () => {
+    function hookDeviceChangeOnce(){
+      if (deviceChangeHooked) return;
+      deviceChangeHooked = true;
+      try { navigator.mediaDevices.addEventListener('devicechange', listOutputs); } catch {}
+    }
+    async function initDeviceList(){
       setDeviceMsg('');
       if (!supportSink) { setDeviceMsg('Output selection not supported here. Use Chrome/Edge desktop.'); return; }
       if (!await ensurePermission()) return;
-      const count = await listOutputs();
-      initBtn.textContent = count ? 'Device list ready' : 'Device list (default only)';
-      try { navigator.mediaDevices.addEventListener('devicechange', listOutputs); } catch {}
+      let count = 0;
+      try {
+        count = await listOutputs();
+      } catch (e) {
+        setDeviceMsg('Could not list outputs: ' + (e && e.message ? e.message : String(e)));
+        throw e;
+      }
+      if (initBtn) initBtn.textContent = count ? 'Device list ready' : 'Device list (default only)';
+      hookDeviceChangeOnce();
+    }
+    initBtn?.addEventListener('click', () => {
+      initDeviceList().catch((e) => { console.warn('initDeviceList', e); });
     });
+    if (autoInitDevices) {
+      void initDeviceList().catch(() => {
+        if (deviceMsg && !String(deviceMsg.textContent || '').trim()) {
+          setDeviceMsg('Use “Enable device list” if outputs did not load (some browsers need a tap first).');
+        }
+      });
+    }
 
     vOut?.addEventListener('change', () => { applySinks().catch(() => {}); });
     bOut?.addEventListener('change', () => { applySinks().catch(() => {}); });
