@@ -4,6 +4,8 @@ import json
 import os
 import time
 import argparse
+import csv
+import re
 import requests
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -27,6 +29,8 @@ RS_ENTRY_THRESHOLD = 90
 RS_EXIT_THRESHOLD = 70
 TRAILING_STOP_PCT = 0.15
 PORTFOLIO_SIZE = 20
+# Relative-strength lookback for get_rs_ratings (yfinance period, e.g. "6mo", "1y")
+RS_LOOKBACK_PERIOD = "6mo"
 
 # --- DATA PERSISTENCE ---
 def load_portfolio() -> Dict[str, Any]:
@@ -183,6 +187,157 @@ def _close_column(data: Any, ticker: str) -> pd.Series:
     return data[ticker]
 
 
+def _seed_positions_from_candidates(
+    candidates: List[Tuple[str, Optional[float]]],
+    *,
+    merge: bool,
+    source_label: str,
+) -> Dict[str, Any]:
+    """
+    Shared seed: candidates are (symbol, optional_reference_high_price e.g. Finviz Price).
+    """
+    doc = load_portfolio()
+    existing: Dict[str, Any] = dict(doc.get("positions") or {})
+
+    use = list(candidates)
+    if merge:
+        max_new = max(0, PORTFOLIO_SIZE - len(existing))
+        use = use[:max_new]
+    else:
+        use = use[:PORTFOLIO_SIZE]
+
+    syms = [c[0] for c in use]
+    if not syms:
+        if merge:
+            raise RuntimeError(
+                f"No new tickers to add from {source_label} (portfolio full or list empty)."
+            )
+        raise RuntimeError(f"No tickers to seed from {source_label}.")
+
+    closes = _last_closes(syms)
+    rs = get_rs_ratings(syms)
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    new_entries: Dict[str, Any] = {}
+    for sym, ref_price in use:
+        close = closes.get(sym)
+        if close is None or close <= 0:
+            print(f"[seed] skip {sym}: no yfinance close")
+            continue
+        hi = close
+        if ref_price is not None and ref_price > hi:
+            hi = ref_price
+        new_entries[sym] = {
+            "entry_price": round(close, 4),
+            "high_seen": round(hi, 4),
+            "entry_date": today,
+            "rs_at_entry": round(_safe_rs(rs, sym), 2),
+        }
+
+    if not new_entries:
+        msg = f"[seed] No positions built from {source_label} (yfinance had no closes)."
+        if merge:
+            print(msg + " Keeping existing positions.")
+            return {"positions": dict(existing), "updated_at": doc.get("updated_at")}
+        raise RuntimeError(msg + " Fix symbols or try again later.")
+
+    if merge:
+        positions = dict(existing)
+        positions.update(new_entries)
+    else:
+        positions = new_entries
+
+    print(
+        f"Seeded {len(new_entries)} position(s) from {source_label} into {PORTFOLIO_FILE} "
+        f"({'merge' if merge else 'replace'}). Total positions: {len(positions)}."
+    )
+    return {"positions": positions, "updated_at": doc.get("updated_at")}
+
+
+def read_symbols_from_file(path: str) -> List[str]:
+    """
+    Read ticker symbols from a text or CSV file.
+
+    **Plain text (.txt or non-CSV):** one or more symbols per line; commas, semicolons, or
+    whitespace separate symbols. Lines starting with ``#`` are ignored; inline ``#`` starts a comment.
+
+    **CSV:** first row may be a header. Recognized header names for the symbol column:
+    ``ticker``, ``symbol``, ``sym`` (case-insensitive). Otherwise the **first column** of each row is used.
+    """
+    path = os.path.expanduser(path)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"Ticker file not found: {path}")
+
+    symbols: List[str] = []
+    seen: set[str] = set()
+
+    def add(raw: str) -> None:
+        sym = _normalize_symbol(raw)
+        if not _is_valid_symbol(sym):
+            return
+        if sym not in seen:
+            seen.add(sym)
+            symbols.append(sym)
+
+    lower = path.lower()
+    if lower.endswith(".csv"):
+        with open(path, newline="", encoding="utf-8", errors="replace") as f:
+            sample = f.read(8192)
+            f.seek(0)
+            try:
+                dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+            except csv.Error:
+                dialect = csv.excel
+            reader = csv.reader(f, dialect)
+            rows = list(reader)
+        if not rows:
+            return []
+        header = [str(c or "").strip().lower() for c in rows[0]]
+        col_idx = 0
+        name_to_idx = {h: i for i, h in enumerate(header) if h}
+        for key in ("ticker", "symbol", "sym"):
+            if key in name_to_idx:
+                col_idx = name_to_idx[key]
+                data_rows = rows[1:]
+                break
+        else:
+            data_rows = rows
+        for row in data_rows:
+            if not row or col_idx >= len(row):
+                continue
+            cell = (row[col_idx] or "").strip()
+            if not cell or cell.startswith("#"):
+                continue
+            add(cell)
+        return symbols
+
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            for part in re.split(r"[,;\s]+", line):
+                part = part.strip()
+                if part:
+                    add(part)
+    return symbols
+
+
+def seed_portfolio_from_file(path: str, merge: bool = False) -> Dict[str, Any]:
+    """Build positions from a ticker list file + yfinance (no Finviz)."""
+    syms = read_symbols_from_file(path)
+    doc = load_portfolio()
+    existing: Dict[str, Any] = dict(doc.get("positions") or {})
+    candidates: List[Tuple[str, Optional[float]]] = []
+    for s in syms:
+        if merge and s in existing:
+            continue
+        candidates.append((s, None))
+    return _seed_positions_from_candidates(
+        candidates, merge=merge, source_label=os.path.basename(path)
+    )
+
+
 def seed_portfolio_from_finviz(merge: bool = False) -> Dict[str, Any]:
     """
     Build ``positions`` from Finviz screener rows + yfinance closes + RS ranks.
@@ -203,68 +358,23 @@ def seed_portfolio_from_finviz(merge: bool = False) -> Dict[str, Any]:
             continue
         candidates.append((sym, _parse_price_cell(row.get("Price"))))
 
-    if merge:
-        max_new = max(0, PORTFOLIO_SIZE - len(existing))
-        candidates = candidates[:max_new]
-    else:
-        candidates = candidates[:PORTFOLIO_SIZE]
-
-    syms = [c[0] for c in candidates]
-    if not syms:
-        if merge:
-            raise RuntimeError(
-                "No new tickers to add (portfolio may already be full or Finviz list empty)."
-            )
-        raise RuntimeError("No tickers to seed — Finviz returned none.")
-
-    closes = _last_closes(syms)
-    rs = get_rs_ratings(syms)
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    new_entries: Dict[str, Any] = {}
-    for sym, finviz_price in candidates:
-        close = closes.get(sym)
-        if close is None or close <= 0:
-            print(f"[seed] skip {sym}: no yfinance close")
-            continue
-        hi = close
-        if finviz_price is not None and finviz_price > hi:
-            hi = finviz_price
-        new_entries[sym] = {
-            "entry_price": round(close, 4),
-            "high_seen": round(hi, 4),
-            "entry_date": today,
-            "rs_at_entry": round(_safe_rs(rs, sym), 2),
-        }
-
-    if not new_entries:
-        msg = "[seed] No positions built (yfinance had no closes for Finviz tickers)."
-        if merge:
-            print(msg + " Keeping existing positions.")
-            return {"positions": dict(existing), "updated_at": doc.get("updated_at")}
-        raise RuntimeError(msg + " Fix symbols or try again later.")
-
-    if merge:
-        positions = dict(existing)
-        positions.update(new_entries)
-    else:
-        positions = new_entries
-
-    print(
-        f"Seeded {len(new_entries)} position(s) into {PORTFOLIO_FILE} "
-        f"({'merge' if merge else 'replace'}). Total positions: {len(positions)}."
+    return _seed_positions_from_candidates(
+        candidates, merge=merge, source_label="Finviz"
     )
-    return {"positions": positions, "updated_at": doc.get("updated_at")}
 
 
 # --- CORE LOGIC ---
 def get_rs_ratings(tickers):
-    """Calculates percentile RS compared to peers over 1 year."""
+    """Percentile RS vs peers over RS_LOOKBACK_PERIOD (total return vs SPY baseline)."""
     if not tickers: return pd.Series()
     # Adding SPY to the mix to provide a market baseline
-    data = yf.download(tickers + ["SPY"], period="1y", interval="1d", progress=False)['Close']
-    print(f"1 year data: {data}")
-    returns = data.pct_change(fill_method=None).iloc[-1] # Simple 1yr return comparison
+    data = yf.download(
+        tickers + ["SPY"],
+        period=RS_LOOKBACK_PERIOD,
+        interval="1d",
+        progress=False,
+    )["Close"]
+    print(f"RS lookback ({RS_LOOKBACK_PERIOD}) closes: {data}")
     returns = (data.iloc[-1] / data.iloc[0]) - 1
     return returns.rank(pct=True) * 100
 
@@ -286,8 +396,9 @@ def run_daily_update():
 
     if not portfolio:
         print(
-            "Portfolio is empty. Create one from the Finviz screen with:\n"
-            f"  python momentum-analyzer.py --seed-from-finviz"
+            "Portfolio is empty. Seed with:\n"
+            f"  python momentum-analyzer.py --seed-from-finviz\n"
+            f"  python momentum-analyzer.py --tickers-file path/to/tickers.txt"
         )
         return
     tickers = list(portfolio.keys())
@@ -341,21 +452,30 @@ def run_daily_update():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Momentum analyzer: seed portfolio from Finviz + daily trailing-stop / RS checks.",
+        description="Momentum analyzer: seed portfolio from Finviz or a ticker file + daily checks.",
     )
-    parser.add_argument(
+    seed = parser.add_mutually_exclusive_group()
+    seed.add_argument(
         "--seed-from-finviz",
         action="store_true",
         help=f"Build or refresh {PORTFOLIO_FILE} using Finviz screener + yfinance (see FINVIZ_SCREENER_URL).",
     )
+    seed.add_argument(
+        "--tickers-file",
+        metavar="PATH",
+        help="Build or refresh portfolio from a text/CSV list of symbols (no Finviz). Same JSON shape as --seed-from-finviz.",
+    )
     parser.add_argument(
         "--merge",
         action="store_true",
-        help="With --seed-from-finviz, only add tickers not already held (caps total size at PORTFOLIO_SIZE).",
+        help="With --seed-from-finviz or --tickers-file: only add symbols not already held (total size capped at PORTFOLIO_SIZE).",
     )
     args = parser.parse_args()
     if args.seed_from_finviz:
         doc = seed_portfolio_from_finviz(merge=args.merge)
+        save_portfolio(doc)
+    elif args.tickers_file:
+        doc = seed_portfolio_from_file(args.tickers_file, merge=args.merge)
         save_portfolio(doc)
     else:
         run_daily_update()

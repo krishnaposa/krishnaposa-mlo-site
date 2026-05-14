@@ -1,0 +1,9 @@
+# Sample ticker list for:
+#   python momentum-analyzer.py --tickers-file my_tickers.txt
+#
+# Rules:
+#   - One or more symbols per line; separate with commas, semicolons, or spaces.
+#   - Lines starting with # are ignored; text after # on a line is ignored.
+
+AVGO NVDA MSFT META AAPL TSLA GOOG AMZN MU 
+NBIS IONQ MRVL VRT SMCI LUNR GEV AGX FLEX FIX DOCN COHR MPWR LITE STX WDC SNDK AXTI 

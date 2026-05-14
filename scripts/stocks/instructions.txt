@@ -1,3 +1,5 @@
-python momentum-analyzer.py --seed-from-finviz          # replace positions with Finviz top names (up to 20)
-python momentum-analyzer.py --seed-from-finviz --merge  # add new names only, respect size cap
-python momentum-analyzer.py                              # daily update (unchanged flow)
+python momentum-analyzer.py --seed-from-finviz                    # replace positions from Finviz (up to 20)
+python momentum-analyzer.py --seed-from-finviz --merge           # add Finviz names not already held
+python momentum-analyzer.py --tickers-file my_tickers.txt         # replace from file (one symbol per line or CSV)
+python momentum-analyzer.py --tickers-file picks.csv --merge     # add from file only if not already held
+python momentum-analyzer.py                                       # daily update (trailing stop + RS)

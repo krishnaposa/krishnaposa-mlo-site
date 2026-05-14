@@ -16,7 +16,7 @@ Env:
   MOMENTUM_FINVIZ_SORT          — default sort if URL has no &o= (default -marketcap)
   MOMENTUM_RS_ENTRY_THRESHOLD    — default 90 (Finviz seed filter when MOMENTUM_FINVIZ_RS_FILTER=1)
   MOMENTUM_RS_EXIT_THRESHOLD     — default 70 (exit when RS is strictly below this; RS == threshold does not exit)
-  RS math: ~14mo daily Close (adj.), weighted return 40% ~3m + 20% each ~6m/9m/12m, rank(pct)*100 among peers + SPY (get_rs_ratings)
+  MOMENTUM_RS_LOOKBACK_PERIOD    — yfinance period for RS (default 6mo); total return first-to-last Close, rank(pct)*100 vs peers + SPY (same as scripts/stocks/momentum-analyzer.py)
   MOMENTUM_TRAILING_STOP_PCT     — default 0.15
   MOMENTUM_FINVIZ_RS_FILTER      — default 1: only Finviz-seed names with RS %ile >= entry threshold
   Same-day Finviz seeds: RS exit is skipped until the next daily run (trailing stop still applies).
@@ -78,6 +78,7 @@ FINVIZ_RS_FILTER = os.getenv("MOMENTUM_FINVIZ_RS_FILTER", "1").strip().lower() i
     "true",
     "yes",
 )
+RS_LOOKBACK_PERIOD = (os.getenv("MOMENTUM_RS_LOOKBACK_PERIOD") or "6mo").strip()
 
 
 def _close_panel(
@@ -268,48 +269,16 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         out["messages"].append("Finviz seed: could not price any new symbols via Yahoo.")
 
 
-# Trading-day offsets for weighted momentum (~3m / ~6m / ~9m / ~12m).
-_W_RS_LOOKBACKS = (63, 126, 189, 252)
-_W_RS_WEIGHTS = (0.4, 0.2, 0.2, 0.2)
-
-
-def _weighted_momentum_score(close: pd.Series) -> float:
-    """
-    Weighted momentum vs own past closes: 40% last ~3 months, 20% each ~6m / ~9m / ~12m.
-    Requires at least 252 valid daily closes (after dropna).
-    """
-    s = close.dropna()
-    if len(s) < _W_RS_LOOKBACKS[-1]:
-        return float("nan")
-    with np.errstate(divide="ignore", invalid="ignore"):
-        try:
-            last = float(s.iloc[-1])
-            if last <= 0 or np.isnan(last):
-                return float("nan")
-            w = 0.0
-            for n, wt in zip(_W_RS_LOOKBACKS, _W_RS_WEIGHTS):
-                base = float(s.iloc[-n])
-                if base <= 0 or np.isnan(base):
-                    return float("nan")
-                w += wt * ((last / base) - 1.0)
-            if np.isnan(w) or np.isinf(w):
-                return float("nan")
-            return float(w)
-        except Exception:
-            return float("nan")
-
-
 def get_rs_ratings(tickers: List[str]) -> pd.Series:
     """
-    Percentile RS vs peers (weighted momentum).
+    Percentile RS vs peers — **same construction as** ``scripts/stocks/momentum-analyzer.get_rs_ratings``.
 
-    1. Download **~14mo** daily **Close** (split/dividend-adjusted) for ``tickers`` + **SPY** (deduped).
-    2. Per symbol, weighted return: ``0.4*r3 + 0.2*r6 + 0.2*r9 + 0.2*r12`` where each ``r`` is
-       ``last / close[~N trading days] - 1`` for N in (63, 126, 189, 252).
-    3. ``rank(pct=True) * 100`` on those scores (same peer set, including SPY). Symbols with
-       fewer than 252 valid closes get NaN RS.
+    1. Download daily **Close** (split/dividend-adjusted) for ``tickers`` + **SPY** (deduped) over
+       ``RS_LOOKBACK_PERIOD`` (env ``MOMENTUM_RS_LOOKBACK_PERIOD``, default ``6mo``).
+    2. Total return per symbol: ``last_close / first_close - 1`` (first/last row of the panel).
+    3. ``rank(pct=True) * 100`` on those returns (peer set includes SPY).
 
-    **Entry:** Finviz candidates only. **Exit:** open position tickers only.
+    **Entry:** Finviz candidates only. **Exit:** open position tickers (or holdings list) only.
     """
     if not tickers:
         return pd.Series(dtype=float)
@@ -317,7 +286,7 @@ def get_rs_ratings(tickers: List[str]) -> pd.Series:
     bench = list(dict.fromkeys(tix + ["SPY"]))
     raw = yf.download(
         bench,
-        period="14mo",
+        period=RS_LOOKBACK_PERIOD,
         interval="1d",
         progress=False,
         threads=False,
@@ -336,12 +305,9 @@ def get_rs_ratings(tickers: List[str]) -> pd.Series:
     if "SPY" not in data.columns:
         return pd.Series(dtype=float)
 
-    weighted = pd.Series(
-        {c: _weighted_momentum_score(data[c]) for c in data.columns},
-        dtype=float,
-    )
-    weighted = weighted.replace([np.inf, -np.inf], np.nan)
-    out = weighted.rank(pct=True, method="average", ascending=True) * 100.0
+    rets = (data.iloc[-1] / data.iloc[0]) - 1.0
+    rets = rets.replace([np.inf, -np.inf], np.nan)
+    out = rets.rank(pct=True, method="average", ascending=True) * 100.0
     return out
 
 
@@ -535,7 +501,8 @@ def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
         f"<div style='font-size:11px;color:#666;margin-bottom:6px'>"
         f"Source: holdings_list.json · State: {_esc(str(result.get('state_file','')))} · "
         f"Exit RS &lt; {RS_EXIT_THRESHOLD:g} · Trailing {TRAILING_STOP_PCT:.0%} · "
-        f"RS = weighted momentum (40% ~3m + 20% each ~6m/9m/12m on adj. Close), pct-rank among holdings + SPY"
+        f"RS = total return over {RS_LOOKBACK_PERIOD} (adj. Close), pct-rank among holdings + SPY "
+        f"(same as momentum-analyzer.py)"
         f"</div>"
     )
 
@@ -717,7 +684,9 @@ def _format_finviz_pre_rs_email_html(result: Dict[str, Any]) -> str:
         parts.append(
             "<div style='font-size:12px;margin-bottom:4px'>"
             f"<b>New-slot candidates</b> (not already in momentum book; {gate}). "
-            "RS %ile = weighted momentum (40% ~3m + 20% each ~6m/9m/12m on adj. Close), then pct-rank among <b>these Finviz candidates + SPY only</b> "
+            "RS %ile = total return over "
+            f"{RS_LOOKBACK_PERIOD} (adj. daily Close), then pct-rank among <b>these Finviz candidates + SPY only</b> "
+            "(same construction as scripts/stocks/momentum-analyzer.py). "
             "(same formula as open positions; book not in this peer set for seeding). "
             f"<span style='color:#444'>This table only gates <i>new seeds</i>; open positions still exit if "
             f"RS &lt; {RS_EXIT_THRESHOLD:g} (MOMENTUM_RS_EXIT_THRESHOLD) or trailing stop hits "
@@ -821,7 +790,8 @@ def format_momentum_email_section(result: Dict[str, Any]) -> str:
         f"Storage: {_esc(str(result.get('portfolio_file','')))} · "
         f"Exit RS &lt; {RS_EXIT_THRESHOLD:g} (next run for same-day Finviz seeds) · "
         f"Trailing {TRAILING_STOP_PCT:.0%} · "
-        f"RS = weighted momentum (40% ~3m + 20% each ~6m/9m/12m), pct-rank vs {_esc(rs_note)}"
+        f"RS = total return over {RS_LOOKBACK_PERIOD} (adj. Close), pct-rank vs {_esc(rs_note)} "
+        f"(momentum-analyzer.py)"
         f"</div>"
     )
 

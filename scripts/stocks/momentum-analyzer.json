@@ -1,125 +1,125 @@
 {
     "positions": {
-        "NVDA": {
-            "entry_price": 225.83,
-            "high_seen": 225.83,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 42.86
-        },
-        "GOOGL": {
-            "entry_price": 402.62,
-            "high_seen": 402.62,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 85.71
-        },
-        "GOOG": {
-            "entry_price": 399.04,
-            "high_seen": 399.04,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 80.95
-        },
-        "AAPL": {
-            "entry_price": 298.87,
-            "high_seen": 298.87,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 23.81
-        },
-        "ASML": {
-            "entry_price": 1581.58,
-            "high_seen": 1581.58,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 76.19
-        },
-        "CSCO": {
-            "entry_price": 101.87,
-            "high_seen": 101.87,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 52.38
-        },
-        "UNH": {
-            "entry_price": 401.16,
-            "high_seen": 401.16,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 19.05
-        },
-        "MS": {
-            "entry_price": 193.83,
-            "high_seen": 193.83,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 33.33
-        },
-        "TXN": {
-            "entry_price": 306.34,
-            "high_seen": 306.34,
-            "entry_date": "2026-05-13",
+        "AVGO": {
+            "entry_price": 441.4399,
+            "high_seen": 441.4399,
+            "entry_date": "2026-05-14",
             "rs_at_entry": 47.62
         },
-        "RY": {
-            "entry_price": 179.92,
-            "high_seen": 179.92,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 28.57
+        "NVDA": {
+            "entry_price": 235.45,
+            "high_seen": 235.45,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 42.86
         },
-        "BHP": {
-            "entry_price": 90.81,
-            "high_seen": 90.81,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 61.9
-        },
-        "ADI": {
-            "entry_price": 432.39,
-            "high_seen": 432.39,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 71.43
-        },
-        "PANW": {
-            "entry_price": 227.79,
-            "high_seen": 227.79,
-            "entry_date": "2026-05-13",
+        "MSFT": {
+            "entry_price": 409.45,
+            "high_seen": 409.45,
+            "entry_date": "2026-05-14",
             "rs_at_entry": 4.76
         },
-        "GLW": {
-            "entry_price": 206.51,
-            "high_seen": 206.51,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 100.0
-        },
-        "MRVL": {
-            "entry_price": 177.95,
-            "high_seen": 177.95,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 90.48
-        },
-        "WELL": {
-            "entry_price": 220.14,
-            "high_seen": 220.14,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 38.1
-        },
-        "CRWD": {
-            "entry_price": 562.57,
-            "high_seen": 562.57,
-            "entry_date": "2026-05-13",
+        "META": {
+            "entry_price": 617.6838,
+            "high_seen": 617.6838,
+            "entry_date": "2026-05-14",
             "rs_at_entry": 14.29
         },
-        "VRT": {
-            "entry_price": 369.99,
-            "high_seen": 369.99,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 95.24
+        "AAPL": {
+            "entry_price": 298.8299,
+            "high_seen": 298.8299,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 23.81
         },
-        "BTI": {
-            "entry_price": 65.35,
-            "high_seen": 65.35,
-            "entry_date": "2026-05-13",
+        "TSLA": {
+            "entry_price": 443.82,
+            "high_seen": 443.82,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 19.05
+        },
+        "GOOG": {
+            "entry_price": 397.17,
+            "high_seen": 397.17,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 52.38
+        },
+        "AMZN": {
+            "entry_price": 268.06,
+            "high_seen": 268.06,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 33.33
+        },
+        "MU": {
+            "entry_price": 788.54,
+            "high_seen": 788.54,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 90.48
+        },
+        "NBIS": {
+            "entry_price": 226.9,
+            "high_seen": 226.9,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 85.71
+        },
+        "IONQ": {
+            "entry_price": 57.61,
+            "high_seen": 57.61,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 38.1
+        },
+        "MRVL": {
+            "entry_price": 183.34,
+            "high_seen": 183.34,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 66.67
+        },
+        "VRT": {
+            "entry_price": 377.5,
+            "high_seen": 377.5,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 71.43
+        },
+        "SMCI": {
+            "entry_price": 32.855,
+            "high_seen": 32.855,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 9.52
+        },
+        "LUNR": {
+            "entry_price": 36.505,
+            "high_seen": 36.505,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 100.0
+        },
+        "GEV": {
+            "entry_price": 1081.61,
+            "high_seen": 1081.61,
+            "entry_date": "2026-05-14",
             "rs_at_entry": 57.14
         },
-        "RIO": {
-            "entry_price": 112.04,
-            "high_seen": 112.04,
-            "entry_date": "2026-05-13",
-            "rs_at_entry": 66.67
+        "AGX": {
+            "entry_price": 728.76,
+            "high_seen": 728.76,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 61.9
+        },
+        "FLEX": {
+            "entry_price": 144.27,
+            "high_seen": 144.27,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 80.95
+        },
+        "FIX": {
+            "entry_price": 2040.335,
+            "high_seen": 2040.335,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 76.19
+        },
+        "DOCN": {
+            "entry_price": 158.96,
+            "high_seen": 158.96,
+            "entry_date": "2026-05-14",
+            "rs_at_entry": 95.24
         }
     },
-    "updated_at": "2026-05-13T18:42:02"
+    "updated_at": "2026-05-14T15:41:08"
 }
