@@ -16,8 +16,19 @@
       You hear <strong>vocals + band</strong> together here. Pick the <strong>same output</strong> for both tracks
       to send the full mix to one device (for example a Bluetooth speaker or car audio).
     </p>
+    <div class="grid-2" style="margin-top:.5rem">
+      <div class="field">
+        <label for="filterMovie">Movie</label>
+        <input id="filterMovie" type="text" placeholder="Filter by movie…" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="filterSinger">Singer</label>
+        <input id="filterSinger" type="text" placeholder="Filter by singer…" autocomplete="off">
+      </div>
+    </div>
     <div class="row">
       <button id="refreshList" class="btn btn-outline" type="button">Refresh songs</button>
+      <button id="clearFilters" class="btn btn-outline" type="button">Clear filters</button>
       <span id="status" class="help"></span>
     </div>
     <div class="field" style="margin-top:.5rem">
@@ -104,6 +115,6 @@
 <script>window.KARAOKE = window.KARAOKE || {};</script>
 <script src="/assets/js/karaoke-api-base.js?v=2"></script>
 <script src="/assets/js/karaoke-core.js?v=5"></script>
-<script src="/assets/js/karaoke-host.js?v=5"></script>
+<script src="/assets/js/karaoke-host.js?v=6"></script>
 </body>
 </html>

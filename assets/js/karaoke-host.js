@@ -25,6 +25,9 @@
     const vocalsEl = document.getElementById("vocalsEl");
     const listenerUrlEl = document.getElementById("listenerUrl");
     const refreshBtn = document.getElementById("refreshList");
+    const clearFiltersBtn = document.getElementById("clearFilters");
+    const filterMovieEl = document.getElementById("filterMovie");
+    const filterSingerEl = document.getElementById("filterSinger");
     const publishBtn = document.getElementById("publishNow");
     const hostLyricsPlain = document.getElementById("hostLyricsPlain");
     const hostLyricsSynced = document.getElementById("hostLyricsSynced");
@@ -145,23 +148,62 @@
       return s.replace(/\s{2,}/g, " ").trim();
     }
 
+    function singerLabel(item) {
+      const singers = Array.isArray(item && item.singers)
+        ? item.singers.map((x) => String(x || "").trim()).filter(Boolean)
+        : [];
+      if (singers.length) return singers.join(", ");
+      return (item && item.artist && String(item.artist).trim()) || "";
+    }
+
     function buildSongDisplayLabel(item) {
       const title = normalizeHumanTitle((item && item.title) || "");
-      const artist = (item && item.artist && String(item.artist).trim()) || "";
       const movie = (item && item.movie && String(item.movie).trim()) || "";
-      const language = (item && item.language && String(item.language).trim()) || "";
-      const category = (item && item.category && String(item.category).trim()) || "";
-      const tags = Array.isArray(item && item.tags)
-        ? item.tags.slice(0, 2).map((x) => String(x || "").trim()).filter(Boolean)
-        : [];
+      const singer = singerLabel(item);
       const primary = title || item.job_id;
       const meta = [];
-      if (artist) meta.push(artist);
       if (movie) meta.push(movie);
-      if (language) meta.push(language);
-      if (category) meta.push(category);
-      if (tags.length) meta.push(tags.join(", "));
+      if (singer) meta.push(singer);
       return meta.length ? primary + " — " + meta.join(" | ") : primary;
+    }
+
+    function buildListUrl() {
+      const url = new URL(endpoints.list);
+      const setIf = (key, el) => {
+        const v = el && String(el.value || "").trim();
+        if (v) url.searchParams.set(key, v);
+        else url.searchParams.delete(key);
+      };
+      setIf("movie", filterMovieEl);
+      setIf("singer", filterSingerEl);
+      return url.toString();
+    }
+
+    function populateSongPick(list) {
+      const prev = songPickEl ? songPickEl.value : "";
+      if (!songPickEl) return;
+      songPickEl.innerHTML = "";
+      const ph = document.createElement("option");
+      ph.value = "";
+      ph.textContent = list.length ? "Select a song..." : "No songs match filters";
+      songPickEl.appendChild(ph);
+      list.forEach((it) => {
+        const o = document.createElement("option");
+        o.value = it.job_id;
+        const labelBase = buildSongDisplayLabel(it);
+        const dup = list.filter((x) => buildSongDisplayLabel(x) === labelBase).length;
+        o.textContent = dup > 1 ? labelBase + " [" + it.job_id + "]" : labelBase;
+        songPickEl.appendChild(o);
+      });
+      if (prev && list.some((x) => x.job_id === prev)) {
+        songPickEl.value = prev;
+      } else if (list.length === 1) {
+        songPickEl.value = list[0].job_id;
+        songPickEl.dispatchEvent(new Event("change"));
+      } else if (prev && !list.some((x) => x.job_id === prev)) {
+        songPickEl.value = "";
+        songPickEl.dispatchEvent(new Event("change"));
+      }
     }
 
     function setStatus(t) {
@@ -187,24 +229,25 @@
 
     async function loadSongs() {
       setStatus("Loading songs...");
-      const r = await fetch(endpoints.list, { mode: "cors" });
+      const r = await fetch(buildListUrl(), { mode: "cors" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
       const d = await r.json();
       items = Array.isArray(d.items) ? d.items : [];
-      songPickEl.innerHTML = "";
-      const ph = document.createElement("option");
-      ph.value = "";
-      ph.textContent = items.length ? "Select a song..." : "No completed songs";
-      songPickEl.appendChild(ph);
-      items.forEach((it) => {
-        const o = document.createElement("option");
-        o.value = it.job_id;
-        const labelBase = buildSongDisplayLabel(it);
-        const dup = items.filter((x) => buildSongDisplayLabel(x) === labelBase).length;
-        o.textContent = dup > 1 ? labelBase + " [" + it.job_id + "]" : labelBase;
-        songPickEl.appendChild(o);
-      });
-      listenerUrlEl.value = listenerUrl();
-      setStatus(items.length ? "Loaded " + items.length + " song(s)." : "No songs found.");
+      populateSongPick(items);
+      if (listenerUrlEl) listenerUrlEl.value = listenerUrl();
+      const mov = filterMovieEl && filterMovieEl.value.trim();
+      const sing = filterSingerEl && filterSingerEl.value.trim();
+      const filt =
+        mov || sing
+          ? " (filters: " +
+            [mov ? "movie=" + mov : "", sing ? "singer=" + sing : ""].filter(Boolean).join(", ") +
+            ")"
+          : "";
+      setStatus(
+        items.length
+          ? "Loaded " + items.length + " song(s)." + filt
+          : "No songs match" + (filt || " — try clearing filters.")
+      );
     }
 
     async function loadLyrics(jobId) {
@@ -281,6 +324,24 @@
 
     refreshBtn.addEventListener("click", function () {
       loadSongs().catch((e) => setStatus(String(e)));
+    });
+    if (clearFiltersBtn) {
+      clearFiltersBtn.addEventListener("click", function () {
+        if (filterMovieEl) filterMovieEl.value = "";
+        if (filterSingerEl) filterSingerEl.value = "";
+        loadSongs().catch((e) => setStatus(String(e)));
+      });
+    }
+    let filterTimer = null;
+    function scheduleFilterReload() {
+      if (filterTimer) clearTimeout(filterTimer);
+      filterTimer = setTimeout(function () {
+        loadSongs().catch((e) => setStatus(String(e)));
+      }, 350);
+    }
+    [filterMovieEl, filterSingerEl].forEach(function (el) {
+      el &&
+        el.addEventListener("input", scheduleFilterReload);
     });
     publishBtn.addEventListener("click", function () {
       publishSession().then(() => setStatus("Published.")).catch((e) => setStatus(String(e)));

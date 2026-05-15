@@ -7,6 +7,7 @@ Layout under KARAOKE_LOCAL_ROOT (default: ~/.karaoke-local):
   output/  — {job_id}/vocals.wav and {job_id}/no_vocals.wav
   status/  — {job_id}.json (same shape as cloud status blobs)
   lyrics/  — {job_id}.json (saved lyrics; same shape as cloud karaoke-lyrics blobs)
+             On upload/split, title/artist/movie may be seeded from audio file tags (ffprobe) when present.
 
 Implements the same routes the web UI expects:
   POST /api/submit     — multipart field "file" (combined mp3/wav/…)
@@ -424,6 +425,14 @@ def _refresh_completed_jobs_cache_if_needed(force: bool = False) -> None:
         _songs_index_last_scan = now
 
 
+def _singer_search_blob(item: Dict[str, Any]) -> str:
+    parts = list(item.get("singers") or [])
+    artist = (item.get("artist") or "").strip()
+    if artist:
+        parts.append(artist)
+    return " ".join(str(p) for p in parts if p)
+
+
 def list_completed_jobs(
     query: str = "",
     title: str = "",
@@ -431,6 +440,7 @@ def list_completed_jobs(
     tags: str = "",
     language: str = "",
     category: str = "",
+    movie: str = "",
     singer: str = "",
     actor: str = "",
     text: str = "",
@@ -445,6 +455,7 @@ def list_completed_jobs(
     tg = [x.lower() for x in _normalize_tags(tags)]
     lang = (language or "").strip().lower()
     cat = (category or "").strip().lower()
+    mov = (movie or "").strip().lower()
     sing = (singer or "").strip().lower()
     act = (actor or "").strip().lower()
     txt = (text or "").strip().lower()
@@ -464,8 +475,10 @@ def list_completed_jobs(
         items = [x for x in items if lang in (x.get("language") or "").lower()]
     if cat:
         items = [x for x in items if cat in (x.get("category") or "").lower()]
+    if mov:
+        items = [x for x in items if mov in (x.get("movie") or "").lower()]
     if sing:
-        items = [x for x in items if sing in " ".join((x.get("singers") or [])).lower()]
+        items = [x for x in items if sing in _singer_search_blob(x).lower()]
     if act:
         items = [x for x in items if act in " ".join((x.get("actors") or [])).lower()]
     if txt:
@@ -699,6 +712,191 @@ def _ffprobe_duration_seconds(path: Path) -> Optional[float]:
         return None
 
 
+def _ffprobe_format_tags(path: Path) -> Dict[str, str]:
+    """
+    Read container/tag metadata via ffprobe (MP3 ID3, M4A, FLAC, etc.).
+    Returns lowercase keys -> stripped string values (first value per key).
+    """
+    exe = shutil.which("ffprobe")
+    if not exe:
+        return {}
+    try:
+        proc = subprocess.run(
+            [
+                exe,
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_format",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if proc.returncode != 0:
+            return {}
+        data = json.loads(proc.stdout or "{}")
+        tags = (data.get("format") or {}).get("tags") or {}
+        if not isinstance(tags, dict):
+            return {}
+        out: Dict[str, str] = {}
+        for k, v in tags.items():
+            if v is None:
+                continue
+            key = str(k).strip().lower()
+            val = str(v).strip()
+            if key and val:
+                out[key] = val
+        return out
+    except (json.JSONDecodeError, subprocess.TimeoutExpired, OSError, TypeError):
+        return {}
+
+
+def _first_tag(tags: Dict[str, str], *keys: str) -> str:
+    for k in keys:
+        v = tags.get(k) or tags.get(k.lower())
+        if v:
+            return _to_clean_text(v)
+    return ""
+
+
+def _parse_title_movie_artist_from_filename(stem: str) -> Dict[str, str]:
+    """
+    Heuristic when tags are missing: "Movie - Song", "Song - Singer", "Movie_Song_Singer".
+    """
+    s = _to_clean_text(stem.replace("_", " "))
+    if not s:
+        return {}
+    out: Dict[str, str] = {"title": s}
+    for sep in (" - ", " – ", " — ", " | "):
+        if sep in s:
+            left, right = [x.strip() for x in s.split(sep, 1)]
+            if left and right:
+                # Often "Movie - Song" or "Song - Artist"
+                if len(left) <= 60 and len(right) <= 80:
+                    out["movie"] = left
+                    out["title"] = right
+                break
+    return out
+
+
+def extract_audio_metadata(path: Path, original_name: str) -> Dict[str, Any]:
+    """
+    Build title / artist / movie / singers from file tags + filename fallback.
+    Movie is best-effort: ID3 album, or "Movie - Song" style filenames.
+    """
+    tags = _ffprobe_format_tags(path)
+    stem = Path(original_name or path.name).stem
+
+    title = _first_tag(tags, "title", "track", "name")
+    artist = _first_tag(tags, "artist", "album_artist", "albumartist", "performer", "author")
+    album = _first_tag(tags, "album", "series")
+    movie = _first_tag(tags, "movie", "film", "picture")
+    comment = _first_tag(tags, "comment", "description")
+
+    if not title:
+        title = _to_clean_text(stem)
+    if not artist and album and album.lower() != title.lower():
+        # Karaoke MP3s sometimes put singer in artist and movie in album.
+        pass
+    if not movie and album and album.lower() not in (title.lower(), artist.lower()):
+        movie = album
+    if not movie and comment:
+        m = re.search(r"(?:movie|film)\s*[:=]\s*([^|;\n]+)", comment, re.I)
+        if m:
+            movie = _to_clean_text(m.group(1))
+
+    fn_guess = _parse_title_movie_artist_from_filename(stem)
+    if not title or title == stem:
+        title = fn_guess.get("title") or title
+    if not movie:
+        movie = fn_guess.get("movie") or ""
+
+    singers: list[str] = []
+    if artist:
+        singers = _ensure_list_text(artist)
+    elif fn_guess.get("artist"):
+        singers = _ensure_list_text(fn_guess["artist"])
+
+    return {
+        "title": title,
+        "artist": artist,
+        "movie": movie,
+        "singers": singers,
+        "tags_source": "ffprobe" if tags else ("filename" if fn_guess else "none"),
+        "raw_tags": tags,
+    }
+
+
+def seed_lyrics_metadata_from_audio(
+    job_id: str,
+    audio_path: Path,
+    original_name: str,
+    *,
+    overwrite: bool = False,
+) -> Dict[str, Any]:
+    """
+    Write lyrics/{job_id}.json with title/artist/movie from audio metadata.
+    Skips if file exists and overwrite=False (only fills empty fields when merge).
+    """
+    meta = extract_audio_metadata(audio_path, original_name)
+    existing = get_saved_lyrics(job_id) or {}
+    if existing and not overwrite:
+        payload = dict(existing)
+        for key, val in (
+            ("title", meta.get("title")),
+            ("artist", meta.get("artist")),
+            ("movie", meta.get("movie")),
+        ):
+            if not _to_clean_text(payload.get(key)):
+                payload[key] = _to_clean_text(val)
+        if not _ensure_list_text(payload.get("singers") or payload.get("singer")):
+            payload["singers"] = meta.get("singers") or []
+        payload.setdefault("job_id", job_id)
+        payload["metadata_seeded_at"] = datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%S.%f"
+        )[:-3] + "Z"
+        payload["metadata_source"] = meta.get("tags_source")
+    else:
+        payload = {
+            "job_id": job_id,
+            "title": _to_clean_text(meta.get("title")),
+            "artist": _to_clean_text(meta.get("artist")),
+            "language": "",
+            "category": "",
+            "movie": _to_clean_text(meta.get("movie")),
+            "singers": meta.get("singers") or [],
+            "actors": [],
+            "tags": _normalize_tags(meta.get("raw_tags", {}).get("genre")),
+            "synced": False,
+            "lrc": "",
+            "text": "",
+            "saved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+            "metadata_seeded_at": datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%S.%f"
+            )[:-3] + "Z",
+            "metadata_source": meta.get("tags_source"),
+        }
+
+    lyrics_disk_path(job_id).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    _refresh_completed_jobs_cache_if_needed(force=True)
+    LOG.info(
+        "[%s] lyrics metadata from %s: title=%r artist=%r movie=%r (source=%s)",
+        job_id,
+        original_name,
+        payload.get("title"),
+        payload.get("artist"),
+        payload.get("movie"),
+        meta.get("tags_source"),
+    )
+    return payload
+
+
 def _validate_stem_files(job_id: str, voc_path: Path, band_path: Path) -> None:
     """Raise if stem WAVs are missing, tiny on disk, or have no usable audio duration."""
     for label, p in (("vocals", voc_path), ("band / instrumental", band_path)):
@@ -921,6 +1119,8 @@ def process_job_file(input_file: Path, job_id: str, original_name: str) -> None:
     )
 
     try:
+        if input_file.is_file():
+            seed_lyrics_metadata_from_audio(job_id, input_file, original_name)
         with tempfile.TemporaryDirectory(prefix=f"karaoke-{job_id}-") as td:
             tdp = Path(td)
             work_audio = tdp / Path(original_name).name
@@ -1395,6 +1595,7 @@ class Handler(BaseHTTPRequestHandler):
             tags = (qs.get("tags", [""])[0] or qs.get("tag", [""])[0] or "").strip()
             language = (qs.get("language", [""])[0] or qs.get("lang", [""])[0] or "").strip()
             category = (qs.get("category", [""])[0] or "").strip()
+            movie = (qs.get("movie", [""])[0] or "").strip()
             singer = (qs.get("singer", [""])[0] or "").strip()
             actor = (qs.get("actor", [""])[0] or "").strip()
             text = (qs.get("text", [""])[0] or "").strip()
@@ -1405,13 +1606,14 @@ class Handler(BaseHTTPRequestHandler):
                 tags=tags,
                 language=language,
                 category=category,
+                movie=movie,
                 singer=singer,
                 actor=actor,
                 text=text,
             )
             n_sub = sum(1 for _ in OUTPUT_DIR.iterdir()) if OUTPUT_DIR.is_dir() else 0
             LOG.info(
-                "GET /api/list -> %d completed job(s) (q=%r title=%r job_id=%r tags=%r language=%r category=%r singer=%r actor=%r text=%r) (KARAOKE_LOCAL_ROOT=%s output/ sub-entries=%s)",
+                "GET /api/list -> %d completed job(s) (q=%r title=%r job_id=%r tags=%r language=%r category=%r movie=%r singer=%r actor=%r text=%r) (KARAOKE_LOCAL_ROOT=%s output/ sub-entries=%s)",
                 len(items),
                 q,
                 title,
@@ -1419,6 +1621,7 @@ class Handler(BaseHTTPRequestHandler):
                 tags,
                 language,
                 category,
+                movie,
                 singer,
                 actor,
                 text,
@@ -1514,6 +1717,10 @@ class Handler(BaseHTTPRequestHandler):
             job_id,
             {"state": "queued", "progress": 0, "original_name": fname},
         )
+        try:
+            seed_lyrics_metadata_from_audio(job_id, dest, fname)
+        except Exception as e:
+            LOG.warning("[%s] metadata seed skipped: %s", job_id, e)
         raw = json.dumps({"job_id": job_id}).encode()
         self._send(200, raw)
 
