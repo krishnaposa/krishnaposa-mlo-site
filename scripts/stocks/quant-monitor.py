@@ -2,7 +2,8 @@
 """
 Daily quant monitor — scores tickers and writes CSV snapshots locally.
 
-Wraps azure/functions/stocks-func-app/monitoring/monitor.run_monitor() (same as run_daily_monitor.py).
+Wraps azure/functions/stocks-func-app/monitoring/monitor.run_monitor().
+Uses local JSON by default (local-list.json, holdings-list.json, momentum-analyzer.json).
 
 Usage:
   python quant-monitor.py
@@ -21,7 +22,7 @@ import sys
 import warnings
 from pathlib import Path
 
-from stocks_common import ensure_func_app_path, read_symbols_from_file
+from stocks_common import install_local_monitor_adapters, read_symbols_from_file
 
 warnings.filterwarnings("ignore")
 
@@ -51,7 +52,15 @@ def main() -> None:
         default=os.getenv("DAILY_MONITOR_LOG_LEVEL", "INFO"),
         help="Logging level (default INFO).",
     )
+    parser.add_argument(
+        "--use-azure",
+        action="store_true",
+        help="Use MONITOR_STORAGE blob for lists/universe (default: local JSON in scripts/stocks/).",
+    )
     args = parser.parse_args()
+
+    if args.use_azure:
+        os.environ["STOCKS_USE_AZURE_STORAGE"] = "1"
 
     logging.basicConfig(
         level=getattr(logging, str(args.log_level).upper(), logging.INFO),
@@ -68,7 +77,7 @@ def main() -> None:
         tickers.extend(normalize_symbol(t) for t in args.tickers if is_valid_symbol(t))
     tickers = sorted(set(tickers))
 
-    ensure_func_app_path()
+    install_local_monitor_adapters()
     from monitoring.monitor import run_monitor  # noqa: E402
 
     out_dir = Path(args.out_dir).expanduser()
@@ -76,9 +85,9 @@ def main() -> None:
 
     logging.info("=== Quant monitor (local) ===")
     if tickers:
-        logging.info("Watchlist: %d symbol(s)", len(tickers))
+        logging.info("CLI watchlist: %d symbol(s)", len(tickers))
     else:
-        logging.info("No watchlist — using monitor default universe / local_list from Azure if configured")
+        logging.info("Universe from local-list.json, holdings-list.json, momentum-analyzer.json (+ Finviz if enabled)")
 
     df_all, df_leaders = run_monitor(tickers)
 

@@ -29,52 +29,20 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
 
 from stocks_common import (
-    ensure_func_app_path,
+    HOLDINGS_LIST_FILE,
+    install_local_holdings_adapters,
     load_ticker_list_json,
-    load_trailing_state_json,
     print_run_messages,
     read_symbols_from_file,
     save_ticker_list_json,
-    save_trailing_state_json,
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-HOLDINGS_LIST_FILE = Path(
-    os.getenv("HOLDINGS_LIST_FILE", str(SCRIPT_DIR / "holdings-list.json"))
-).expanduser()
 HOLDINGS_STATE_FILE = Path(
     os.getenv("HOLDINGS_STATE_FILE", str(SCRIPT_DIR / "holdings-trailing-state.json"))
 ).expanduser()
-
-
-def _install_local_holdings_adapters() -> None:
-    """Point local_list_utils at local JSON files before momentum_portfolio imports."""
-    ensure_func_app_path()
-    import local_list_utils as ll  # noqa: E402
-
-    def _load_list(initial_fallback: Optional[List[str]] = None) -> List[str]:
-        return load_ticker_list_json(HOLDINGS_LIST_FILE, fallback=initial_fallback)
-
-    def _save_list(tickers: List[str], meta: Optional[Dict] = None) -> None:
-        save_ticker_list_json(HOLDINGS_LIST_FILE, tickers, meta=meta)
-
-    def _load_state() -> Dict[str, Dict[str, Any]]:
-        return load_trailing_state_json(HOLDINGS_STATE_FILE)
-
-    def _save_state(positions: Dict[str, Dict[str, Any]], meta: Optional[Dict] = None) -> None:
-        save_trailing_state_json(HOLDINGS_STATE_FILE, positions, meta=meta)
-
-    def _state_desc() -> str:
-        return f"file:{HOLDINGS_STATE_FILE}"
-
-    ll.load_holdings_list = _load_list
-    ll.save_holdings_list = _save_list
-    ll.load_holdings_trailing_state = _load_state
-    ll.save_holdings_trailing_state = _save_state
-    ll.holdings_trailing_storage_description = _state_desc
 
 
 def set_holdings_from_file(path: str, *, merge: bool) -> None:
@@ -90,7 +58,7 @@ def set_holdings_from_file(path: str, *, merge: bool) -> None:
 
 
 def run_daily(*, remove_on_exit: bool) -> None:
-    _install_local_holdings_adapters()
+    install_local_holdings_adapters(list_file=HOLDINGS_LIST_FILE, state_file=HOLDINGS_STATE_FILE)
     if remove_on_exit:
         os.environ["HOLDINGS_LIST_REMOVE_ON_EXIT"] = "1"
     from monitoring.momentum_portfolio import run_holdings_trailing_daily  # noqa: E402

@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """
-Wheel / monitor local list — manage local-list.json (watch universe for quant monitor).
-
-When Azure blob is configured (MONITOR_STORAGE), the full monitor still uses blob;
-this script is for a **local** copy you can edit and pass to quant-monitor.py via --tickers-file.
+Manage local-list.json — primary watch universe for quant-monitor.py (local mode, no Azure).
 
 Usage:
   python local-list-analyzer.py --set-from-file watchlist.txt
@@ -19,13 +16,11 @@ import sys
 from pathlib import Path
 
 from stocks_common import (
+    LOCAL_LIST_FILE,
     load_ticker_list_json,
     read_symbols_from_file,
     save_ticker_list_json,
 )
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-LOCAL_LIST_FILE = Path(__file__).resolve().parent / "local-list.json"
 
 
 def main() -> None:

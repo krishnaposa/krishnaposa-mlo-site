@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 import re
 import sys
+import types
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -18,6 +20,21 @@ from typing import Any, Dict, List, Optional
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parent.parent
 _FUNC_APP = _REPO_ROOT / "azure" / "functions" / "stocks-func-app"
+
+# Default local JSON paths (scripts/stocks/)
+LOCAL_LIST_FILE = Path(os.getenv("LOCAL_LIST_FILE", str(_SCRIPT_DIR / "local-list.json"))).expanduser()
+HOLDINGS_LIST_FILE = Path(os.getenv("HOLDINGS_LIST_FILE", str(_SCRIPT_DIR / "holdings-list.json"))).expanduser()
+UNIVERSE_FILE = Path(os.getenv("UNIVERSE_FILE", str(_SCRIPT_DIR / "universe.json"))).expanduser()
+MOMENTUM_PORTFOLIO_FILE = Path(
+    os.getenv("MOMENTUM_PORTFOLIO_FILE", str(_SCRIPT_DIR / "momentum-analyzer.json"))
+).expanduser()
+
+logger = logging.getLogger(__name__)
+
+
+def use_azure_storage() -> bool:
+    """When true, scripts use Azure blob (MONITOR_STORAGE) instead of local JSON patches."""
+    return os.getenv("STOCKS_USE_AZURE_STORAGE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def ensure_func_app_path() -> Path:
@@ -170,6 +187,112 @@ def save_trailing_state_json(
     if meta:
         payload["meta"] = meta
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def install_local_holdings_adapters(
+    *,
+    list_file: Path | None = None,
+    state_file: Path | None = None,
+) -> None:
+    """Point local_list_utils holdings APIs at local JSON (no MONITOR_STORAGE)."""
+    if use_azure_storage():
+        ensure_func_app_path()
+        return
+
+    ensure_func_app_path()
+    import local_list_utils as ll  # noqa: E402
+
+    list_path = (list_file or HOLDINGS_LIST_FILE).expanduser()
+    state_path = (state_file or Path(os.getenv("HOLDINGS_STATE_FILE", str(_SCRIPT_DIR / "holdings-trailing-state.json")))).expanduser()
+
+    def _load_list(initial_fallback: Optional[List[str]] = None) -> List[str]:
+        return load_ticker_list_json(list_path, fallback=initial_fallback)
+
+    def _save_list(tickers: List[str], meta: Optional[Dict[str, Any]] = None) -> None:
+        save_ticker_list_json(list_path, tickers, meta=meta)
+
+    def _load_state() -> Dict[str, Dict[str, Any]]:
+        return load_trailing_state_json(state_path)
+
+    def _save_state(positions: Dict[str, Dict[str, Any]], meta: Optional[Dict[str, Any]] = None) -> None:
+        save_trailing_state_json(state_path, positions, meta=meta)
+
+    def _state_desc() -> str:
+        return f"file:{state_path}"
+
+    ll.load_holdings_list = _load_list
+    ll.save_holdings_list = _save_list
+    ll.load_holdings_trailing_state = _load_state
+    ll.save_holdings_trailing_state = _save_state
+    ll.holdings_trailing_storage_description = _state_desc
+
+
+def install_local_monitor_adapters(
+    *,
+    local_list_file: Path | None = None,
+    holdings_list_file: Path | None = None,
+    universe_file: Path | None = None,
+    momentum_file: Path | None = None,
+) -> None:
+    """
+    Use local JSON for quant monitor / run_monitor (no MONITOR_STORAGE required).
+
+    Files: local-list.json, holdings-list.json, universe.json (optional), momentum-analyzer.json
+
+    Set STOCKS_USE_AZURE_STORAGE=1 to keep Azure blob behavior instead.
+    """
+    if use_azure_storage():
+        ensure_func_app_path()
+        return
+
+    ensure_func_app_path()
+    import local_list_utils as ll  # noqa: E402
+    import momentum_portfolio_utils as mpu  # noqa: E402
+
+    local_path = (local_list_file or LOCAL_LIST_FILE).expanduser()
+    holdings_path = (holdings_list_file or HOLDINGS_LIST_FILE).expanduser()
+    universe_path = (universe_file or UNIVERSE_FILE).expanduser()
+    momentum_path = (momentum_file or MOMENTUM_PORTFOLIO_FILE).expanduser()
+    os.environ["MOMENTUM_PORTFOLIO_FILE"] = str(momentum_path)
+
+    def _load_local_list(initial_fallback: Optional[List[str]] = None) -> List[str]:
+        return load_ticker_list_json(local_path, fallback=initial_fallback)
+
+    def _save_local_list(tickers: List[str], meta: Optional[Dict[str, Any]] = None) -> None:
+        save_ticker_list_json(local_path, tickers, meta=meta)
+
+    def _load_holdings(initial_fallback: Optional[List[str]] = None) -> List[str]:
+        return load_ticker_list_json(holdings_path, fallback=initial_fallback)
+
+    def _save_holdings(tickers: List[str], meta: Optional[Dict[str, Any]] = None) -> None:
+        save_ticker_list_json(holdings_path, tickers, meta=meta)
+
+    def _read_universe_blob() -> Optional[Dict[str, Any]]:
+        if not universe_path.is_file():
+            return None
+        try:
+            data = json.loads(universe_path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else None
+        except Exception as e:
+            logger.warning("[universe] could not read %s: %s", universe_path, e)
+            return None
+
+    ll.load_local_list = _load_local_list
+    ll.save_local_list = _save_local_list
+    ll.load_holdings_list = _load_holdings
+    ll.save_holdings_list = _save_holdings
+    # Avoid importing universe_utils (pulls azure.storage.blob). Stub before monitor loads.
+    if "universe_utils" not in sys.modules:
+        _uu = types.ModuleType("universe_utils")
+        _uu.read_universe_blob = _read_universe_blob
+        sys.modules["universe_utils"] = _uu
+    else:
+        sys.modules["universe_utils"].read_universe_blob = _read_universe_blob
+    mon = sys.modules.get("monitoring.monitor")
+    if mon is not None:
+        mon.read_universe_blob = _read_universe_blob
+    mpu._use_blob = lambda: False
+    mpu.default_local_portfolio_path = lambda: momentum_path
 
 
 def print_run_messages(result: Dict[str, Any]) -> None:
