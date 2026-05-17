@@ -1,125 +1,31 @@
 {
-    "positions": {
-        "AVGO": {
-            "entry_price": 441.4399,
-            "high_seen": 441.4399,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 47.62
-        },
-        "NVDA": {
-            "entry_price": 235.45,
-            "high_seen": 235.45,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 42.86
-        },
-        "MSFT": {
-            "entry_price": 409.45,
-            "high_seen": 409.45,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 4.76
-        },
-        "META": {
-            "entry_price": 617.6838,
-            "high_seen": 617.6838,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 14.29
-        },
-        "AAPL": {
-            "entry_price": 298.8299,
-            "high_seen": 298.8299,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 23.81
-        },
-        "TSLA": {
-            "entry_price": 443.82,
-            "high_seen": 443.82,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 19.05
-        },
-        "GOOG": {
-            "entry_price": 397.17,
-            "high_seen": 397.17,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 52.38
-        },
-        "AMZN": {
-            "entry_price": 268.06,
-            "high_seen": 268.06,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 33.33
-        },
-        "MU": {
-            "entry_price": 788.54,
-            "high_seen": 788.54,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 90.48
-        },
-        "NBIS": {
-            "entry_price": 226.9,
-            "high_seen": 226.9,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 85.71
-        },
-        "IONQ": {
-            "entry_price": 57.61,
-            "high_seen": 57.61,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 38.1
-        },
-        "MRVL": {
-            "entry_price": 183.34,
-            "high_seen": 183.34,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 66.67
-        },
-        "VRT": {
-            "entry_price": 377.5,
-            "high_seen": 377.5,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 71.43
-        },
-        "SMCI": {
-            "entry_price": 32.855,
-            "high_seen": 32.855,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 9.52
-        },
-        "LUNR": {
-            "entry_price": 36.505,
-            "high_seen": 36.505,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 100.0
-        },
-        "GEV": {
-            "entry_price": 1081.61,
-            "high_seen": 1081.61,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 57.14
-        },
-        "AGX": {
-            "entry_price": 728.76,
-            "high_seen": 728.76,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 61.9
-        },
-        "FLEX": {
-            "entry_price": 144.27,
-            "high_seen": 144.27,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 80.95
-        },
-        "FIX": {
-            "entry_price": 2040.335,
-            "high_seen": 2040.335,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 76.19
-        },
-        "DOCN": {
-            "entry_price": 158.96,
-            "high_seen": 158.96,
-            "entry_date": "2026-05-14",
-            "rs_at_entry": 95.24
-        }
+  "positions": {
+    "MU": {
+      "high_seen": 788.54
     },
-    "updated_at": "2026-05-14T15:41:08"
+    "NBIS": {
+      "high_seen": 226.9
+    },
+    "VRT": {
+      "high_seen": 377.5
+    },
+    "LUNR": {
+      "high_seen": 36.505
+    },
+    "FLEX": {
+      "high_seen": 144.27
+    },
+    "FIX": {
+      "high_seen": 2040.335
+    },
+    "DOCN": {
+      "high_seen": 158.96
+    }
+  },
+  "meta": {
+    "source": "daily_momentum",
+    "daily_snapshot": true,
+    "updated_at": "2026-05-17T16:27:31Z",
+    "schema": "momentum_portfolio_v1"
+  }
 }

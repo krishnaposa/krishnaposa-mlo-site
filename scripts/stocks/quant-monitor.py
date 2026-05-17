@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Daily quant monitor — scores tickers and writes CSV snapshots locally.
+Daily quant monitor — scores tickers and prints a summary (no CSV by default).
 
 Wraps azure/functions/stocks-func-app/monitoring/monitor.run_monitor().
 Uses local JSON by default (local-list.json, holdings-list.json, momentum-analyzer.json).
@@ -9,7 +9,7 @@ Usage:
   python quant-monitor.py
   python quant-monitor.py --tickers-file watchlist.txt
   python quant-monitor.py --tickers AAPL MSFT NVDA
-  python quant-monitor.py --out-dir ./monitor_out
+  python quant-monitor.py --write-csv --out-dir ./monitor_out
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ DEFAULT_OUT = SCRIPT_DIR / "monitor_out"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run daily quant monitor (local CSV output).")
+    parser = argparse.ArgumentParser(description="Run daily quant monitor (terminal summary; CSV optional).")
     parser.add_argument(
         "--tickers-file",
         metavar="PATH",
@@ -43,9 +43,14 @@ def main() -> None:
         help="Optional tickers on the command line (combined with --tickers-file).",
     )
     parser.add_argument(
+        "--write-csv",
+        action="store_true",
+        help="Write daily_snapshot_*.csv and leaders_*.csv (off by default).",
+    )
+    parser.add_argument(
         "--out-dir",
         default=str(DEFAULT_OUT),
-        help=f"Directory for CSV output (default: {DEFAULT_OUT}).",
+        help=f"CSV output directory when --write-csv is set (default: {DEFAULT_OUT}).",
     )
     parser.add_argument(
         "--log-level",
@@ -81,7 +86,6 @@ def main() -> None:
     from monitoring.monitor import run_monitor  # noqa: E402
 
     out_dir = Path(args.out_dir).expanduser()
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     logging.info("=== Quant monitor (local) ===")
     if tickers:
@@ -91,12 +95,14 @@ def main() -> None:
 
     df_all, df_leaders = run_monitor(tickers)
 
-    stamp = datetime.date.today().strftime("%Y-%m-%d")
-    csv_all = out_dir / f"daily_snapshot_{stamp}.csv"
-    csv_lead = out_dir / f"leaders_{stamp}.csv"
-    df_all.to_csv(csv_all, index=False)
-    df_leaders.to_csv(csv_lead, index=False)
-    logging.info("Saved %s and %s", csv_all, csv_lead)
+    if args.write_csv:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.date.today().strftime("%Y-%m-%d")
+        csv_all = out_dir / f"daily_snapshot_{stamp}.csv"
+        csv_lead = out_dir / f"leaders_{stamp}.csv"
+        df_all.to_csv(csv_all, index=False)
+        df_leaders.to_csv(csv_lead, index=False)
+        logging.info("Saved %s and %s", csv_all, csv_lead)
 
     if not df_all.empty and "buy_flag" in df_all.columns:
         picks = df_all[df_all["buy_flag"]]
