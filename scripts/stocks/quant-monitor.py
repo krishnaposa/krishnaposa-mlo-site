@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Daily quant monitor — scores tickers and prints a summary (no CSV by default).
+Daily quant monitor — scores tickers and prints the full daily report to the terminal (no CSV by default).
 
 Wraps azure/functions/stocks-func-app/monitoring/monitor.run_monitor().
 Uses local JSON by default (local-list.json, holdings-list.json, momentum-analyzer.json).
@@ -62,6 +62,11 @@ def main() -> None:
         action="store_true",
         help="Use MONITOR_STORAGE blob for lists/universe (default: local JSON in scripts/stocks/).",
     )
+    parser.add_argument(
+        "--brief",
+        action="store_true",
+        help="Only print buy_flag picks and leaders (skip full email-style report).",
+    )
     args = parser.parse_args()
 
     if args.use_azure:
@@ -93,7 +98,7 @@ def main() -> None:
     else:
         logging.info("Universe from local-list.json, holdings-list.json, momentum-analyzer.json (+ Finviz if enabled)")
 
-    df_all, df_leaders = run_monitor(tickers)
+    df_all, df_leaders = run_monitor(tickers, print_report=not args.brief)
 
     if args.write_csv:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -104,16 +109,16 @@ def main() -> None:
         df_leaders.to_csv(csv_lead, index=False)
         logging.info("Saved %s and %s", csv_all, csv_lead)
 
-    if not df_all.empty and "buy_flag" in df_all.columns:
-        picks = df_all[df_all["buy_flag"]]
-        if not picks.empty and "ticker" in picks.columns:
-            print("\nTop buy_flag picks:")
-            cols = [c for c in ("ticker", "score") if c in picks.columns]
-            print(picks[cols].head(12).reset_index(drop=True))
-
-    if not df_leaders.empty:
-        print("\nLeaders (5d & 21d up):")
-        print(df_leaders.head(15).reset_index(drop=True))
+    if args.brief:
+        if not df_all.empty and "buy_flag" in df_all.columns:
+            picks = df_all[df_all["buy_flag"]]
+            if not picks.empty and "ticker" in picks.columns:
+                print("\nTop buy_flag picks:")
+                cols = [c for c in ("ticker", "score") if c in picks.columns]
+                print(picks[cols].head(12).reset_index(drop=True))
+        if not df_leaders.empty:
+            print("\nLeaders (5d & 21d up):")
+            print(df_leaders.head(15).reset_index(drop=True))
 
     logging.info("=== Done ===")
 

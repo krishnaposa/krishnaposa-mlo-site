@@ -196,6 +196,158 @@ def _tickers_from_rows(rows: Optional[List[Dict]], *, entry_only: bool = False) 
     return list(dict.fromkeys(out))
 
 
+def _list_text(items: List[str], max_items: int = 100) -> str:
+    if not items:
+        return "  (none)"
+    return "  " + ", ".join(map(str, items[:max_items]))
+
+
+def _pct_text(x) -> str:
+    try:
+        return f"{float(x) * 100:.0f}%"
+    except Exception:
+        return "—"
+
+
+def _sim_table_text(rows: Optional[List[Dict]], max_rows: int = 60) -> str:
+    if not rows:
+        return "  (none)"
+    lines = [f"  {'Ticker':<8} {'MC P(up)':>10} {'HMM Bull':>10} {'ML P(up)':>10}"]
+    for r in rows[:max_rows]:
+        lines.append(
+            f"  {str(r.get('ticker', '')):<8} {_pct_text(r.get('mc30')):>10} "
+            f"{_pct_text(r.get('hmm_bull')):>10} {_pct_text(r.get('ml_prob')):>10}"
+        )
+    return "\n".join(lines)
+
+
+def _perf_table_text(rows: Optional[List[Dict]], max_rows: int = 50) -> str:
+    if not rows:
+        return "  (none)"
+
+    def _fmt(x):
+        try:
+            return f"{float(x):.1f}%"
+        except Exception:
+            return "—"
+
+    lines = [f"  {'Ticker':<8} {'5-Day':>10} {'1-Month':>10} {'6-Month':>10}"]
+    for r in rows[:max_rows]:
+        lines.append(
+            f"  {str(r.get('ticker', '')):<8} {_fmt(r.get('perf_5d')):>10} "
+            f"{_fmt(r.get('perf_1m')):>10} {_fmt(r.get('perf_6m')):>10}"
+        )
+    return "\n".join(lines)
+
+
+def format_monitor_report_text(
+    *,
+    stamp: str,
+    universe_tickers: List[str],
+    picks_tickers: List[str],
+    alltime_high_value_list: Optional[List[str]] = None,
+    alltime_high_trend_rows: Optional[List[Dict]] = None,
+    trend_entry_rows: Optional[List[Dict]] = None,
+    holdings_list_tickers: Optional[List[str]] = None,
+    holdings_trailing_result: Optional[Dict] = None,
+    sim_rows: Optional[List[Dict]] = None,
+    wheel_rows: Optional[List[Dict]] = None,
+    perf_rows: Optional[List[Dict]] = None,
+    momentum_result: Optional[Dict] = None,
+    momentum_sim_rows: Optional[List[Dict]] = None,
+    momentum_perf_rows: Optional[List[Dict]] = None,
+    holdings_exit_alert_tickers: Optional[List[str]] = None,
+    momentum_exited_tickers: Optional[List[str]] = None,
+    subj_prefix: str = "Daily Stock Picks",
+) -> str:
+    """Plain-text report matching the daily email sections."""
+    from .momentum_portfolio import format_holdings_trailing_text, format_momentum_text
+
+    strong_buy_entries = _tickers_from_rows(alltime_high_trend_rows, entry_only=True)
+    trend_entries = _tickers_from_rows(trend_entry_rows, entry_only=True)
+    wheel_tickers = _tickers_from_rows(wheel_rows)
+
+    lines: List[str] = [
+        "",
+        "=" * 72,
+        f"{subj_prefix} — {stamp}",
+        "=" * 72,
+    ]
+    alerts: List[str] = []
+    he = holdings_exit_alert_tickers or []
+    if he:
+        alerts.append(f"Holdings exits: {', '.join(str(t) for t in he[:10])}")
+    if momentum_exited_tickers:
+        alerts.append(f"Momentum exits: {', '.join(str(t) for t in momentum_exited_tickers[:10])}")
+    if alerts:
+        lines.append("ALERTS: " + " · ".join(alerts))
+        lines.append("")
+
+    sections = [
+        ("Universe Stocks", _list_text(universe_tickers)),
+        ("Stock Picks (buy_flag + top leaders)", _list_text(picks_tickers)),
+        (
+            "Finviz: Strong Buy Large Caps at All-Time High",
+            _list_text(alltime_high_value_list or []),
+        ),
+        (
+            "Strong Buy Large Cap Stock List (trend entry OK)",
+            _list_text(strong_buy_entries),
+        ),
+        ("Trend Entry Stock List (trend entry OK)", _list_text(trend_entries)),
+    ]
+    for title, body in sections:
+        lines.extend([f"\n## {title}", body])
+
+    lines.append("\n## Holdings — trailing stop & RS exits")
+    lines.append("Current holdings_list symbols:")
+    _hl = list(holdings_list_tickers) if holdings_list_tickers else []
+    lines.append(_list_text(_hl) if _hl else "  (none)")
+    if holdings_trailing_result is not None:
+        lines.append(format_holdings_trailing_text(holdings_trailing_result))
+    else:
+        lines.append("  (holdings trailing not run)")
+
+    lines.append("\n## Momentum RS portfolio (52w RS · trailing stop)")
+    if momentum_result is not None:
+        mom_txt = format_momentum_text(momentum_result)
+        lines.append(mom_txt if mom_txt.strip() else "  (empty)")
+    else:
+        lines.append("  Momentum portfolio not run (disabled or error).")
+
+    lines.append("\n## Momentum — Simulators (current book)")
+    if momentum_sim_rows is None:
+        lines.append("  (momentum not run)")
+    else:
+        lines.append(_sim_table_text(momentum_sim_rows))
+
+    lines.append("\n## Momentum — Performance (current book)")
+    if momentum_perf_rows is None:
+        lines.append("  (momentum not run)")
+    else:
+        lines.append(_perf_table_text(momentum_perf_rows))
+
+    lines.extend(
+        [
+            "\n## Wheel Stocks",
+            _list_text(wheel_tickers),
+            "\n## Simulators (picks)",
+            _sim_table_text(sim_rows),
+            "\n## Performance — Price change (picks)",
+            _perf_table_text(perf_rows),
+            "",
+            "EAT = Earnings Avoid Threshold (~2 weeks before earnings for new trades).",
+            "=" * 72,
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def print_monitor_report_text(**kwargs) -> None:
+    print(format_monitor_report_text(**kwargs), flush=True)
+
+
 def send_email_report_with_sims(*,
     stamp: str,
     universe_tickers: List[str],

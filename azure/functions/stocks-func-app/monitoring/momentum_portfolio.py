@@ -808,6 +808,93 @@ def format_momentum_email_section(result: Dict[str, Any]) -> str:
     return f"{meta}{finviz_pre}{msg_html}<div style='margin-top:10px'>{table}</div>"
 
 
+def _positions_table_text(rows: List[Dict[str, Any]], *, max_rows: int = 80) -> str:
+    if not rows:
+        return "  (none)"
+    lines = [f"  {'Ticker':<8} {'Last':>10} {'High':>10} {'Stop':>10} {'RS':>8}"]
+    for r in rows[:max_rows]:
+        lines.append(
+            f"  {str(r.get('ticker', '')):<8} {_fmt_money(r.get('last')):>10} "
+            f"{_fmt_money(r.get('high_seen')):>10} {_fmt_money(r.get('stop')):>10} {_fmt_num(r.get('rs')):>8}"
+        )
+    if len(rows) > max_rows:
+        lines.append(f"  … {len(rows) - max_rows} more")
+    return "\n".join(lines)
+
+
+def format_holdings_trailing_text(result: Dict[str, Any]) -> str:
+    """Plain-text holdings trailing section (same data as email HTML)."""
+    if result.get("enabled") is False:
+        return "  Holdings trailing exits disabled (HOLDINGS_TRAILING_EXITS_ENABLED=0)."
+
+    lines: List[str] = [
+        f"  Exit RS < {RS_EXIT_THRESHOLD:g} · Trailing {TRAILING_STOP_PCT:.0%} · "
+        f"RS lookback {RS_LOOKBACK_PERIOD}",
+    ]
+    for m in result.get("messages") or []:
+        lines.append(f"  • {m}")
+    exited = result.get("exited") or []
+    if exited:
+        lines.append(f"  Exit signal today: {', '.join(exited)}")
+    lines.append(_positions_table_text(result.get("holdings_rows") or []))
+    return "\n".join(lines)
+
+
+def _format_finviz_pre_rs_text(result: Dict[str, Any]) -> str:
+    screen = result.get("finviz_screen_symbols") or []
+    rows = result.get("finviz_seed_pre_rs_rows") or []
+    if not screen and not rows:
+        return ""
+    lines: List[str] = ["  Finviz screen (before RS entry filter)"]
+    if screen:
+        preview = ", ".join(screen[:50])
+        if len(screen) > 50:
+            preview += f" … (+{len(screen) - 50} more)"
+        lines.append(f"  Screener ({len(screen)}): {preview}")
+    if rows:
+        gate = (
+            f"RS >= {RS_ENTRY_THRESHOLD:g} to seed"
+            if FINVIZ_RS_FILTER
+            else "RS entry filter off"
+        )
+        lines.append(f"  New-slot candidates ({gate}):")
+        lines.append(f"  {'Ticker':<8} {'RS':>8}  Gate")
+        for r in rows[:40]:
+            t = str(r.get("ticker", ""))
+            rs = r.get("rs")
+            if rs is not None and isinstance(rs, (int, float)) and rs == rs and np.isfinite(rs):
+                rs_s = f"{float(rs):.1f}"
+                flag = ("yes" if float(rs) >= RS_ENTRY_THRESHOLD else "no") if FINVIZ_RS_FILTER else "—"
+            else:
+                rs_s = "—"
+                flag = "no data" if FINVIZ_RS_FILTER else "—"
+            lines.append(f"  {t:<8} {rs_s:>8}  {flag}")
+        if len(rows) > 40:
+            lines.append(f"  … {len(rows) - 40} more")
+    return "\n".join(lines)
+
+
+def format_momentum_text(result: Dict[str, Any]) -> str:
+    """Plain-text momentum portfolio section (same data as email HTML)."""
+    if result.get("enabled") is False:
+        return "  Momentum portfolio disabled."
+
+    lines: List[str] = [
+        f"  Storage: {result.get('portfolio_file', '')} · "
+        f"Exit RS < {RS_EXIT_THRESHOLD:g} · Trailing {TRAILING_STOP_PCT:.0%}",
+    ]
+    finviz = _format_finviz_pre_rs_text(result)
+    if finviz:
+        lines.append(finviz)
+    for m in result.get("messages") or []:
+        lines.append(f"  • {m}")
+    exited = result.get("exited") or []
+    if exited:
+        lines.append(f"  Removed: {', '.join(exited)}")
+    lines.append(_positions_table_text(result.get("holdings_rows") or [], max_rows=PORTFOLIO_SIZE + 5))
+    return "\n".join(lines)
+
+
 def _esc(s: str) -> str:
     return (
         str(s)

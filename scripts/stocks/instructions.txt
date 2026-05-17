@@ -70,7 +70,7 @@ Files: local-list.json
 
 
 
-## quant-monitor.py — daily quant scores (terminal summary; no CSV by default)
+## quant-monitor.py — daily quant scores (full report to terminal; no CSV by default)
 
 python quant-monitor.py
 
@@ -78,6 +78,7 @@ python quant-monitor.py --tickers-file my_tickers.txt
 
 python quant-monitor.py --tickers AAPL MSFT
 
+python quant-monitor.py --brief
 python quant-monitor.py --write-csv
 
 

@@ -245,6 +245,7 @@ def install_local_monitor_adapters(
         ensure_func_app_path()
         return
 
+    install_local_holdings_adapters()
     ensure_func_app_path()
     import local_list_utils as ll  # noqa: E402
     import momentum_portfolio_utils as mpu  # noqa: E402

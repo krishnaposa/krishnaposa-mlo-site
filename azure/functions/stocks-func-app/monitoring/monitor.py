@@ -57,7 +57,7 @@ def _shrink_df(df: pd.DataFrame) -> pd.DataFrame:
     return d
 
 
-def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
+def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, print_report: bool = False):
     if today is None:
         today = datetime.date.today()
 
@@ -593,6 +593,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     holdings_trailing_section_html = None
     holdings_trailing_exited: list[str] | None = None
+    holdings_trailing_result: dict | None = None
     try:
         from .momentum_portfolio import (
             format_holdings_trailing_email_section,
@@ -611,6 +612,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
     momentum_exited_tickers: list[str] | None = None
     momentum_sim_rows: list | None = None
     momentum_perf_rows: list | None = None
+    momentum_result: dict | None = None
     if os.getenv("MOMENTUM_PORTFOLIO_ENABLED", "1") == "1":
         try:
             from .momentum_portfolio import format_momentum_email_section, run_momentum_daily
@@ -651,6 +653,31 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
             logger.warning("[momentum] daily update failed: %s", e)
             momentum_section_html = f"<p><i>Momentum portfolio error: {e}</i></p>"
             momentum_exited_tickers = []
+
+    report_kwargs = dict(
+        stamp=stamp,
+        universe_tickers=universe_tickers,
+        picks_tickers=picks_tickers,
+        alltime_high_value_list=alltime_high_value_list,
+        alltime_high_trend_rows=alltime_high_trend_rows,
+        trend_entry_rows=trend_entry_rows,
+        holdings_list_tickers=holdings_list,
+        holdings_trailing_result=holdings_trailing_result,
+        sim_rows=sim_rows,
+        wheel_rows=wheel_rows,
+        perf_rows=perf_rows,
+        momentum_result=momentum_result,
+        momentum_sim_rows=momentum_sim_rows,
+        momentum_perf_rows=momentum_perf_rows,
+        holdings_exit_alert_tickers=holdings_trailing_exited,
+        momentum_exited_tickers=momentum_exited_tickers,
+        subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),
+    )
+
+    if print_report:
+        from .emailer import print_monitor_report_text
+
+        print_monitor_report_text(**report_kwargs)
 
     send_email_report_with_sims(
         stamp=stamp,
