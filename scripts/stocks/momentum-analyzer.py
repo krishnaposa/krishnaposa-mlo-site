@@ -31,6 +31,13 @@ TRAILING_STOP_PCT = 0.15
 PORTFOLIO_SIZE = 20
 # Relative-strength lookback for get_rs_ratings (yfinance period, e.g. "6mo", "1y")
 RS_LOOKBACK_PERIOD = "6mo"
+# 1 = rank vs symbols + SPY (default); 0 = rank only within the symbol list (best grower in list)
+RS_INCLUDE_SPY = os.getenv("MOMENTUM_RS_INCLUDE_SPY", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
 
 # --- DATA PERSISTENCE ---
 def load_portfolio() -> Dict[str, Any]:
@@ -365,18 +372,21 @@ def seed_portfolio_from_finviz(merge: bool = False) -> Dict[str, Any]:
 
 # --- CORE LOGIC ---
 def get_rs_ratings(tickers):
-    """Percentile RS vs peers over RS_LOOKBACK_PERIOD (total return vs SPY baseline)."""
-    if not tickers: return pd.Series()
-    # Adding SPY to the mix to provide a market baseline
+    """Percentile RS over RS_LOOKBACK_PERIOD; peers = list only or list + SPY (RS_INCLUDE_SPY)."""
+    if not tickers:
+        return pd.Series()
+    tix = list(dict.fromkeys([str(t).upper().strip() for t in tickers if str(t).strip()]))
+    bench = tix + (["SPY"] if RS_INCLUDE_SPY else [])
     data = yf.download(
-        tickers + ["SPY"],
+        bench,
         period=RS_LOOKBACK_PERIOD,
         interval="1d",
         progress=False,
     )["Close"]
     print(f"RS lookback ({RS_LOOKBACK_PERIOD}) closes: {data}")
     returns = (data.iloc[-1] / data.iloc[0]) - 1
-    return returns.rank(pct=True) * 100
+    ranked = returns.reindex(bench).rank(pct=True) * 100
+    return ranked.reindex(tix)
 
 def run_daily_update():
     try:

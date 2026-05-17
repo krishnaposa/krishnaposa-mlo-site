@@ -10,6 +10,8 @@ python momentum-analyzer.py
 Files: momentum-analyzer.json
 
 ## holdings-analyzer.py — holdings list trailing + RS (local JSON)
+# RS ranks 6mo return; set peers-only (no SPY in rank) for “best grower in this list”:
+#   set MOMENTUM_RS_INCLUDE_SPY=0
 python holdings-analyzer.py --set-from-file my_tickers.txt
 python holdings-analyzer.py --set-from-file picks.txt --merge
 python holdings-analyzer.py

@@ -13,6 +13,7 @@ Env (optional, passed through to momentum_portfolio):
   MOMENTUM_RS_EXIT_THRESHOLD     — default 70
   MOMENTUM_TRAILING_STOP_PCT     — default 0.15
   MOMENTUM_RS_LOOKBACK_PERIOD    — default 6mo
+  MOMENTUM_RS_INCLUDE_SPY=0      — rank RS only within holdings (recommended for “best in list”); default 1 includes SPY
   HOLDINGS_LIST_REMOVE_ON_EXIT=1 — remove exited tickers from holdings-list.json
 
 Usage:

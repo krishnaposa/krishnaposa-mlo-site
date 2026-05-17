@@ -16,7 +16,8 @@ Env:
   MOMENTUM_FINVIZ_SORT          — default sort if URL has no &o= (default -marketcap)
   MOMENTUM_RS_ENTRY_THRESHOLD    — default 90 (Finviz seed filter when MOMENTUM_FINVIZ_RS_FILTER=1)
   MOMENTUM_RS_EXIT_THRESHOLD     — default 70 (exit when RS is strictly below this; RS == threshold does not exit)
-  MOMENTUM_RS_LOOKBACK_PERIOD    — yfinance period for RS (default 6mo); total return first-to-last Close, rank(pct)*100 vs peers + SPY (same as scripts/stocks/momentum-analyzer.py)
+  MOMENTUM_RS_LOOKBACK_PERIOD    — yfinance period for RS (default 6mo); total return first-to-last Close, rank(pct)*100
+  MOMENTUM_RS_INCLUDE_SPY        — default 1: rank vs holdings/candidates + SPY; set 0 to rank only within your symbol list (better for “best in list”)
   MOMENTUM_TRAILING_STOP_PCT     — default 0.15
   MOMENTUM_FINVIZ_RS_FILTER      — default 1: only Finviz-seed names with RS %ile >= entry threshold
   Same-day Finviz seeds: RS exit is skipped until the next daily run (trailing stop still applies).
@@ -79,6 +80,12 @@ FINVIZ_RS_FILTER = os.getenv("MOMENTUM_FINVIZ_RS_FILTER", "1").strip().lower() i
     "yes",
 )
 RS_LOOKBACK_PERIOD = (os.getenv("MOMENTUM_RS_LOOKBACK_PERIOD") or "6mo").strip()
+RS_INCLUDE_SPY = os.getenv("MOMENTUM_RS_INCLUDE_SPY", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
 
 
 def _close_panel(
@@ -273,17 +280,20 @@ def get_rs_ratings(tickers: List[str]) -> pd.Series:
     """
     Percentile RS vs peers — **same construction as** ``scripts/stocks/momentum-analyzer.get_rs_ratings``.
 
-    1. Download daily **Close** (split/dividend-adjusted) for ``tickers`` + **SPY** (deduped) over
-       ``RS_LOOKBACK_PERIOD`` (env ``MOMENTUM_RS_LOOKBACK_PERIOD``, default ``6mo``).
-    2. Total return per symbol: ``last_close / first_close - 1`` (first/last row of the panel).
-    3. ``rank(pct=True) * 100`` on those returns (peer set includes SPY).
+    1. Download daily **Close** (split/dividend-adjusted) over ``RS_LOOKBACK_PERIOD`` (default ``6mo``).
+    2. Total return per symbol: ``last_close / first_close - 1``.
+    3. ``rank(pct=True) * 100`` on those returns.
+
+    Peer set (``MOMENTUM_RS_INCLUDE_SPY``, default ``1``):
+      - **1:** rank among your symbols **and SPY** (market acts as one competitor).
+      - **0:** rank **only among your symbols** — best name in the list → highest RS (good for “best grower in this list”).
 
     **Entry:** Finviz candidates only. **Exit:** open position tickers (or holdings list) only.
     """
     if not tickers:
         return pd.Series(dtype=float)
     tix = list(dict.fromkeys([str(t).upper().strip() for t in tickers if str(t).strip()]))
-    bench = list(dict.fromkeys(tix + ["SPY"]))
+    bench = list(dict.fromkeys(tix + (["SPY"] if RS_INCLUDE_SPY else [])))
     raw = yf.download(
         bench,
         period=RS_LOOKBACK_PERIOD,
@@ -302,13 +312,12 @@ def get_rs_ratings(tickers: List[str]) -> pd.Series:
         sym = str(bench[0]).upper()
         data = pd.DataFrame({sym: raw["Close"].values}, index=raw.index)
     data.columns = [str(c).upper() for c in data.columns]
-    if "SPY" not in data.columns:
-        return pd.Series(dtype=float)
 
     rets = (data.iloc[-1] / data.iloc[0]) - 1.0
     rets = rets.replace([np.inf, -np.inf], np.nan)
-    out = rets.rank(pct=True, method="average", ascending=True) * 100.0
-    return out
+    rank_pool = rets.reindex(bench)
+    ranked = rank_pool.rank(pct=True, method="average", ascending=True) * 100.0
+    return ranked.reindex(tix)
 
 
 def run_holdings_trailing_daily() -> Dict[str, Any]:

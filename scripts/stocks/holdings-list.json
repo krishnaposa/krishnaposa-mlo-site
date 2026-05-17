@@ -1,4 +1,33 @@
 {
-  "tickers": [],
-  "updated_at": null
+  "tickers": [
+    "AAPL",
+    "AGX",
+    "AMZN",
+    "AVGO",
+    "AXTI",
+    "COHR",
+    "DOCN",
+    "FIX",
+    "FLEX",
+    "GEV",
+    "GOOG",
+    "IONQ",
+    "LITE",
+    "LUNR",
+    "META",
+    "MPWR",
+    "MRVL",
+    "MSFT",
+    "MU",
+    "NBIS",
+    "NVDA",
+    "SMCI",
+    "SNDK",
+    "STX",
+    "TSLA",
+    "VRT",
+    "WDC"
+  ],
+  "updated_at": "2026-05-17T11:48:55",
+  "source": "replace_file"
 }
