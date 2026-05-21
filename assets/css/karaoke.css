@@ -173,6 +173,17 @@ input:focus,select:focus,textarea:focus{
   border-right:none;
 }
 
+/* Host: song / singer / movie filters on one row */
+.host-filters-row{
+  display:grid;
+  gap:.6rem;
+  grid-template-columns:1fr;
+  align-items:end;
+}
+@media (min-width:640px){
+  .host-filters-row{grid-template-columns:2fr 1fr 1fr}
+}
+
 /* ===== Host page: two stacked sections ===== */
 .host-section-play h2{
   margin-top:.25rem;

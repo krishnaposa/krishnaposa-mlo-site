@@ -26,6 +26,7 @@
     const listenerUrlEl = document.getElementById("listenerUrl");
     const refreshBtn = document.getElementById("refreshList");
     const clearFiltersBtn = document.getElementById("clearFilters");
+    const filterSearchEl = document.getElementById("filterSearch");
     const filterMovieEl = document.getElementById("filterMovie");
     const filterSingerEl = document.getElementById("filterSinger");
     const publishBtn = document.getElementById("publishNow");
@@ -174,6 +175,7 @@
         if (v) url.searchParams.set(key, v);
         else url.searchParams.delete(key);
       };
+      setIf("q", filterSearchEl);
       setIf("movie", filterMovieEl);
       setIf("singer", filterSingerEl);
       return url.toString();
@@ -235,12 +237,19 @@
       items = Array.isArray(d.items) ? d.items : [];
       populateSongPick(items);
       if (listenerUrlEl) listenerUrlEl.value = listenerUrl();
+      const q = filterSearchEl && filterSearchEl.value.trim();
       const mov = filterMovieEl && filterMovieEl.value.trim();
       const sing = filterSingerEl && filterSingerEl.value.trim();
       const filt =
-        mov || sing
+        q || mov || sing
           ? " (filters: " +
-            [mov ? "movie=" + mov : "", sing ? "singer=" + sing : ""].filter(Boolean).join(", ") +
+            [
+              q ? "search=" + q : "",
+              mov ? "movie=" + mov : "",
+              sing ? "singer=" + sing : "",
+            ]
+              .filter(Boolean)
+              .join(", ") +
             ")"
           : "";
       setStatus(
@@ -327,6 +336,7 @@
     });
     if (clearFiltersBtn) {
       clearFiltersBtn.addEventListener("click", function () {
+        if (filterSearchEl) filterSearchEl.value = "";
         if (filterMovieEl) filterMovieEl.value = "";
         if (filterSingerEl) filterSingerEl.value = "";
         loadSongs().catch((e) => setStatus(String(e)));
@@ -339,7 +349,7 @@
         loadSongs().catch((e) => setStatus(String(e)));
       }, 350);
     }
-    [filterMovieEl, filterSingerEl].forEach(function (el) {
+    [filterSearchEl, filterMovieEl, filterSingerEl].forEach(function (el) {
       el &&
         el.addEventListener("input", scheduleFilterReload);
     });

@@ -3,29 +3,23 @@
     "MU": {
       "high_seen": 788.54
     },
-    "NBIS": {
-      "high_seen": 226.9
-    },
-    "VRT": {
-      "high_seen": 377.5
-    },
     "LUNR": {
       "high_seen": 36.505
     },
-    "FLEX": {
-      "high_seen": 144.27
-    },
-    "FIX": {
-      "high_seen": 2040.335
-    },
     "DOCN": {
       "high_seen": 158.96
+    },
+    "FTNT": {
+      "high_seen": 122.77999877929688
+    },
+    "TRGP": {
+      "high_seen": 271.989990234375
     }
   },
   "meta": {
     "source": "daily_momentum",
     "daily_snapshot": true,
-    "updated_at": "2026-05-17T16:27:31Z",
+    "updated_at": "2026-05-17T22:24:08Z",
     "schema": "momentum_portfolio_v1"
   }
 }
