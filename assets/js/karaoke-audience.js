@@ -239,7 +239,8 @@
       lastSession = s;
       if (!isNewSong) applyAudioSources(s);
       const pos = Number(s.position_sec || 0);
-      if (Math.abs((vocalsEl.currentTime || 0) - pos) > 0.8) {
+      /* Large threshold avoids constant re-seek stutter over slow/cloud links. */
+      if (Math.abs((vocalsEl.currentTime || 0) - pos) > 2.5) {
         try {
           vocalsEl.currentTime = pos;
           if (bandEl && bandEl.src) bandEl.currentTime = pos;

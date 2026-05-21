@@ -1388,6 +1388,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.send_header("Content-Type", "audio/wav")
         self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Cache-Control", "public, max-age=86400, immutable")
         self.send_header("Content-Length", str(length))
         if code == 206:
             self.send_header("Content-Range", f"bytes {start}-{end}/{total}")

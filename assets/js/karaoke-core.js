@@ -42,8 +42,27 @@
     const isMobileMix = !!o.preferMobileMix || !supportSink || isPhone;
     K.playbackMobileMix = isMobileMix;
     let isLoaded = false, isPlaying = false, driftTimer = null;
+    let isNetworkPlayback = false;
     let _lastBlobV = '', _lastBlobB = '';
     let deviceChangeHooked = false;
+
+    function isRemoteStreamUrl(u) {
+      const s = String(u || '').trim();
+      if (!s || s.startsWith('blob:') || s.startsWith('file:')) return false;
+      return /^https?:\/\//i.test(s);
+    }
+    function refreshNetworkMode() {
+      isNetworkPlayback = isRemoteStreamUrl(vEl?.src) || isRemoteStreamUrl(bEl?.src);
+      K.playbackNetworkStream = isNetworkPlayback;
+    }
+    function bufferedAheadSec(el) {
+      if (!el || !el.buffered || !el.buffered.length) return 0;
+      try {
+        return el.buffered.end(el.buffered.length - 1) - (el.currentTime || 0);
+      } catch (_) {
+        return 0;
+      }
+    }
 
     function setDeviceMsg(t){ if (deviceMsg) deviceMsg.textContent = t || ''; }
     function primeMobileElements(){
@@ -156,6 +175,15 @@
 
     function startDriftCorrection(offsetMs){
       clearDriftTimer();
+      /* Pitch wobble from playbackRate hurts more over HTTP/WAV; use rare hard resync instead. */
+      if (isNetworkPlayback) {
+        driftTimer = setInterval(() => {
+          if (!isPlaying || !vEl || !bEl) return;
+          const driftMs = (vEl.currentTime - bEl.currentTime) * 1000 - offsetMs;
+          if (Math.abs(driftMs) > 280) hardResync();
+        }, 10000);
+        return;
+      }
       driftTimer = setInterval(() => {
         if (!isPlaying || !vEl || !bEl) return;
         const driftMs = (vEl.currentTime - bEl.currentTime) * 1000 - offsetMs;
@@ -188,6 +216,63 @@
       return `${label}: ${codes[e.code] || e.code} (${e.message || 'no message'})`;
     }
 
+    function waitBuffered(el, label) {
+      const timeoutMs = isNetworkPlayback ? 180000 : 60000;
+      const minBufferSec = isNetworkPlayback ? 10 : 0;
+      try { el.load(); } catch (_) { /* ignore */ }
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve();
+        };
+        const fail = (err) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(err);
+        };
+        const cleanup = () => {
+          clearTimeout(to);
+          el.removeEventListener('canplaythrough', tryOk);
+          el.removeEventListener('canplay', tryOk);
+          el.removeEventListener('progress', tryOk);
+          el.removeEventListener('loadeddata', tryOk);
+          el.removeEventListener('error', onErr);
+        };
+        function tryOk() {
+          if (el.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
+            finish();
+            return;
+          }
+          if (minBufferSec > 0 && bufferedAheadSec(el) >= minBufferSec) {
+            finish();
+            return;
+          }
+          if (!isNetworkPlayback && el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+            finish();
+          }
+        }
+        function onErr() {
+          fail(new Error(_mediaErrorDetail(el, label)));
+        }
+        const to = setTimeout(() => {
+          fail(new Error(
+            `${label}: timed out buffering (${isNetworkPlayback ? 'slow network or large WAV from server' : 'load error'}). ` +
+              'Wait for Wi‑Fi, then tap Play again.'
+          ));
+        }, timeoutMs);
+        el.addEventListener('canplaythrough', tryOk);
+        el.addEventListener('canplay', tryOk);
+        el.addEventListener('progress', tryOk);
+        el.addEventListener('loadeddata', tryOk);
+        el.addEventListener('error', onErr, { once: true });
+        tryOk();
+      });
+    }
+
     async function preloadIfNeeded(){
       if (isLoaded) {
         await applySinks();
@@ -196,29 +281,22 @@
       if (!vEl?.src || !bEl?.src) {
         throw new Error('No audio loaded yet — load stems first.');
       }
-      vEl.load();
-      bEl.load();
-      const waitOne = (el, label) =>
-        new Promise((resolve, reject) => {
-          const to = setTimeout(() => {
-            el.removeEventListener('canplay', onOk);
-            el.removeEventListener('error', onErr);
-            reject(new Error(`${label}: timed out waiting to load (network/CORS/blob URL).`));
-          }, 45000);
-          function onOk(){
-            clearTimeout(to);
-            el.removeEventListener('error', onErr);
-            resolve();
-          }
-          function onErr(){
-            clearTimeout(to);
-            el.removeEventListener('canplay', onOk);
-            reject(new Error(_mediaErrorDetail(el, label)));
-          }
-          el.addEventListener('canplay', onOk, { once: true });
-          el.addEventListener('error', onErr, { once: true });
-        });
-      await Promise.all([waitOne(vEl, 'Vocals'), waitOne(bEl, 'Band')]);
+      refreshNetworkMode();
+      if (isNetworkPlayback) {
+        setDeviceMsg('Buffering vocals from server…');
+        await waitBuffered(vEl, 'Vocals');
+        setDeviceMsg('Buffering band from server…');
+        await waitBuffered(bEl, 'Band');
+        setDeviceMsg(
+          isPhone
+            ? 'Buffered — tap Play (vocals + band over network).'
+            : 'Buffered from server — tap Play.'
+        );
+      } else {
+        vEl.load();
+        bEl.load();
+        await Promise.all([waitBuffered(vEl, 'Vocals'), waitBuffered(bEl, 'Band')]);
+      }
       await applySinks();
       isLoaded = true;
     }
@@ -346,8 +424,28 @@
     K.$('testVocals')?.addEventListener('click', ()=>playBeep('vocals', vOut?.value, 880, 500));
     K.$('testBand')?.addEventListener('click',   ()=>playBeep('band',   bOut?.value, 660, 500));
 
+    function hookStallEvents() {
+      const onWait = (which) => () => {
+        if (!isPlaying || !isNetworkPlayback) return;
+        setDeviceMsg(`Buffering ${which}… (network)`);
+      };
+      const onResume = () => {
+        if (!isPlaying || !isNetworkPlayback) return;
+        if (isPhone) setDeviceMsg('Phone mode: playing over network.');
+        else setDeviceMsg('');
+      };
+      vEl?.addEventListener('waiting', onWait('vocals'));
+      bEl?.addEventListener('waiting', onWait('band'));
+      vEl?.addEventListener('stalled', onWait('vocals'));
+      bEl?.addEventListener('stalled', onWait('band'));
+      vEl?.addEventListener('playing', onResume);
+      bEl?.addEventListener('playing', onResume);
+    }
+    hookStallEvents();
+
     return {
       isMobileMix,
+      isNetworkPlayback: () => isNetworkPlayback,
       setSources(vocalsUrl, bandUrl){
         if (!vEl || !bEl) return;
         const v = (vocalsUrl == null ? '' : String(vocalsUrl)).trim();
@@ -364,6 +462,7 @@
         isLoaded = false;
         vEl.src = v;
         bEl.src = b;
+        refreshNetworkMode();
       },
       showTitle(t){ const el = K.$('trackTitle'); if (el) el.textContent = t || '—'; },
       getDurations(){ return { vocals: vEl?.duration || 0, band: bEl?.duration || 0 }; },
