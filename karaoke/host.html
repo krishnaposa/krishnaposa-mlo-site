@@ -5,16 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Karaoke Host</title>
   <link rel="stylesheet" href="/assets/css/styles.css">
-  <link rel="stylesheet" href="/assets/css/karaoke.css?v=10">
+  <link rel="stylesheet" href="/assets/css/karaoke.css?v=11">
 </head>
 <body>
 <main class="container">
   <section class="card host-section-play">
     <h1>Host</h1>
     <h2>Play on speakers or Bluetooth</h2>
-    <p class="help">
+    <p class="help" id="hostPlayHelp">
       You hear <strong>vocals + band</strong> together here. Pick the <strong>same output</strong> for both tracks
       to send the full mix to one device (for example a Bluetooth speaker or car audio).
+    </p>
+    <p class="help host-mobile-notice" id="hostMobileNotice" hidden>
+      <strong>Phone/tablet:</strong> both tracks play on this device (speaker or Bluetooth). Tap <strong>Play</strong> after choosing a song.
+      For listeners, share the <strong>Audience URL</strong> below — separate vocals/band routing needs a laptop with Chrome or Edge.
     </p>
     <div class="host-filters-row" style="margin-top:.5rem">
       <div class="field">
@@ -48,22 +52,24 @@
       <button id="pause" class="btn btn-outline" type="button">Pause</button>
       <button id="restart" class="btn btn-outline" type="button">Restart</button>
     </div>
-    <div class="grid-2" style="margin-top:.75rem">
-      <div class="field">
-        <label for="vocalsOut">Vocals output</label>
-        <select id="vocalsOut"></select>
+    <div class="host-device-routing">
+      <div class="grid-2" style="margin-top:.75rem">
+        <div class="field">
+          <label for="vocalsOut">Vocals output</label>
+          <select id="vocalsOut"></select>
+        </div>
+        <div class="field">
+          <label for="bandOut">Band output</label>
+          <select id="bandOut"></select>
+        </div>
       </div>
-      <div class="field">
-        <label for="bandOut">Band output</label>
-        <select id="bandOut"></select>
+      <p class="help host-desktop-routing-hint" style="margin-top:.5rem;margin-bottom:0">
+        Enable bluetooth on laptop and click to have song sent to bluetooth earbuds.
+      </p>
+      <div class="row" style="margin-top:.5rem">
+        <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
+        <span id="deviceMsg" class="help" style="margin-left:.5rem"></span>
       </div>
-    </div>
-    <p class="help" style="margin-top:.5rem;margin-bottom:0">
-      Enable bluetooth on laptop and click to have song sent to bluetooth earbuds.
-    </p>
-    <div class="row" style="margin-top:.5rem">
-      <button id="initAudio" class="btn btn-outline" type="button">Enable device list</button>
-      <span id="deviceMsg" class="help" style="margin-left:.5rem"></span>
     </div>
     <audio id="vocalsEl" preload="auto" playsinline></audio>
     <audio id="bandEl" preload="auto" playsinline></audio>
@@ -119,7 +125,7 @@
 </main>
 <script>window.KARAOKE = window.KARAOKE || {};</script>
 <script src="/assets/js/karaoke-api-base.js?v=2"></script>
-<script src="/assets/js/karaoke-core.js?v=5"></script>
-<script src="/assets/js/karaoke-host.js?v=7"></script>
+<script src="/assets/js/karaoke-core.js?v=6"></script>
+<script src="/assets/js/karaoke-host.js?v=8"></script>
 </body>
 </html>

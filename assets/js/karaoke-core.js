@@ -12,9 +12,20 @@
   K.currentJobId = null;
   K.setJobId = (id) => { K.currentJobId = id || null; };
 
+  /** Phone / tablet: no reliable per-element audio output routing. */
+  K.isCoarseMobile = function isCoarseMobile () {
+    const ua = String(navigator.userAgent || '');
+    if (/Android|webOS|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
+    try {
+      if (w.matchMedia('(pointer: coarse) and (max-width: 900px)').matches) return true;
+    } catch (_) { /* ignore */ }
+    return false;
+  };
+
   K.initPlaybackControls = function initPlaybackControls (opts) {
     const o = opts && typeof opts === 'object' ? opts : {};
-    const autoInitDevices = !!o.autoInitDevices;
+    const isPhone = K.isCoarseMobile();
+    const autoInitDevices = !!o.autoInitDevices && !isPhone;
     const vEl = K.$('vocalsEl');
     const bEl = K.$('bandEl');
     const playBtn = K.$('play');
@@ -27,11 +38,29 @@
     const deviceMsg = K.$('deviceMsg');
 
     const supportSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
+    /** Play vocals + band on one output (phones, Safari, Firefox, etc.). */
+    const isMobileMix = !!o.preferMobileMix || !supportSink || isPhone;
+    K.playbackMobileMix = isMobileMix;
     let isLoaded = false, isPlaying = false, driftTimer = null;
     let _lastBlobV = '', _lastBlobB = '';
     let deviceChangeHooked = false;
 
     function setDeviceMsg(t){ if (deviceMsg) deviceMsg.textContent = t || ''; }
+    function primeMobileElements(){
+      [vEl, bEl].forEach((el) => {
+        if (!el) return;
+        el.setAttribute('playsinline', '');
+        el.setAttribute('webkit-playsinline', '');
+        try { el.volume = 1; } catch (_) { /* ignore */ }
+      });
+    }
+    primeMobileElements();
+    if (isMobileMix && isPhone) {
+      setDeviceMsg(
+        'Phone mode: vocals + band play together here (one speaker/Bluetooth). ' +
+          'Separate routing needs desktop Chrome/Edge. Listeners: use Audience URL.'
+      );
+    }
     async function ensurePermission(){
       try { await navigator.mediaDevices.getUserMedia({ audio:true }); return true; }
       catch { setDeviceMsg('Please allow microphone access to list audio outputs.'); return false; }
@@ -66,6 +95,14 @@
     }
     async function initDeviceList(){
       setDeviceMsg('');
+      if (isMobileMix) {
+        setDeviceMsg(
+          isPhone
+            ? 'Phone: tap Play to hear vocals + band on this device.'
+            : 'Output selection not supported here — vocals + band use system default.'
+        );
+        return;
+      }
       if (!supportSink) { setDeviceMsg('Output selection not supported here. Use Chrome/Edge desktop.'); return; }
       if (!await ensurePermission()) return;
       let count = 0;
@@ -93,7 +130,7 @@
     bOut?.addEventListener('change', () => { applySinks().catch(() => {}); });
 
     async function applySinks(){
-      if (!supportSink) return;
+      if (!supportSink || isMobileMix) return;
       const errs = [];
       try {
         await vEl?.setSinkId(vOut?.value || 'default');
@@ -186,8 +223,23 @@
       isLoaded = true;
     }
 
+    async function playBothTracks(){
+      primeMobileElements();
+      const [vr, br] = await Promise.allSettled([vEl.play(), bEl.play()]);
+      const errs = [vr, br].filter((x) => x.status === 'rejected').map((x) => (x.reason && x.reason.message) || String(x.reason));
+      if (errs.length) {
+        throw new Error('Play blocked: ' + errs.join(' | ') + ' (tap Play again after choosing a song.)');
+      }
+    }
+
     async function resumePlay(){
       await applySinks();
+      if (isMobileMix) {
+        await playBothTracks();
+        isPlaying = true;
+        startDriftCorrection(currentOffsetMs());
+        return;
+      }
       const [vr, br] = await Promise.allSettled([vEl.play(), bEl.play()]);
       const errs = [vr, br].filter((x) => x.status === 'rejected').map((x) => (x.reason && x.reason.message) || String(x.reason));
       if (errs.length) {
@@ -206,6 +258,12 @@
         });
       try {
         await applySinks();
+        if (isMobileMix && Math.abs(offsetMs) < 15) {
+          await playBothTracks();
+          isPlaying = true;
+          startDriftCorrection(offsetMs);
+          return;
+        }
         if (offsetMs >= 0) {
           await playOrThrow(bEl, 'Band');
           await new Promise((r) => setTimeout(r, offsetMs));
@@ -289,10 +347,12 @@
     K.$('testBand')?.addEventListener('click',   ()=>playBeep('band',   bOut?.value, 660, 500));
 
     return {
+      isMobileMix,
       setSources(vocalsUrl, bandUrl){
         if (!vEl || !bEl) return;
         const v = (vocalsUrl == null ? '' : String(vocalsUrl)).trim();
         const b = (bandUrl == null ? '' : String(bandUrl)).trim();
+        primeMobileElements();
         if (_lastBlobV && _lastBlobV.startsWith('blob:')) {
           try { URL.revokeObjectURL(_lastBlobV); } catch {}
         }

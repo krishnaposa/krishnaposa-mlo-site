@@ -33,7 +33,17 @@
     const hostLyricsPlain = document.getElementById("hostLyricsPlain");
     const hostLyricsSynced = document.getElementById("hostLyricsSynced");
 
-    const PB = K.initPlaybackControls({ autoInitDevices: true });
+    const isPhone = typeof K.isCoarseMobile === "function" && K.isCoarseMobile();
+    if (isPhone) {
+      document.documentElement.classList.add("karaoke-mobile-host");
+      const mobNotice = document.getElementById("hostMobileNotice");
+      if (mobNotice) mobNotice.hidden = false;
+    }
+
+    const PB = K.initPlaybackControls({
+      autoInitDevices: !isPhone,
+      preferMobileMix: isPhone,
+    });
 
     let items = [];
     let current = null;

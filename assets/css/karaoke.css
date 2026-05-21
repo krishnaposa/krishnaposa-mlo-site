@@ -173,6 +173,11 @@ input:focus,select:focus,textarea:focus{
   border-right:none;
 }
 
+/* Host: phone — hide split routing, show mobile notice */
+html.karaoke-mobile-host .host-device-routing{display:none}
+html.karaoke-mobile-host .host-mobile-notice{display:block !important}
+html.karaoke-mobile-host #hostPlayHelp{display:none}
+
 /* Host: song / singer / movie filters on one row */
 .host-filters-row{
   display:grid;
