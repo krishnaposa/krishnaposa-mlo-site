@@ -19,8 +19,12 @@ Env (optional, passed through to momentum_portfolio):
 Usage:
   python holdings-analyzer.py --set-from-file my_tickers.txt
   python holdings-analyzer.py --set-from-file picks.txt --merge
+  python holdings-analyzer.py --set-from-file my_tickers.txt --push-azure
+  python holdings-analyzer.py --push-azure       # upload holdings-list.json to Azure blob
   python holdings-analyzer.py                    # daily trailing + RS check
   python holdings-analyzer.py --remove-on-exit   # also drop exits from list file
+
+  --push-azure requires MONITOR_STORAGE (or AzureWebJobsStorage).
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ from stocks_common import (
     install_local_holdings_adapters,
     load_ticker_list_json,
     print_run_messages,
+    push_holdings_list_to_azure,
     read_symbols_from_file,
     save_ticker_list_json,
 )
@@ -45,16 +50,25 @@ HOLDINGS_STATE_FILE = Path(
 ).expanduser()
 
 
-def set_holdings_from_file(path: str, *, merge: bool) -> None:
+def set_holdings_from_file(path: str, *, merge: bool) -> List[str]:
     incoming = read_symbols_from_file(path)
     if merge:
         cur = load_ticker_list_json(HOLDINGS_LIST_FILE)
         merged = sorted(set(cur) | set(incoming))
         save_ticker_list_json(HOLDINGS_LIST_FILE, merged, meta={"source": "merge_file"})
         print(f"Merged {len(incoming)} symbol(s) → {len(merged)} total in {HOLDINGS_LIST_FILE}")
-    else:
-        save_ticker_list_json(HOLDINGS_LIST_FILE, incoming, meta={"source": "replace_file"})
-        print(f"Wrote {len(incoming)} symbol(s) to {HOLDINGS_LIST_FILE}")
+        return merged
+    save_ticker_list_json(HOLDINGS_LIST_FILE, incoming, meta={"source": "replace_file"})
+    print(f"Wrote {len(incoming)} symbol(s) to {HOLDINGS_LIST_FILE}")
+    return incoming
+
+
+def push_holdings_to_azure(*, meta_source: str = "push_azure") -> None:
+    tickers = load_ticker_list_json(HOLDINGS_LIST_FILE)
+    if not tickers:
+        raise SystemExit(f"No tickers in {HOLDINGS_LIST_FILE} — use --set-from-file first.")
+    dest = push_holdings_list_to_azure(tickers, meta={"source": meta_source})
+    print(f"Pushed {len(tickers)} symbol(s) to Azure ({dest})")
 
 
 def run_daily(*, remove_on_exit: bool) -> None:
@@ -85,6 +99,11 @@ def main() -> None:
         help="With --set-from-file: union with existing symbols instead of replace.",
     )
     parser.add_argument(
+        "--push-azure",
+        action="store_true",
+        help="Upload holdings-list.json to Azure blob (MONITOR_STORAGE / AzureWebJobsStorage).",
+    )
+    parser.add_argument(
         "--remove-on-exit",
         action="store_true",
         help="Remove exited symbols from holdings-list.json after daily run.",
@@ -93,8 +112,17 @@ def main() -> None:
 
     if args.set_from_file:
         set_holdings_from_file(args.set_from_file, merge=args.merge)
-        if not args.remove_on_exit:
-            return
+
+    if args.push_azure:
+        src = "merge_file_push" if (args.set_from_file and args.merge) else (
+            "replace_file_push" if args.set_from_file else "push_azure"
+        )
+        push_holdings_to_azure(meta_source=src)
+
+    run_daily_after = args.remove_on_exit or (not args.set_from_file and not args.push_azure)
+    if not run_daily_after:
+        return
+
     run_daily(remove_on_exit=args.remove_on_exit)
 
 

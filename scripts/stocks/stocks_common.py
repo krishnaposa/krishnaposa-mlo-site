@@ -37,6 +37,38 @@ def use_azure_storage() -> bool:
     return os.getenv("STOCKS_USE_AZURE_STORAGE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def azure_storage_configured() -> bool:
+    """True if MONITOR_STORAGE or AzureWebJobsStorage is set (required for blob upload)."""
+    return bool((os.getenv("MONITOR_STORAGE") or os.getenv("AzureWebJobsStorage") or "").strip())
+
+
+def push_holdings_list_to_azure(tickers: List[str], *, meta: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Upload holdings list to Azure blob (signals/holdings_list.json by default).
+
+    Requires MONITOR_STORAGE (or AzureWebJobsStorage) and azure-storage-blob.
+    Returns a short destination label for logging.
+    """
+    if not azure_storage_configured():
+        raise RuntimeError(
+            "Azure storage not configured. Set MONITOR_STORAGE or AzureWebJobsStorage, then retry."
+        )
+    norm = sorted({normalize_symbol(t) for t in tickers if is_valid_symbol(t)})
+    if not norm:
+        raise ValueError("No valid tickers to upload.")
+
+    ensure_func_app_path()
+    import local_list_utils as ll  # noqa: E402
+
+    payload_meta = dict(meta or {})
+    payload_meta.setdefault("updated_at", datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
+    payload_meta.setdefault("source", "scripts_stocks_push")
+    ll.save_holdings_list(norm, meta=payload_meta)
+    dest = f"{ll.HOLDINGS_LIST_CONTAINER}/{ll.HOLDINGS_LIST_BLOB_NAME}"
+    logger.info("Uploaded %d holdings symbol(s) -> blob:%s", len(norm), dest)
+    return f"blob:{dest}"
+
+
 def ensure_func_app_path() -> Path:
     """Insert stocks-func-app on sys.path (idempotent). Returns that directory."""
     root = str(_FUNC_APP)

@@ -4,22 +4,22 @@
       "high_seen": 788.54
     },
     "LUNR": {
-      "high_seen": 36.505
+      "high_seen": 38.2599983215332
     },
     "DOCN": {
       "high_seen": 158.96
     },
-    "FTNT": {
-      "high_seen": 122.77999877929688
+    "DELL": {
+      "high_seen": 295.19000244140625
     },
-    "TRGP": {
-      "high_seen": 271.989990234375
+    "MRVL": {
+      "high_seen": 196.3300018310547
     }
   },
   "meta": {
     "source": "daily_momentum",
     "daily_snapshot": true,
-    "updated_at": "2026-05-17T22:24:08Z",
+    "updated_at": "2026-05-22T20:20:57Z",
     "schema": "momentum_portfolio_v1"
   }
 }
