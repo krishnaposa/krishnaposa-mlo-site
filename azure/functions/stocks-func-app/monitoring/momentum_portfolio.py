@@ -119,6 +119,17 @@ def _close_panel(
     return closes
 
 
+def _last_close_from_panel(closes: pd.DataFrame, ticker: str) -> float:
+    """Last non-NaN close for ticker, or NaN if column missing or all empty (Yahoo miss)."""
+    t = str(ticker).upper().strip()
+    if closes.empty or t not in closes.columns:
+        return float("nan")
+    series = closes[t].dropna()
+    if series.empty:
+        return float("nan")
+    return float(series.iloc[-1])
+
+
 def _print_momentum_finviz_stage(label: str, syms: List[str], *, max_show: int = 150) -> None:
     """Console trace for Finviz momentum seeding (stdout / Azure log stream)."""
     u = [str(s).upper().strip() for s in syms if str(s).strip()]
@@ -438,7 +449,7 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
     # Table: all symbols still in holdings_list (exits alert only; list blob unchanged unless REMOVE_ON_EXIT).
     for t in sorted(hold_set):
         hi = float((state.get(t) or {}).get("high_seen") or 0.0)
-        cp = float(closes[t].dropna().iloc[-1]) if t in closes.columns else float("nan")
+        cp = _last_close_from_panel(closes, t)
         rs_v = rs_ratings.get(t)
         rs_f = float(rs_v) if rs_v is not None and pd.notna(rs_v) else float("nan")
         stop_px = hi * (1.0 - TRAILING_STOP_PCT) if hi else float("nan")
@@ -643,7 +654,7 @@ def run_momentum_daily() -> Dict[str, Any]:
     for ticker in sorted(portfolio.keys()):
         t = str(ticker).upper().strip()
         hi = float((portfolio[t].get("high_seen")) or 0.0)
-        cp = float(closes[t].dropna().iloc[-1]) if t in closes.columns else float("nan")
+        cp = _last_close_from_panel(closes, t)
         rs_v = rs_ratings.get(t)
         rs_f = float(rs_v) if rs_v is not None and pd.notna(rs_v) else float("nan")
         stop_px = hi * (1.0 - TRAILING_STOP_PCT) if hi else float("nan")

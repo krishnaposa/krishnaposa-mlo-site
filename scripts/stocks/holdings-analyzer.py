@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from typing import List
 import os
 import sys
 from pathlib import Path

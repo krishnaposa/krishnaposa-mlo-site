@@ -43,7 +43,9 @@ python holdings-analyzer.py
 python holdings-analyzer.py --remove-on-exit
 
 # --push-azure: uploads holdings-list.json to Azure (MONITOR_STORAGE or AzureWebJobsStorage)
-
+cd scripts\stocks
+python holdings-analyzer.py --set-from-file portfolio.csv --merge
+python holdings-analyzer.py --set-from-file portfolio.csv --push-azure   # if using Azure
 
 
 Files: holdings-list.json, holdings-trailing-state.json
