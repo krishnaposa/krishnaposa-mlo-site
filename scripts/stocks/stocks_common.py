@@ -99,6 +99,9 @@ def read_symbols_from_file(path: str) -> List[str]:
     if not os.path.isfile(path):
         raise FileNotFoundError(f"Ticker file not found: {path}")
 
+    if path.lower().endswith(".json"):
+        return load_ticker_list_json(Path(path))
+
     symbols: List[str] = []
     seen: set[str] = set()
 

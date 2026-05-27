@@ -16,16 +16,15 @@ This script:
    - SELL
 
 Install:
-pip install yfinance pandas numpy tabulate
+pip install yfinance pandas numpy
 
-Run:
-python momentum_rotation.py
+Run (from scripts/stocks):
+python pie_analyzer.py
 """
 
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from tabulate import tabulate
 from datetime import datetime, timedelta
 
 # ============================================================
@@ -201,14 +200,10 @@ print("=" * 90)
 print(" MOMENTUM ROTATION DASHBOARD ")
 print("=" * 90)
 
-print(
-    tabulate(
-        results_df,
-        headers="keys",
-        tablefmt="pretty",
-        showindex=False
-    )
-)
+if results_df.empty:
+    print("No results (check tickers or Yahoo data).")
+else:
+    print(results_df.to_string(index=False))
 
 print("\n")
 

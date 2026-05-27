@@ -22,7 +22,12 @@ import sys
 import warnings
 from pathlib import Path
 
-from stocks_common import install_local_monitor_adapters, read_symbols_from_file
+from stocks_common import (
+    HOLDINGS_LIST_FILE,
+    install_local_monitor_adapters,
+    load_ticker_list_json,
+    read_symbols_from_file,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -67,6 +72,11 @@ def main() -> None:
         action="store_true",
         help="Only print buy_flag picks and leaders (skip full email-style report).",
     )
+    parser.add_argument(
+        "--holdings-only",
+        action="store_true",
+        help=f"Score only symbols in {HOLDINGS_LIST_FILE.name} (no local-list / Finviz / universe merge).",
+    )
     args = parser.parse_args()
 
     if args.use_azure:
@@ -93,7 +103,9 @@ def main() -> None:
     out_dir = Path(args.out_dir).expanduser()
 
     logging.info("=== Quant monitor (local) ===")
-    if tickers:
+    if args.holdings_only:
+        logging.info("Holdings-only: %d symbol(s) from %s", len(tickers), HOLDINGS_LIST_FILE.name)
+    elif tickers:
         logging.info("CLI watchlist: %d symbol(s)", len(tickers))
     else:
         logging.info("Universe from local-list.json, holdings-list.json, momentum-analyzer.json (+ Finviz if enabled)")

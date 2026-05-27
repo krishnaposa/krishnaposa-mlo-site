@@ -9,16 +9,15 @@ Adds:
 4. Rotation Ranking
 
 Install:
-pip install yfinance pandas numpy tabulate
+pip install yfinance pandas numpy
 
-Run:
-python advanced_rotation.py
+Run (from scripts/stocks):
+python pie_sector.py
 """
 
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from tabulate import tabulate
 from datetime import datetime, timedelta
 
 # ============================================================
@@ -284,14 +283,10 @@ display_cols = [
     "Signal"
 ]
 
-print(
-    tabulate(
-        results_df[display_cols],
-        headers="keys",
-        tablefmt="pretty",
-        showindex=False
-    )
-)
+if results_df.empty:
+    print("No results (check tickers or Yahoo data).")
+else:
+    print(results_df[display_cols].to_string(index=False))
 
 # ============================================================
 # TOP ROTATION CANDIDATES

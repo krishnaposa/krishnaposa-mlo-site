@@ -113,13 +113,23 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, p
         except Exception as e:
             logger.warning("[momentum] could not load portfolio for universe merge: %s", e)
 
-    merged_tickers = sorted(
-        set(local_list)
-        | set(universe_tickers)
-        | set(holdings_list)
-        | wheel_seed_tickers
-        | momentum_portfolio_syms
-    )
+    if os.getenv("QUANT_MONITOR_HOLDINGS_ONLY", "0") == "1":
+        merged_tickers = sorted(set(holdings_list))
+        if merged_tickers:
+            logger.info(
+                "[monitor] holdings-only mode: %d symbol(s) from holdings_list",
+                len(merged_tickers),
+            )
+        else:
+            logger.warning("[monitor] holdings-only mode but holdings_list is empty")
+    else:
+        merged_tickers = sorted(
+            set(local_list)
+            | set(universe_tickers)
+            | set(holdings_list)
+            | wheel_seed_tickers
+            | momentum_portfolio_syms
+        )
     end = today + datetime.timedelta(days=1)
     start = today - datetime.timedelta(days=420)
     frames = fetch_prices_batched(merged_tickers, start, end)
