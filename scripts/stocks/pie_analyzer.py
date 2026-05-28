@@ -165,7 +165,7 @@ def main() -> None:
             # -------------------------------------------------
 
             bullish_stack = (
-                price > dma10 > dma20 > dma50
+                price > dma5 > dma10 > dma20 > dma50
             )
 
             bearish_stack = (
@@ -212,13 +212,13 @@ def main() -> None:
             ):
                 signal = "BUY"
 
+            # Momentum deterioration (check deeper weakness first)
+            elif below20_2days:
+                signal = "REDUCE"
+
             # Early weakness
             elif below10_2days:
                 signal = "WATCH"
-
-            # Momentum deterioration
-            elif below20_2days:
-                signal = "REDUCE"
 
             # Major trend breakdown
             if bearish_stack:
