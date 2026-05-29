@@ -14,7 +14,11 @@ PCS strikes are chosen by %-out-of-the-money from the live yfinance option chain
 Install:
 pip install yfinance pandas numpy
 
-Run:
+Lifecycle review of held positions (positions.json):
+  python pie_analyze_swing.py --review
+  python pie_analyze_swing.py --review --positions positions.json
+
+Run (BUY funnel):
 python pie_analyze_swing.py
 python pie_analyze_swing.py --min-grade A --risk-per-trade 0.01 --target-dte 35 --otm-pct 0.06
 """
@@ -22,6 +26,7 @@ python pie_analyze_swing.py --min-grade A --risk-per-trade 0.01 --target-dte 35 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -36,9 +41,11 @@ from stocks_common import read_symbols_from_file
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_TICKERS_FILE = SCRIPT_DIR / "my_tickers.txt"
+DEFAULT_POSITIONS_FILE = SCRIPT_DIR / "positions.json"
 
 MAX_PORTFOLIO_HEAT = 0.30
 MAX_POSITION_SIZE = 0.10
+TRAIL_STOP_PCT = 0.15
 
 
 # =========================================================
@@ -105,6 +112,175 @@ def determine_pcs_phase(delta: float, dte: int, profit_pct: float) -> PCSPhase:
     if dte < 21:
         return PCSPhase.THETA_DECAY
     return PCSPhase.OPENED
+
+
+def determine_pcs_phase_live(dte: int, profit_pct: float, buffer_pct: float) -> PCSPhase:
+    """
+    Phase for an open spread using data available without Greeks (Option A).
+
+    buffer_pct = (price - short_strike) / price * 100
+      > 0  underlying above the short put (good)
+      < 0  underlying below the short put (in trouble)
+    """
+    if profit_pct >= 50:
+        return PCSPhase.EXIT
+    if buffer_pct < 0:
+        return PCSPhase.DEFENSIVE
+    if dte < 14 and buffer_pct < 3:
+        return PCSPhase.ROLL
+    if dte < 21:
+        return PCSPhase.THETA_DECAY
+    return PCSPhase.OPENED
+
+
+# =========================================================
+# POSITIONS I/O  (held swings + open spreads)
+# =========================================================
+
+def load_positions(path: str) -> dict:
+    """Load positions.json: {"swings": [...], "spreads": [...]}. Missing file -> empty."""
+    p = Path(path).expanduser()
+    if not p.is_file():
+        return {"swings": [], "spreads": []}
+    data = json.loads(p.read_text(encoding="utf-8"))
+    return {
+        "swings": list(data.get("swings") or []),
+        "spreads": list(data.get("spreads") or []),
+    }
+
+
+def _days_since(date_str: str) -> int:
+    try:
+        d = datetime.strptime(str(date_str), "%Y-%m-%d").date()
+    except Exception:
+        return 0
+    return (datetime.today().date() - d).days
+
+
+def _last_prices(symbols: list[str]) -> dict[str, float]:
+    """Latest close for each symbol (batch download)."""
+    syms = sorted({str(s).upper().strip() for s in symbols if str(s).strip()})
+    if not syms:
+        return {}
+    data = yf.download(syms, period="5d", interval="1d", progress=False, auto_adjust=True)
+    if data is None or data.empty:
+        return {s: float("nan") for s in syms}
+    closes = data["Close"]
+    out: dict[str, float] = {}
+    for s in syms:
+        try:
+            if isinstance(closes, pd.DataFrame):
+                series = closes[s].dropna() if s in closes.columns else pd.Series(dtype=float)
+            else:
+                series = closes.dropna()  # single symbol -> Series
+            out[s] = float(series.iloc[-1]) if not series.empty else float("nan")
+        except Exception:
+            out[s] = float("nan")
+    return out
+
+
+def review_swing_positions(swings: list[dict], *, trail_pct: float = TRAIL_STOP_PCT) -> pd.DataFrame:
+    """Phase + trailing-stop guidance for held swing positions."""
+    if not swings:
+        return pd.DataFrame()
+    prices = _last_prices([s.get("symbol", "") for s in swings])
+    rows = []
+    for pos in swings:
+        sym = str(pos.get("symbol", "")).upper().strip()
+        entry = float(pos.get("entry_price") or 0.0)
+        stored_stop = float(pos.get("stop_price") or 0.0)
+        price = prices.get(sym, float("nan"))
+
+        days_held = _days_since(pos.get("entry_date", ""))
+        return_pct = ((price - entry) / entry * 100.0) if entry > 0 and price == price else 0.0
+        phase = determine_swing_phase(days_held=days_held, return_pct=return_pct)
+
+        trail_stop = price * (1.0 - trail_pct) if price == price else float("nan")
+        suggested_stop = max(stored_stop, trail_stop) if trail_stop == trail_stop else stored_stop
+
+        if price == price and price <= stored_stop:
+            action = "STOP HIT -> EXIT"
+        elif phase == SwingPhase.TRAIL:
+            action = "RAISE STOP (trail winner)"
+        elif phase == SwingPhase.REVIEW:
+            action = "REVIEW (held 60d+)"
+        elif suggested_stop > stored_stop:
+            action = "RAISE STOP"
+        else:
+            action = "HOLD"
+
+        rows.append({
+            "Ticker": sym,
+            "Entry": round(entry, 2),
+            "Price": round(price, 2) if price == price else None,
+            "Ret%": round(return_pct, 2),
+            "Days": days_held,
+            "Stop": round(stored_stop, 2),
+            "SugStop": round(suggested_stop, 2) if suggested_stop == suggested_stop else None,
+            "Phase": phase.value,
+            "Action": action,
+        })
+    return pd.DataFrame(rows)
+
+
+def review_pcs_positions(spreads: list[dict]) -> pd.DataFrame:
+    """Phase + management guidance for open put credit spreads (no Greeks)."""
+    if not spreads:
+        return pd.DataFrame()
+    prices = _last_prices([s.get("symbol", "") for s in spreads])
+    rows = []
+    for pos in spreads:
+        sym = str(pos.get("symbol", "")).upper().strip()
+        expiry = str(pos.get("expiration", ""))
+        short_k = float(pos.get("short_put") or 0.0)
+        long_k = float(pos.get("long_put") or 0.0)
+        credit0 = float(pos.get("credit") or 0.0)
+        width = short_k - long_k
+
+        dte = _days_since(expiry) * -1  # expiry is in the future -> positive dte
+        price = prices.get(sym, float("nan"))
+        cur_cost = float("nan")
+        try:
+            tk = yf.Ticker(sym)
+            if expiry in (tk.options or []):
+                puts = tk.option_chain(expiry).puts
+                puts = puts.set_index("strike")
+                if short_k in puts.index and long_k in puts.index:
+                    cur_cost = _mid_price(puts.loc[short_k]) - _mid_price(puts.loc[long_k])
+        except Exception:
+            pass
+
+        profit_pct = ((credit0 - cur_cost) / credit0 * 100.0) if credit0 > 0 and cur_cost == cur_cost else float("nan")
+        buffer_pct = ((price - short_k) / price * 100.0) if price == price and price > 0 else float("nan")
+        phase = determine_pcs_phase_live(
+            dte=dte,
+            profit_pct=profit_pct if profit_pct == profit_pct else 0.0,
+            buffer_pct=buffer_pct if buffer_pct == buffer_pct else 0.0,
+        )
+
+        action = {
+            PCSPhase.EXIT: "CLOSE (>=50% profit)",
+            PCSPhase.DEFENSIVE: "DEFEND (under short)",
+            PCSPhase.ROLL: "ROLL (short DTE, tight)",
+            PCSPhase.THETA_DECAY: "LET DECAY",
+            PCSPhase.OPENED: "HOLD",
+        }[phase]
+
+        rows.append({
+            "Ticker": sym,
+            "Expiry": expiry,
+            "DTE": dte,
+            "Short": short_k,
+            "Long": long_k,
+            "Width": round(width, 2),
+            "Credit0": round(credit0, 2),
+            "CloseCost": round(cur_cost, 2) if cur_cost == cur_cost else None,
+            "Profit%": round(profit_pct, 1) if profit_pct == profit_pct else None,
+            "Buffer%": round(buffer_pct, 1) if buffer_pct == buffer_pct else None,
+            "Phase": phase.value,
+            "Action": action,
+        })
+    return pd.DataFrame(rows)
 
 
 # =========================================================
@@ -262,6 +438,39 @@ def build_pcs_plan(
 
 
 # =========================================================
+# LIFECYCLE REVIEW
+# =========================================================
+
+def run_review(positions_path: str) -> None:
+    positions = load_positions(positions_path)
+    swings = positions.get("swings", [])
+    spreads = positions.get("spreads", [])
+
+    if not swings and not spreads:
+        print(f"No positions in {positions_path} "
+              f'(expected {{"swings": [...], "spreads": [...]}}).')
+        return
+
+    print(f"Reviewing positions from {positions_path}")
+
+    print("\n")
+    print("=" * 120)
+    print(" SWING POSITIONS (lifecycle) ")
+    print("=" * 120)
+    swing_df = review_swing_positions(swings)
+    print(swing_df.to_string(index=False) if not swing_df.empty else "No swing positions.")
+
+    print("\n")
+    print("=" * 120)
+    print(" PUT CREDIT SPREADS (lifecycle) ")
+    print("=" * 120)
+    pcs_df = review_pcs_positions(spreads)
+    print(pcs_df.to_string(index=False) if not pcs_df.empty else "No spread positions.")
+
+    print("\nDone.")
+
+
+# =========================================================
 # MAIN
 # =========================================================
 
@@ -280,7 +489,15 @@ def main() -> None:
                         help="Short put %% OTM below price (default 0.06 = 6%%).")
     parser.add_argument("--no-pcs", action="store_true",
                         help="Skip option-chain PCS plans (swing plan only).")
+    parser.add_argument("--review", action="store_true",
+                        help="Review held positions from positions.json (lifecycle), skip BUY funnel.")
+    parser.add_argument("--positions", default=str(DEFAULT_POSITIONS_FILE),
+                        help=f"Positions file for --review (default: {DEFAULT_POSITIONS_FILE.name}).")
     args = parser.parse_args()
+
+    if args.review:
+        run_review(args.positions)
+        return
 
     tickers = read_symbols_from_file(args.tickers_file)
     if not tickers:

@@ -130,6 +130,14 @@ python pie_analyze_swing.py --no-pcs
 
 # PCS strikes by %-OTM from live yfinance option chain (no Greeks); POP ~ credit/width proxy.
 
+# Lifecycle review of held positions (positions.json: swings + spreads):
+python pie_analyze_swing.py --review
+python pie_analyze_swing.py --review --positions positions.json
+
+# positions.json shape:
+#   {"swings": [{"symbol","entry_price","entry_date","shares","stop_price"}],
+#    "spreads": [{"symbol","short_put","long_put","expiration","credit","entry_date"}]}
+
 
 
 ## Shared
