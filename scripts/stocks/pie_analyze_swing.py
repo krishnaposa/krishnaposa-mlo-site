@@ -114,21 +114,36 @@ def determine_pcs_phase(delta: float, dte: int, profit_pct: float) -> PCSPhase:
     return PCSPhase.OPENED
 
 
-def determine_pcs_phase_live(dte: int, profit_pct: float, buffer_pct: float) -> PCSPhase:
+def determine_pcs_phase_live(
+    dte: int,
+    profit_pct: float,
+    buffer_pct: float,
+    *,
+    profit_target: float = 50.0,
+    roll_dte: int = 14,
+    roll_buffer: float = 3.0,
+    theta_dte: int = 21,
+) -> PCSPhase:
     """
     Phase for an open spread using data available without Greeks (Option A).
 
     buffer_pct = (price - short_strike) / price * 100
       > 0  underlying above the short put (good)
       < 0  underlying below the short put (in trouble)
+
+    Thresholds:
+      profit_target  close once >= this % of credit captured (default 50)
+      roll_dte       roll when DTE below this and buffer is tight (default 14)
+      roll_buffer    buffer % considered "tight" for rolling (default 3)
+      theta_dte      below this DTE, otherwise just let it decay (default 21)
     """
-    if profit_pct >= 50:
+    if profit_pct >= profit_target:
         return PCSPhase.EXIT
     if buffer_pct < 0:
         return PCSPhase.DEFENSIVE
-    if dte < 14 and buffer_pct < 3:
+    if dte < roll_dte and buffer_pct < roll_buffer:
         return PCSPhase.ROLL
-    if dte < 21:
+    if dte < theta_dte:
         return PCSPhase.THETA_DECAY
     return PCSPhase.OPENED
 
@@ -223,7 +238,12 @@ def review_swing_positions(swings: list[dict], *, trail_pct: float = TRAIL_STOP_
     return pd.DataFrame(rows)
 
 
-def review_pcs_positions(spreads: list[dict]) -> pd.DataFrame:
+def review_pcs_positions(
+    spreads: list[dict],
+    *,
+    profit_target: float = 50.0,
+    roll_dte: int = 14,
+) -> pd.DataFrame:
     """Phase + management guidance for open put credit spreads (no Greeks)."""
     if not spreads:
         return pd.DataFrame()
@@ -256,12 +276,14 @@ def review_pcs_positions(spreads: list[dict]) -> pd.DataFrame:
             dte=dte,
             profit_pct=profit_pct if profit_pct == profit_pct else 0.0,
             buffer_pct=buffer_pct if buffer_pct == buffer_pct else 0.0,
+            profit_target=profit_target,
+            roll_dte=roll_dte,
         )
 
         action = {
-            PCSPhase.EXIT: "CLOSE (>=50% profit)",
+            PCSPhase.EXIT: f"CLOSE (>={profit_target:g}% profit)",
             PCSPhase.DEFENSIVE: "DEFEND (under short)",
-            PCSPhase.ROLL: "ROLL (short DTE, tight)",
+            PCSPhase.ROLL: f"ROLL (<{roll_dte}DTE, tight)",
             PCSPhase.THETA_DECAY: "LET DECAY",
             PCSPhase.OPENED: "HOLD",
         }[phase]
@@ -441,7 +463,12 @@ def build_pcs_plan(
 # LIFECYCLE REVIEW
 # =========================================================
 
-def run_review(positions_path: str) -> None:
+def run_review(
+    positions_path: str,
+    *,
+    pcs_profit_target: float = 50.0,
+    pcs_roll_dte: int = 14,
+) -> None:
     positions = load_positions(positions_path)
     swings = positions.get("swings", [])
     spreads = positions.get("spreads", [])
@@ -464,7 +491,11 @@ def run_review(positions_path: str) -> None:
     print("=" * 120)
     print(" PUT CREDIT SPREADS (lifecycle) ")
     print("=" * 120)
-    pcs_df = review_pcs_positions(spreads)
+    pcs_df = review_pcs_positions(
+        spreads,
+        profit_target=pcs_profit_target,
+        roll_dte=pcs_roll_dte,
+    )
     print(pcs_df.to_string(index=False) if not pcs_df.empty else "No spread positions.")
 
     print("\nDone.")
@@ -493,10 +524,18 @@ def main() -> None:
                         help="Review held positions from positions.json (lifecycle), skip BUY funnel.")
     parser.add_argument("--positions", default=str(DEFAULT_POSITIONS_FILE),
                         help=f"Positions file for --review (default: {DEFAULT_POSITIONS_FILE.name}).")
+    parser.add_argument("--pcs-profit-target", type=float, default=50.0,
+                        help="Close spread at this %% of credit captured (default 50).")
+    parser.add_argument("--pcs-roll-dte", type=int, default=14,
+                        help="Roll spread when DTE below this and buffer tight (default 14).")
     args = parser.parse_args()
 
     if args.review:
-        run_review(args.positions)
+        run_review(
+            args.positions,
+            pcs_profit_target=args.pcs_profit_target,
+            pcs_roll_dte=args.pcs_roll_dte,
+        )
         return
 
     tickers = read_symbols_from_file(args.tickers_file)

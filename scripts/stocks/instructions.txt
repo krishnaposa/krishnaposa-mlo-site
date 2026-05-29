@@ -133,6 +133,7 @@ python pie_analyze_swing.py --no-pcs
 # Lifecycle review of held positions (positions.json: swings + spreads):
 python pie_analyze_swing.py --review
 python pie_analyze_swing.py --review --positions positions.json
+python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-roll-dte 14
 
 # positions.json shape:
 #   {"swings": [{"symbol","entry_price","entry_date","shares","stop_price"}],
