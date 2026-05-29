@@ -119,6 +119,19 @@ python pie_sector.py --sector-map pie_sector_map.txt
 
 
 
+## pie_analyze_swing.py — swing + put-credit-spread funnel
+
+# Scanner lives in pie_analyzer.py (run_scan / select_buy_candidates).
+# This funnels BUY candidates into swing entry plan + PCS plan.
+
+python pie_analyze_swing.py
+python pie_analyze_swing.py --min-grade A --risk-per-trade 0.01 --target-dte 35 --otm-pct 0.06
+python pie_analyze_swing.py --no-pcs
+
+# PCS strikes by %-OTM from live yfinance option chain (no Greeks); POP ~ credit/width proxy.
+
+
+
 ## Shared
 
 - Ticker files: same format as my_tickers.txt (txt or csv; see stocks_common.read_symbols_from_file)
