@@ -39,6 +39,11 @@ LOOKBACK_DAYS = 180
 
 GRADE_RANK = {"A": 4, "B": 3, "C": 2, "D": 1}
 
+# Overextension / "spiked" defaults — a BUY this stretched is demoted to WATCH.
+MAX_EXT_PCT = 20.0   # max % above the 20 DMA
+MAX_RSI = 80.0       # RSI(14) overbought
+MAX_RUN5 = 25.0      # max 5-day run-up %
+
 
 class Signal(str, Enum):
     BUY = "BUY"
@@ -46,6 +51,36 @@ class Signal(str, Enum):
     HOLD = "HOLD"
     REDUCE = "REDUCE"
     SELL = "SELL"
+
+
+def rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    """Wilder's RSI."""
+    delta = close.diff()
+    gain = delta.clip(lower=0.0)
+    loss = -delta.clip(upper=0.0)
+    avg_gain = gain.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0.0, float("nan"))
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
+def is_spiked(
+    ext20_pct: float,
+    rsi_val: float,
+    run5_pct: float,
+    *,
+    max_ext_pct: float = MAX_EXT_PCT,
+    max_rsi: float = MAX_RSI,
+    max_run5: float = MAX_RUN5,
+) -> bool:
+    """True if the move looks overextended/parabolic (don't chase)."""
+    if ext20_pct == ext20_pct and ext20_pct > max_ext_pct:
+        return True
+    if rsi_val == rsi_val and rsi_val > max_rsi:
+        return True
+    if run5_pct == run5_pct and run5_pct > max_run5:
+        return True
+    return False
 
 
 def calculate_score(
@@ -116,13 +151,19 @@ def run_scan(
     *,
     lookback_days: int = LOOKBACK_DAYS,
     benchmark: str = BENCHMARK,
+    max_ext_pct: float = MAX_EXT_PCT,
+    max_rsi: float = MAX_RSI,
+    max_run5: float = MAX_RUN5,
 ) -> pd.DataFrame:
     """
     Download prices and build the momentum dashboard.
 
+    Overextended ("spiked") names that would otherwise be BUY are demoted to
+    WATCH (Spiked=Y) so you don't chase blow-off tops.
+
     Returns a DataFrame (one row per scored ticker) with columns:
     Ticker, Price, 5DMA, 10DMA, 20DMA, 50DMA, Dist10DMA%, Dist20DMA%,
-    RS_vs_QQQ%, VolRatio, Gap%, Score, Grade, Signal.
+    RS_vs_QQQ%, VolRatio, Gap%, RSI, Run5%, Spiked, Score, Grade, Signal.
     """
     if not tickers:
         return pd.DataFrame()
@@ -165,6 +206,8 @@ def run_scan(
             df["DMA50"] = df["Close"].rolling(50).mean()
             df["RS"] = df["Close"].pct_change(20) - benchmark_close.pct_change(20)
             df["AvgVolume20"] = df["Volume"].rolling(20).mean()
+            df["RSI"] = rsi(df["Close"])
+            df["Run5"] = df["Close"].pct_change(5) * 100.0
 
             latest = df.iloc[-1]
             prev1 = df.iloc[-2]
@@ -176,6 +219,8 @@ def run_scan(
             dma50 = latest["DMA50"]
             rs_value = latest["RS"]
             volume_ratio = latest["Volume"] / latest["AvgVolume20"]
+            rsi_val = float(latest["RSI"]) if latest["RSI"] == latest["RSI"] else float("nan")
+            run5_pct = float(latest["Run5"]) if latest["Run5"] == latest["Run5"] else float("nan")
 
             bullish_stack = price > dma5 > dma10 > dma20 > dma50
             bearish_stack = price < dma5 < dma10 < dma20 < dma50
@@ -203,6 +248,15 @@ def run_scan(
                 below10_2days=below10_2days,
                 below20_2days=below20_2days,
             )
+
+            # Overextension guard: a stretched BUY is demoted to WATCH (don't chase).
+            spiked = is_spiked(
+                distance_from_20dma, rsi_val, run5_pct,
+                max_ext_pct=max_ext_pct, max_rsi=max_rsi, max_run5=max_run5,
+            )
+            if spiked and signal == Signal.BUY:
+                signal = Signal.WATCH
+
             score = calculate_score(
                 price=price,
                 dma5=dma5,
@@ -225,6 +279,9 @@ def run_scan(
                 "RS_vs_QQQ%": round(rs_value * 100, 2),
                 "VolRatio": round(volume_ratio, 2),
                 "Gap%": round(gap_pct, 2),
+                "RSI": round(rsi_val, 1) if rsi_val == rsi_val else None,
+                "Run5%": round(run5_pct, 2) if run5_pct == run5_pct else None,
+                "Spiked": "Y" if spiked else "",
                 "Score": score,
                 "Grade": grade_setup(score),
                 "Signal": signal.value,
@@ -260,6 +317,12 @@ def main() -> None:
         default=str(DEFAULT_TICKERS_FILE),
         help=f"Ticker list file (default: {DEFAULT_TICKERS_FILE.name}).",
     )
+    parser.add_argument("--max-ext-pct", type=float, default=MAX_EXT_PCT,
+                        help=f"Spike guard: max %% above 20 DMA (default {MAX_EXT_PCT:g}).")
+    parser.add_argument("--max-rsi", type=float, default=MAX_RSI,
+                        help=f"Spike guard: max RSI(14) (default {MAX_RSI:g}).")
+    parser.add_argument("--max-run5", type=float, default=MAX_RUN5,
+                        help=f"Spike guard: max 5-day run-up %% (default {MAX_RUN5:g}).")
     args = parser.parse_args()
 
     tickers = read_symbols_from_file(args.tickers_file)
@@ -268,7 +331,12 @@ def main() -> None:
 
     print(f"Loaded {len(tickers)} symbol(s) from {args.tickers_file}")
 
-    results_df = run_scan(tickers)
+    results_df = run_scan(
+        tickers,
+        max_ext_pct=args.max_ext_pct,
+        max_rsi=args.max_rsi,
+        max_run5=args.max_run5,
+    )
 
     print("\n")
     print("=" * 140)

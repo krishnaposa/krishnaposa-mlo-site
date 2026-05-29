@@ -603,6 +603,10 @@ def main() -> None:
                         help="Manage (close/roll) at/below this DTE regardless (default 21).")
     parser.add_argument("--alerts-only", action="store_true",
                         help="With --review: show only positions needing action (skip HOLD).")
+    parser.add_argument("--fundamentals", action="store_true",
+                        help="Enrich BUY candidates with yfinance fundamentals (slow; PASS/WARN/FAIL).")
+    parser.add_argument("--require-fundamentals", action="store_true",
+                        help="With --fundamentals: drop BUY candidates that FAIL the checks.")
     args = parser.parse_args()
 
     if args.review:
@@ -631,6 +635,41 @@ def main() -> None:
     if buys.empty:
         print("No BUY candidates to funnel.")
         return
+
+    # ---- Fundamentals (BUY candidates only; slow yfinance .info) ----
+    if args.fundamentals:
+        from fundamentals import check_fundamentals
+
+        print("\n")
+        print("=" * 120)
+        print(" FUNDAMENTALS (BUY candidates) ")
+        print("=" * 120)
+        fund_rows = []
+        verdict_by_ticker: dict[str, str] = {}
+        for _, row in buys.iterrows():
+            sym = str(row["Ticker"])
+            fr = check_fundamentals(sym)
+            verdict_by_ticker[sym] = fr.verdict
+            fund_rows.append({
+                "Ticker": sym,
+                "MktCap$B": round(fr.market_cap / 1e9, 2) if fr.market_cap == fr.market_cap else None,
+                "RevGrow%": round(fr.rev_growth * 100, 1) if fr.rev_growth == fr.rev_growth else None,
+                "Margin%": round(fr.profit_margin * 100, 1) if fr.profit_margin == fr.profit_margin else None,
+                "P/S": round(fr.ps_ratio, 1) if fr.ps_ratio == fr.ps_ratio else None,
+                "Fund": fr.verdict,
+                "Notes": fr.notes,
+            })
+        print(pd.DataFrame(fund_rows).to_string(index=False))
+
+        buys = buys.copy()
+        buys["Fund"] = buys["Ticker"].map(verdict_by_ticker)
+        if args.require_fundamentals:
+            before = len(buys)
+            buys = buys[buys["Fund"] != "FAIL"]
+            print(f"\nDropped {before - len(buys)} FAIL candidate(s); {len(buys)} remain.")
+            if buys.empty:
+                print("No BUY candidates remain after fundamentals filter.")
+                return
 
     # ---- Swing entry plans ----
     swing_rows = [
