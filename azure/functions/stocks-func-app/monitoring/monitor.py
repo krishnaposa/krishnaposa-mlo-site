@@ -664,6 +664,21 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, p
             momentum_section_html = f"<p><i>Momentum portfolio error: {e}</i></p>"
             momentum_exited_tickers = []
 
+    # ---- PCS / swing position lifecycle (held positions) ----
+    pcs_lifecycle_section_html = None
+    pcs_lifecycle_actionable: list[str] | None = None
+    if os.getenv("PCS_LIFECYCLE_ENABLED", "1") == "1":
+        try:
+            from .pcs_lifecycle import run_pcs_lifecycle
+
+            _pcs = run_pcs_lifecycle()
+            pcs_lifecycle_section_html = _pcs.get("html")
+            pcs_lifecycle_actionable = list(_pcs.get("actionable") or [])
+        except Exception as e:
+            logger.warning("[pcs_lifecycle] review failed: %s", e)
+            pcs_lifecycle_section_html = f"<p><i>PCS lifecycle error: {e}</i></p>"
+            pcs_lifecycle_actionable = []
+
     report_kwargs = dict(
         stamp=stamp,
         universe_tickers=universe_tickers,
@@ -701,6 +716,8 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, p
         trend_entry_rows=trend_entry_rows,
         holdings_list_tickers=holdings_list,
         holdings_trailing_section_html=holdings_trailing_section_html,
+        pcs_lifecycle_section_html=pcs_lifecycle_section_html,
+        pcs_actionable_tickers=pcs_lifecycle_actionable,
         sim_rows=sim_rows,
         opt_rows=[],       # placeholder — still valid
         wheel_rows=wheel_rows,

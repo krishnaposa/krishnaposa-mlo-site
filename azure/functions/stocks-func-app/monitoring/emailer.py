@@ -360,6 +360,8 @@ def send_email_report_with_sims(*,
     trend_entry_rows: Optional[List[Dict]] = None,
     holdings_list_tickers: Optional[List[str]] = None,  # current symbols from holdings_list.json (display only)
     holdings_trailing_section_html: Optional[str] = None,  # holdings_list: trailing stop + RS exits
+    pcs_lifecycle_section_html: Optional[str] = None,  # swing + PCS held-position lifecycle
+    pcs_actionable_tickers: Optional[List[str]] = None,  # positions needing action (subject line)
     sim_rows: Optional[List[Dict]] = None,    # ticker, mc30, hmm_bull, ml_prob
     opt_rows: Optional[List[Dict]] = None,    # ticker, expiry, dte, k1, k2, debit, oi1, oi2, combo_spread
     wheel_rows: Optional[List[Dict]] = None,  # cash-secured put wheel candidates
@@ -397,6 +399,12 @@ def send_email_report_with_sims(*,
         if len(momentum_exited_tickers) > 10:
             mx += " …"
         alert_parts.append(f"Momentum exits: {mx}")
+    pa = pcs_actionable_tickers or []
+    if pa:
+        px = ", ".join(str(t) for t in pa[:10])
+        if len(pa) > 10:
+            px += " …"
+        alert_parts.append(f"Position actions: {px}")
     if alert_parts:
         subject = f"{subject} — " + " · ".join(alert_parts)
 
@@ -418,6 +426,14 @@ def send_email_report_with_sims(*,
         if (holdings_trailing_section_html or "").strip()
         else "<i>Holdings trailing section not available.</i>"
     )
+    # Skip the whole section when positions.json is absent (empty html from lifecycle).
+    if (pcs_lifecycle_section_html or "").strip():
+        html_pcs_lifecycle_block = (
+            "<h3>Positions — swing &amp; put-credit-spread lifecycle (positions.json)</h3>"
+            f"<div>{pcs_lifecycle_section_html}</div>"
+        )
+    else:
+        html_pcs_lifecycle_block = ""
     html_wheel_tickers = _list_html(wheel_tickers)
     html_sims = _sim_table_html(sim_rows)
     html_perf = _perf_table_html(perf_rows)
@@ -479,6 +495,8 @@ def send_email_report_with_sims(*,
       <div>{html_holdings_symbols}</div>
       <div><i>Same rules as momentum: trailing stop off high_seen; exit if RS percentile &lt; threshold (default 70). holdings_list.json is only changed automatically if HOLDINGS_LIST_REMOVE_ON_EXIT=1.</i></div>
       <div>{html_holdings_trailing}</div>
+
+      {html_pcs_lifecycle_block}
 
       {html_momentum_block}
 

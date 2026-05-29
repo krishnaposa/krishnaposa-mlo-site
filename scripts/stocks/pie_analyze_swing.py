@@ -63,9 +63,11 @@ class SwingPhase(str, Enum):
 class PCSPhase(str, Enum):
     OPENED = "OPENED"
     THETA_DECAY = "THETA_DECAY"
+    MANAGE = "MANAGE"
     DEFENSIVE = "DEFENSIVE"
     ROLL = "ROLL"
     EXIT = "EXIT"
+    STOP = "STOP"
 
 
 # =========================================================
@@ -120,9 +122,10 @@ def determine_pcs_phase_live(
     buffer_pct: float,
     *,
     profit_target: float = 50.0,
+    stop_loss: float = -100.0,
     roll_dte: int = 14,
     roll_buffer: float = 3.0,
-    theta_dte: int = 21,
+    manage_dte: int = 21,
 ) -> PCSPhase:
     """
     Phase for an open spread using data available without Greeks (Option A).
@@ -131,20 +134,23 @@ def determine_pcs_phase_live(
       > 0  underlying above the short put (good)
       < 0  underlying below the short put (in trouble)
 
-    Thresholds:
+    Thresholds (precedence top to bottom):
       profit_target  close once >= this % of credit captured (default 50)
+      stop_loss      close once loss reaches this % of credit (default -100 = -1x credit)
       roll_dte       roll when DTE below this and buffer is tight (default 14)
       roll_buffer    buffer % considered "tight" for rolling (default 3)
-      theta_dte      below this DTE, otherwise just let it decay (default 21)
+      manage_dte     at/below this DTE, manage (close or roll) regardless (default 21)
     """
     if profit_pct >= profit_target:
         return PCSPhase.EXIT
+    if profit_pct <= stop_loss:
+        return PCSPhase.STOP
     if buffer_pct < 0:
         return PCSPhase.DEFENSIVE
     if dte < roll_dte and buffer_pct < roll_buffer:
         return PCSPhase.ROLL
-    if dte < theta_dte:
-        return PCSPhase.THETA_DECAY
+    if dte <= manage_dte:
+        return PCSPhase.MANAGE
     return PCSPhase.OPENED
 
 
@@ -242,7 +248,9 @@ def review_pcs_positions(
     spreads: list[dict],
     *,
     profit_target: float = 50.0,
+    stop_loss: float = -100.0,
     roll_dte: int = 14,
+    manage_dte: int = 21,
 ) -> pd.DataFrame:
     """Phase + management guidance for open put credit spreads (no Greeks)."""
     if not spreads:
@@ -277,13 +285,17 @@ def review_pcs_positions(
             profit_pct=profit_pct if profit_pct == profit_pct else 0.0,
             buffer_pct=buffer_pct if buffer_pct == buffer_pct else 0.0,
             profit_target=profit_target,
+            stop_loss=stop_loss,
             roll_dte=roll_dte,
+            manage_dte=manage_dte,
         )
 
         action = {
             PCSPhase.EXIT: f"CLOSE (>={profit_target:g}% profit)",
+            PCSPhase.STOP: f"CLOSE (stop, <={stop_loss:g}% loss)",
             PCSPhase.DEFENSIVE: "DEFEND (under short)",
             PCSPhase.ROLL: f"ROLL (<{roll_dte}DTE, tight)",
+            PCSPhase.MANAGE: f"MANAGE (<={manage_dte}DTE: close/roll)",
             PCSPhase.THETA_DECAY: "LET DECAY",
             PCSPhase.OPENED: "HOLD",
         }[phase]
@@ -375,6 +387,21 @@ def _mid_price(opt_row) -> float:
     return float(opt_row.get("lastPrice") or 0.0)
 
 
+def _leg_is_liquid(opt_row, *, min_oi: int, max_spread_pct: float) -> bool:
+    """Reject illiquid / wide-quote option legs that produce garbage mids."""
+    oi = float(opt_row.get("openInterest") or 0.0)
+    if oi < min_oi:
+        return False
+    bid = float(opt_row.get("bid") or 0.0)
+    ask = float(opt_row.get("ask") or 0.0)
+    if bid <= 0 or ask <= 0:
+        return False
+    mid = (bid + ask) / 2.0
+    if mid <= 0:
+        return False
+    return ((ask - bid) / mid * 100.0) <= max_spread_pct
+
+
 def build_pcs_plan(
     symbol: str,
     price: float,
@@ -382,11 +409,20 @@ def build_pcs_plan(
     target_dte: int = 35,
     otm_pct: float = 0.06,
     spread_width_pct: float = 0.03,
+    min_open_interest: int = 100,
+    max_spread_pct: float = 15.0,
+    min_credit_width: float = 0.20,
 ) -> PutCreditSpread | None:
     """
     Build a put-credit-spread suggestion from the live yfinance option chain.
 
     Short put ~otm_pct below price; long put ~spread_width_pct below the short.
+
+    Quality gates (skip the trade, return None, if any fail):
+      min_open_interest  both legs need OI >= this (default 100)
+      max_spread_pct     both legs need bid/ask spread <= this % of mid (default 15)
+      min_credit_width   credit/width must be >= this (default 0.20 = 20% of width)
+
     Returns None if no usable expiry/strikes/quotes are available.
     """
     tk = yf.Ticker(symbol)
@@ -417,15 +453,23 @@ def build_pcs_plan(
 
     puts = puts.sort_values("strike")
 
-    short_candidates = puts[puts["strike"] <= price * (1 - otm_pct)]
+    # Only consider liquid strikes so mids are trustworthy.
+    liquid = puts[puts.apply(
+        lambda r: _leg_is_liquid(r, min_oi=min_open_interest, max_spread_pct=max_spread_pct),
+        axis=1,
+    )]
+    if liquid.empty:
+        return None
+
+    short_candidates = liquid[liquid["strike"] <= price * (1 - otm_pct)]
     if short_candidates.empty:
         return None
     short_row = short_candidates.iloc[-1]
     short_strike = float(short_row["strike"])
 
-    long_candidates = puts[puts["strike"] <= short_strike * (1 - spread_width_pct)]
+    long_candidates = liquid[liquid["strike"] <= short_strike * (1 - spread_width_pct)]
     if long_candidates.empty:
-        lower = puts[puts["strike"] < short_strike]
+        lower = liquid[liquid["strike"] < short_strike]
         if lower.empty:
             return None
         long_row = lower.iloc[-1]
@@ -439,6 +483,10 @@ def build_pcs_plan(
 
     credit = _mid_price(short_row) - _mid_price(long_row)
     if credit <= 0:
+        return None
+
+    # Reject thin premium relative to risk.
+    if (credit / width) < min_credit_width:
         return None
 
     max_risk = width - credit
@@ -463,11 +511,22 @@ def build_pcs_plan(
 # LIFECYCLE REVIEW
 # =========================================================
 
+def _actionable(df: pd.DataFrame) -> pd.DataFrame:
+    """Rows that need attention (Action other than HOLD / LET DECAY)."""
+    if df.empty or "Action" not in df.columns:
+        return df
+    keep = ~df["Action"].astype(str).str.startswith(("HOLD", "LET DECAY"))
+    return df[keep]
+
+
 def run_review(
     positions_path: str,
     *,
     pcs_profit_target: float = 50.0,
+    pcs_stop_loss: float = -100.0,
     pcs_roll_dte: int = 14,
+    pcs_manage_dte: int = 21,
+    alerts_only: bool = False,
 ) -> None:
     positions = load_positions(positions_path)
     swings = positions.get("swings", [])
@@ -478,25 +537,35 @@ def run_review(
               f'(expected {{"swings": [...], "spreads": [...]}}).')
         return
 
-    print(f"Reviewing positions from {positions_path}")
+    print(f"Reviewing positions from {positions_path}"
+          + (" (alerts only)" if alerts_only else ""))
+
+    swing_df = review_swing_positions(swings)
+    pcs_df = review_pcs_positions(
+        spreads,
+        profit_target=pcs_profit_target,
+        stop_loss=pcs_stop_loss,
+        roll_dte=pcs_roll_dte,
+        manage_dte=pcs_manage_dte,
+    )
+
+    if alerts_only:
+        swing_df = _actionable(swing_df)
+        pcs_df = _actionable(pcs_df)
 
     print("\n")
     print("=" * 120)
     print(" SWING POSITIONS (lifecycle) ")
     print("=" * 120)
-    swing_df = review_swing_positions(swings)
-    print(swing_df.to_string(index=False) if not swing_df.empty else "No swing positions.")
+    print(swing_df.to_string(index=False) if not swing_df.empty
+          else ("No swing alerts." if alerts_only else "No swing positions."))
 
     print("\n")
     print("=" * 120)
     print(" PUT CREDIT SPREADS (lifecycle) ")
     print("=" * 120)
-    pcs_df = review_pcs_positions(
-        spreads,
-        profit_target=pcs_profit_target,
-        roll_dte=pcs_roll_dte,
-    )
-    print(pcs_df.to_string(index=False) if not pcs_df.empty else "No spread positions.")
+    print(pcs_df.to_string(index=False) if not pcs_df.empty
+          else ("No spread alerts." if alerts_only else "No spread positions."))
 
     print("\nDone.")
 
@@ -526,15 +595,24 @@ def main() -> None:
                         help=f"Positions file for --review (default: {DEFAULT_POSITIONS_FILE.name}).")
     parser.add_argument("--pcs-profit-target", type=float, default=50.0,
                         help="Close spread at this %% of credit captured (default 50).")
+    parser.add_argument("--pcs-stop-loss", type=float, default=-100.0,
+                        help="Close spread at this %% loss of credit (default -100 = -1x credit).")
     parser.add_argument("--pcs-roll-dte", type=int, default=14,
                         help="Roll spread when DTE below this and buffer tight (default 14).")
+    parser.add_argument("--pcs-manage-dte", type=int, default=21,
+                        help="Manage (close/roll) at/below this DTE regardless (default 21).")
+    parser.add_argument("--alerts-only", action="store_true",
+                        help="With --review: show only positions needing action (skip HOLD).")
     args = parser.parse_args()
 
     if args.review:
         run_review(
             args.positions,
             pcs_profit_target=args.pcs_profit_target,
+            pcs_stop_loss=args.pcs_stop_loss,
             pcs_roll_dte=args.pcs_roll_dte,
+            pcs_manage_dte=args.pcs_manage_dte,
+            alerts_only=args.alerts_only,
         )
         return
 
