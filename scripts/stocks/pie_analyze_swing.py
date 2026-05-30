@@ -607,6 +607,8 @@ def main() -> None:
                         help="Enrich BUY candidates with yfinance fundamentals (slow; PASS/WARN/FAIL).")
     parser.add_argument("--require-fundamentals", action="store_true",
                         help="With --fundamentals: drop BUY candidates that FAIL the checks.")
+    parser.add_argument("--all", dest="all_tickers", action="store_true",
+                        help="Analyze every ticker (skip the BUY filter), not just BUY candidates.")
     args = parser.parse_args()
 
     if args.review:
@@ -630,10 +632,17 @@ def main() -> None:
         print("No scan results.")
         return
 
-    buys = select_buy_candidates(results_df, min_grade=args.min_grade)
-    print(f"BUY candidates (Grade >= {args.min_grade}): {len(buys)}")
+    if args.all_tickers:
+        buys = results_df.copy()
+        print(f"Analyzing all {len(buys)} scanned ticker(s) (--all; BUY filter skipped).")
+        if not args.no_pcs and len(buys) > 25:
+            print("Note: PCS pulls an option chain per ticker — this may be slow. "
+                  "Use --no-pcs for swing-only, or a smaller list.")
+    else:
+        buys = select_buy_candidates(results_df, min_grade=args.min_grade)
+        print(f"BUY candidates (Grade >= {args.min_grade}): {len(buys)}")
     if buys.empty:
-        print("No BUY candidates to funnel.")
+        print("Nothing to funnel.")
         return
 
     # ---- Fundamentals (BUY candidates only; slow yfinance .info) ----

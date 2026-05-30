@@ -135,6 +135,10 @@ python pie_analyze_swing.py --no-pcs
 python pie_analyze_swing.py --fundamentals
 python pie_analyze_swing.py --fundamentals --require-fundamentals
 
+# Analyze ALL my_tickers (skip BUY filter). Scan still runs for price/20DMA.
+python pie_analyze_swing.py --all --no-pcs
+python pie_analyze_swing.py --all --tickers-file my_tickers.txt
+
 # PCS strikes by %-OTM from live yfinance option chain (no Greeks); POP ~ credit/width proxy.
 
 # Lifecycle review of held positions (positions.json: swings + spreads):
