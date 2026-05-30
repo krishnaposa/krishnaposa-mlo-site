@@ -156,7 +156,6 @@
   function refiCalc() {
     const loan = num(document.getElementById("refi_loan").value);
     const oldRateField = (document.getElementById("refi_old_rate").value || cfg.defaultRatePct);
-    aconst = 1; // keep
     const newRateField = (document.getElementById("refi_new_rate").value || cfg.defaultRatePct);
     const costs = num(document.getElementById("refi_costs").value || 0);
 
@@ -165,10 +164,13 @@
     const oldRatePct = (oldRateField.toString().trim().endsWith("%") ? num(oldRateField) * 100 : num(oldRateField));
     const newRatePct = (newRateField.toString().trim().endsWith("%") ? num(newRateField) * 100 : num(newRateField));
 
-    const oldPI = monthlyPI(loan, oldRatePct);
-    const newPI = monthlyPI(loan, newRatePct);
+    const pi = window.RefiEval ? window.RefiEval.monthlyPI : monthlyPI;
+    const be = window.RefiEval ? window.RefiEval.breakEvenMonths : null;
+
+    const oldPI = pi(loan, oldRatePct);
+    const newPI = pi(loan, newRatePct);
     const savings = Math.max(0, oldPI - newPI);
-    const months = savings > 0 ? Math.ceil(costs / savings) : Infinity;
+    const months = be ? be(savings, costs) : (savings > 0 ? Math.ceil(costs / savings) : Infinity);
 
     document.getElementById("refi_savings").textContent = fmt(savings);
     document.getElementById("refi_months").textContent = isFinite(months) ? months : "N/A";

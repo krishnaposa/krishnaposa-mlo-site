@@ -1,0 +1,7 @@
+# DEPRECATED — moved to azure/functions/loan-advisor-fn
+#
+# Loan Advisor + Refi Monitor now run on Azure Functions (same pattern as intake/realtors).
+# After Azure is deployed and loan-api-config.js is updated, you can delete this worker
+# from Cloudflare dashboard and remove this folder.
+#
+# Was: https://loan-advisor.krishna-posa.workers.dev

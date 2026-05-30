@@ -1,0 +1,56 @@
+Loan Advisor + Refi Monitor — Azure Functions (Node 18+)
+=========================================================
+
+Endpoints (after deploy, route prefix /api):
+  POST /api/loanAdvisor   — AI loan advisor (replaces Cloudflare worker)
+  POST /api/refiCheck     — refinance analysis
+  POST /api/refiWatch     — subscribe email alerts (Table Storage)
+  Timer refiCron          — Mon & Thu 14:00 UTC
+
+Frontend config: assets/js/loan-api-config.js
+  base: https://loan-advisor-func-app.eastus2-01.azurewebsites.net/api
+
+Deploy (Azure Portal or CLI)
+----------------------------
+1. Create Function App name: loan-advisor-func-app
+   Node 18+, Consumption or Flex, East US 2 (match intake/realtors).
+2. Deploy folder: azure/functions/loan-advisor-fn
+   cd azure/functions/loan-advisor-fn
+   npm install
+   func azure functionapp publish loan-advisor-func-app
+
+3. Application settings (same pattern as intake-func-app):
+   AzureWebJobsStorage          = storage connection string
+   FUNCTIONS_WORKER_RUNTIME     = node
+   ALLOW_ORIGIN                 = https://www.krishposa.com
+   ACS_CONNECTION_STRING        = (for refi alert emails)
+   MAIL_FROM                    = Azure Communication Services verified sender
+   NOTIFY_TO                    = your MLO email (optional copy on alerts)
+   OPENAI_API_KEY               = optional, for AI explanations
+   -- OR --
+   AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY / AZURE_OPENAI_DEPLOYMENT
+
+4. Republish static site (loan-advisor.html, refi-monitor.html).
+
+Test:
+  curl -X POST https://loan-advisor-func-app.eastus2-01.azurewebsites.net/api/refiCheck \
+    -H "Content-Type: application/json" \
+    -d "{\"loanBalance\":320000,\"currentRate\":7.25,\"homeValue\":450000,\"yearsRemaining\":27,\"term\":\"30 Year Fixed\",\"refiCosts\":6000,\"stayYears\":5,\"fico\":\"740-759\",\"dti\":36}"
+
+Local test
+----------
+  cd azure/functions/loan-advisor-fn
+  npm install
+  copy local.settings.example.json local.settings.json  (fill values)
+  func start
+
+  curl -X POST http://localhost:7071/api/refiCheck -H "Content-Type: application/json" -d "{\"loanBalance\":320000,\"currentRate\":7.25,\"homeValue\":450000,\"yearsRemaining\":27,\"term\":\"30 Year Fixed\",\"refiCosts\":6000,\"stayYears\":5,\"fico\":\"740-759\",\"dti\":36}"
+
+Cloudflare worker
+-----------------
+Deprecated — see cloudflare/loan-advisor-worker/wrangler.toml
+You can delete the Cloudflare worker after Azure is live and tested.
+
+Rate baselines
+--------------
+Edit shared/rate-pricing.js (and assets/js/refi-eval.js) BASE_BY_TERM when market moves.
