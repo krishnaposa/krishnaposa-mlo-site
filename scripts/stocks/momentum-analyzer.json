@@ -1,22 +1,25 @@
 {
   "positions": {
     "MU": {
-      "high_seen": 897.9749755859375
+      "high_seen": 1035.5
     },
     "LUNR": {
       "high_seen": 43.48550033569336
     },
     "SNDK": {
-      "high_seen": 1613.5
+      "high_seen": 1761.4300537109375
     },
-    "WDC": {
-      "high_seen": 526.1099853515625
+    "DELL": {
+      "high_seen": 465.9599914550781
+    },
+    "STX": {
+      "high_seen": 921.260009765625
     }
   },
   "meta": {
     "source": "daily_momentum",
     "daily_snapshot": true,
-    "updated_at": "2026-05-26T18:15:33Z",
+    "updated_at": "2026-06-01T21:37:29Z",
     "schema": "momentum_portfolio_v1"
   }
 }

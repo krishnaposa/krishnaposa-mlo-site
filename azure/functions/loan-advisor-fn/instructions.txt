@@ -1,56 +1,74 @@
-Loan Advisor + Refi Monitor — Azure Functions (Node 18+)
-=========================================================
+Loan Advisor + Refi Monitor — Azure Functions (Node 22, Flex Consumption)
+=========================================================================
 
-Endpoints (after deploy, route prefix /api):
-  POST /api/loanAdvisor   — AI loan advisor (replaces Cloudflare worker)
-  POST /api/refiCheck     — refinance analysis
-  POST /api/refiWatch     — subscribe email alerts (Table Storage)
-  Timer refiCron          — Mon & Thu 14:00 UTC
+Your app: loan-advisor-func-app (Flex Consumption, Node 22, East US 2)
+Host: https://loan-advisor-func-app-b4etgvgde3eycsb5.eastus2-01.azurewebsites.net
 
-Frontend config: assets/js/loan-api-config.js
-  base: https://loan-advisor-func-app.eastus2-01.azurewebsites.net/api
+IMPORTANT — Flex vs classic Consumption
+---------------------------------------
+loan-advisor-func-app is Flex Consumption. Runtime is set at create time
+(Portal → Overview shows Node 22). Do NOT add these app settings on Flex:
+  FUNCTIONS_WORKER_RUNTIME      ← not used / portal may reject
+  FUNCTIONS_EXTENSION_VERSION
+  WEBSITE_NODE_DEFAULT_VERSION
 
-Deploy (Azure Portal or CLI)
-----------------------------
-1. Create Function App name: loan-advisor-func-app
-   Node 18+, Consumption or Flex, East US 2 (match intake/realtors).
-2. Deploy folder: azure/functions/loan-advisor-fn
-   cd azure/functions/loan-advisor-fn
-   npm install
-   func azure functionapp publish loan-advisor-func-app
+FUNCTIONS_WORKER_RUNTIME=node in local.settings.json is LOCAL ONLY (for func CLI).
 
-3. Application settings (same pattern as intake-func-app):
-   AzureWebJobsStorage          = storage connection string
-   FUNCTIONS_WORKER_RUNTIME     = node
-   ALLOW_ORIGIN                 = https://www.krishposa.com
-   ACS_CONNECTION_STRING        = (for refi alert emails)
-   MAIL_FROM                    = Azure Communication Services verified sender
-   NOTIFY_TO                    = your MLO email (optional copy on alerts)
-   OPENAI_API_KEY               = optional, for AI explanations
-   -- OR --
-   AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY / AZURE_OPENAI_DEPLOYMENT
+Endpoints (route prefix /api):
+  POST /api/loanAdvisor
+  POST /api/refiCheck
+  POST /api/refiWatch
+  Timer refiCron — Mon & Thu 14:00 UTC
 
-4. Republish static site (loan-advisor.html, refi-monitor.html).
+STEP 1 — App settings (Portal → Environment variables)
+------------------------------------------------------
+Already on your app (keep):
+  AzureWebJobsStorage
+  DEPLOYMENT_STORAGE_CONNECTION_STRING
+  AZURE_OPENAI_ENDPOINT
+  AZURE_OPENAI_KEY
+  APPLICATIONINSIGHTS_CONNECTION_STRING
 
-Test:
-  curl -X POST https://loan-advisor-func-app.eastus2-01.azurewebsites.net/api/refiCheck \
-    -H "Content-Type: application/json" \
-    -d "{\"loanBalance\":320000,\"currentRate\":7.25,\"homeValue\":450000,\"yearsRemaining\":27,\"term\":\"30 Year Fixed\",\"refiCosts\":6000,\"stayYears\":5,\"fico\":\"740-759\",\"dti\":36}"
+Add these:
+  ALLOW_ORIGIN                 = https://www.krishposa.com
+  AZURE_OPENAI_DEPLOYMENT      = gpt-4o   (or your deployment name)
+  AZURE_OPENAI_API_VERSION     = 2024-12-01-preview
 
-Local test
-----------
+For refi email alerts (copy from intake-func-app):
+  ACS_CONNECTION_STRING
+  MAIL_FROM
+  NOTIFY_TO
+
+STEP 2 — Deploy code
+--------------------
   cd azure/functions/loan-advisor-fn
   npm install
-  copy local.settings.example.json local.settings.json  (fill values)
+  func azure functionapp publish loan-advisor-func-app --javascript --build remote
+
+If "Can't determine project language":
+  - Run from loan-advisor-fn folder (must contain host.json + loanAdvisor/)
+  - Always pass --javascript
+  - Ensure local.settings.json exists (local dev / CLI detection only)
+
+STEP 3 — Frontend
+-----------------
+assets/js/loan-api-config.js should point to:
+  https://loan-advisor-func-app-b4etgvgde3eycsb5.eastus2-01.azurewebsites.net/api
+
+Republish static site after deploy.
+
+STEP 4 — Test
+-------------
+  curl -X POST "https://loan-advisor-func-app-b4etgvgde3eycsb5.eastus2-01.azurewebsites.net/api/refiCheck" ^
+    -H "Content-Type: application/json" ^
+    -d "{\"loanBalance\":320000,\"currentRate\":7.25,\"homeValue\":450000,\"yearsRemaining\":27,\"term\":\"30 Year Fixed\",\"refiCosts\":6000,\"stayYears\":5,\"fico\":\"740-759\",\"dti\":36}"
+
+Local dev
+---------
+  local.settings.json has FUNCTIONS_WORKER_RUNTIME=node for func start only.
   func start
 
-  curl -X POST http://localhost:7071/api/refiCheck -H "Content-Type: application/json" -d "{\"loanBalance\":320000,\"currentRate\":7.25,\"homeValue\":450000,\"yearsRemaining\":27,\"term\":\"30 Year Fixed\",\"refiCosts\":6000,\"stayYears\":5,\"fico\":\"740-759\",\"dti\":36}"
+Rate baselines: shared/rate-pricing.js + assets/js/refi-eval.js
 
-Cloudflare worker
------------------
-Deprecated — see cloudflare/loan-advisor-worker/wrangler.toml
-You can delete the Cloudflare worker after Azure is live and tested.
 
-Rate baselines
---------------
-Edit shared/rate-pricing.js (and assets/js/refi-eval.js) BASE_BY_TERM when market moves.
+func azure functionapp publish loan-advisor-func-app --javascript --build remote

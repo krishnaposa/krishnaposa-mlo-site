@@ -37,6 +37,13 @@ from typing import Any, Dict, List
 import pandas as pd
 import yfinance as yf
 
+from .position_metrics import (
+    fmt_below,
+    fmt_pct,
+    get_position_price_metrics,
+    needs_attention,
+)
+
 logger = logging.getLogger(__name__)
 
 PROFIT_TARGET = float(os.getenv("PCS_PROFIT_TARGET", "50"))
@@ -132,25 +139,14 @@ def _mid(opt_row) -> float:
     return float(opt_row.get("lastPrice") or 0.0)
 
 
-def _last_prices(symbols: List[str]) -> Dict[str, float]:
-    syms = sorted({str(s).upper().strip() for s in symbols if str(s).strip()})
-    if not syms:
-        return {}
-    data = yf.download(syms, period="5d", interval="1d", progress=False, auto_adjust=True)
-    if data is None or data.empty:
-        return {s: float("nan") for s in syms}
-    closes = data["Close"]
-    out: Dict[str, float] = {}
-    for s in syms:
-        try:
-            if isinstance(closes, pd.DataFrame):
-                series = closes[s].dropna() if s in closes.columns else pd.Series(dtype=float)
-            else:
-                series = closes.dropna()
-            out[s] = float(series.iloc[-1]) if not series.empty else float("nan")
-        except Exception:
-            out[s] = float("nan")
-    return out
+def _metrics_row(sym: str, metrics: Dict[str, dict]) -> dict:
+    m = metrics.get(sym, {})
+    return {
+        "Today%": fmt_pct(m.get("chg_1d_pct")),
+        "Week%": fmt_pct(m.get("chg_5d_pct")),
+        "<20DMA": fmt_below(bool(m.get("below_20dma"))),
+        "_attention": needs_attention(m),
+    }
 
 
 # ------------------------------------------------------------------
@@ -160,13 +156,15 @@ def _last_prices(symbols: List[str]) -> Dict[str, float]:
 def review_swings(swings: List[dict]) -> List[dict]:
     if not swings:
         return []
-    prices = _last_prices([s.get("symbol", "") for s in swings])
+    syms = [s.get("symbol", "") for s in swings]
+    metrics = get_position_price_metrics(syms)
     rows = []
     for pos in swings:
         sym = str(pos.get("symbol", "")).upper().strip()
         entry = float(pos.get("entry_price") or 0.0)
         stored_stop = float(pos.get("stop_price") or 0.0)
-        price = prices.get(sym, float("nan"))
+        m = metrics.get(sym, {})
+        price = m.get("last", float("nan"))
 
         days_held = _days_since(pos.get("entry_date", ""))
         return_pct = ((price - entry) / entry * 100.0) if entry > 0 and price == price else 0.0
@@ -214,7 +212,8 @@ def review_spreads(spreads: List[dict]) -> List[dict]:
         width = short_k - long_k
 
         dte = _days_since(expiry) * -1
-        price = prices.get(sym, float("nan"))
+        m = metrics.get(sym, {})
+        price = m.get("last", float("nan"))
         cur_cost = float("nan")
         try:
             tk = yf.Ticker(sym)
@@ -242,19 +241,19 @@ def review_spreads(spreads: List[dict]) -> List[dict]:
             "OPENED": "HOLD",
         }[phase]
 
-        rows.append({
+        row = {
             "Ticker": sym,
-            "Expiry": expiry,
+            **_metrics_row(sym, metrics),
+            "Price": round(price, 2) if price == price else None,
             "DTE": dte,
             "Short": short_k,
             "Long": long_k,
-            "Credit0": round(credit0, 2),
-            "CloseCost": round(cur_cost, 2) if cur_cost == cur_cost else None,
             "Profit%": round(profit_pct, 1) if profit_pct == profit_pct else None,
-            "Buffer%": round(buffer_pct, 1) if buffer_pct == buffer_pct else None,
             "Phase": phase,
             "Action": action,
-        })
+        }
+        row["_attention"] = needs_attention(m) or _is_action(action)
+        rows.append(row)
     return rows
 
 
@@ -291,11 +290,11 @@ def run_pcs_lifecycle() -> Dict[str, Any]:
     out["swing_rows"] = swing_rows
     out["pcs_rows"] = pcs_rows
 
-    actionable = (
-        [r["Ticker"] for r in swing_rows if _is_action(r["Action"])]
-        + [r["Ticker"] for r in pcs_rows if _is_action(r["Action"])]
-    )
-    out["actionable"] = sorted(set(actionable))
+    actionable = sorted(set(
+        [r["Ticker"] for r in swing_rows if _is_action(r["Action"]) or r.get("_attention")]
+        + [r["Ticker"] for r in pcs_rows if _is_action(r["Action"]) or r.get("_attention")]
+    ))
+    out["actionable"] = actionable
     out["html"] = format_pcs_lifecycle_email_section(swing_rows, pcs_rows)
     return out
 
@@ -307,12 +306,13 @@ def run_pcs_lifecycle() -> Dict[str, Any]:
 def _table(rows: List[dict]) -> str:
     if not rows:
         return "<div><i>None.</i></div>"
-    cols = list(rows[0].keys())
+    cols = [c for c in rows[0].keys() if not str(c).startswith("_")]
     head = "".join(f"<th align='left'>{_esc(str(c))}</th>" for c in cols)
     body = []
     for r in rows:
         act = str(r.get("Action", ""))
-        hl = "" if not _is_action(act) else " style='background:#fff4e5'"
+        warn = bool(r.get("_attention")) or _is_action(act)
+        hl = " style='background:#fff4e5'" if warn else ""
         tds = "".join(f"<td>{_esc('' if r.get(c) is None else str(r.get(c)))}</td>" for c in cols)
         body.append(f"<tr{hl}>{tds}</tr>")
     return (
@@ -325,24 +325,29 @@ def format_pcs_lifecycle_email_section(swing_rows: List[dict], pcs_rows: List[di
     if not swing_rows and not pcs_rows:
         return "<p><i>No tracked positions (positions.json empty or missing).</i></p>"
 
-    actionable = (
+    actionable = sorted(set(
         [r["Ticker"] for r in swing_rows if _is_action(r["Action"])]
         + [r["Ticker"] for r in pcs_rows if _is_action(r["Action"])]
-    )
+        + [r["Ticker"] for r in swing_rows if r.get("_attention")]
+        + [r["Ticker"] for r in pcs_rows if r.get("_attention")]
+    ))
     summary = ""
     if actionable:
         summary = (
-            f"<div style='margin:4px 0'><b>Action needed:</b> "
-            f"{_esc(', '.join(sorted(set(actionable))))}</div>"
+            f"<div style='margin:4px 0'><b>Watch / action:</b> "
+            f"{_esc(', '.join(actionable))}</div>"
         )
 
     return (
         f"{summary}"
+        "<div style='font-size:11px;color:#666;margin:4px 0'>"
+        "Highlighted: down today, down ~1 week (5 sessions), and/or price below 20-day moving average. "
+        "Today% / Week% use latest daily close.</div>"
         "<div style='margin-top:6px'><b>Swing positions</b></div>"
         f"{_table(swing_rows)}"
-        "<div style='margin-top:10px'><b>Put credit spreads</b></div>"
+        "<div style='margin-top:10px'><b>Put credit spreads (underlying)</b></div>"
         f"{_table(pcs_rows)}"
         "<div style='font-size:11px;color:#666;margin-top:6px'>"
-        "Phases: EXIT/STOP=close, DEFENSIVE=under short, ROLL/MANAGE=close or roll. "
+        "PCS: EXIT/STOP=close, DEFENSIVE=under short, ROLL/MANAGE=close or roll. "
         "positions.json is not auto-edited.</div>"
     )

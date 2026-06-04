@@ -333,11 +333,17 @@ def get_rs_ratings(tickers: List[str]) -> pd.Series:
 
 def run_holdings_trailing_daily() -> Dict[str, Any]:
     """
-    Trailing stop + RS percentile exits for symbols in holdings_list.json (blob).
+    Trailing stop exits for symbols in holdings_list.json (blob).
+    Email table: today %, week %, below 20-DMA (no RS).
     Persists high_seen in holdings_trailing_state.json.
-    By default does NOT edit holdings_list.json — remove tickers there manually unless HOLDINGS_LIST_REMOVE_ON_EXIT=1.
-    Uses same thresholds as momentum: MOMENTUM_RS_EXIT_THRESHOLD (default 70), MOMENTUM_TRAILING_STOP_PCT.
     """
+    from .position_metrics import (
+        fmt_below,
+        fmt_pct,
+        get_position_price_metrics,
+        needs_attention,
+    )
+
     out: Dict[str, Any] = {
         "enabled": True,
         "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
@@ -347,7 +353,6 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
         "holdings_rows": [],
         "state_saved": False,
         "list_saved": False,
-        "rs_series": {},
     }
 
     if os.getenv("HOLDINGS_TRAILING_EXITS_ENABLED", "1") != "1":
@@ -373,12 +378,7 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
         out["messages"].append("yfinance returned no price data for holdings.")
         return out
 
-    rs_ratings = get_rs_ratings(tickers)
-    out["rs_series"] = {
-        k: float(v)
-        for k, v in rs_ratings.items()
-        if k in tickers and pd.notna(v)
-    }
+    price_metrics = get_position_price_metrics(tickers)
 
     to_delete: List[str] = []
     updates_made = False
@@ -417,13 +417,6 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
             to_delete.append(ticker)
             continue
 
-        rs_val = rs_ratings.get(ticker) if len(rs_ratings) else None
-        if rs_val is not None and pd.notna(rs_val) and float(rs_val) < RS_EXIT_THRESHOLD:
-            out["messages"].append(
-                f"EXIT {ticker} — RS {float(rs_val):.1f} < exit threshold {RS_EXIT_THRESHOLD:g}"
-            )
-            to_delete.append(ticker)
-
     to_delete = list(dict.fromkeys(str(x).upper() for x in to_delete))
     exited_set = set(to_delete)
     out["exited"] = list(to_delete)
@@ -450,16 +443,18 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
     for t in sorted(hold_set):
         hi = float((state.get(t) or {}).get("high_seen") or 0.0)
         cp = _last_close_from_panel(closes, t)
-        rs_v = rs_ratings.get(t)
-        rs_f = float(rs_v) if rs_v is not None and pd.notna(rs_v) else float("nan")
+        pm = price_metrics.get(t, {})
         stop_px = hi * (1.0 - TRAILING_STOP_PCT) if hi else float("nan")
         out["holdings_rows"].append(
             {
                 "ticker": t,
                 "last": cp,
+                "today_pct": pm.get("chg_1d_pct"),
+                "week_pct": pm.get("chg_5d_pct"),
+                "below_20dma": pm.get("below_20dma"),
                 "high_seen": hi,
                 "stop": stop_px,
-                "rs": rs_f,
+                "attention": needs_attention(pm),
             }
         )
 
@@ -472,7 +467,9 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
 
 
 def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
-    """HTML fragment for send_email_report_with_sims (holdings_list trailing + RS)."""
+    """HTML fragment for send_email_report_with_sims (holdings_list price watch + trailing stop)."""
+    from .position_metrics import fmt_below, fmt_pct
+
     if result.get("enabled") is False:
         return (
             "<p><i>Holdings trailing exits disabled — set HOLDINGS_TRAILING_EXITS_ENABLED=1 to enable.</i></p>"
@@ -496,20 +493,25 @@ def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
             "<table border='0' cellspacing='0' cellpadding='4'>",
             "<thead><tr>",
             "<th align='left'>Ticker</th>",
+            "<th align='right'>Today%</th>",
+            "<th align='right'>Week%</th>",
+            "<th align='center'>&lt;20DMA</th>",
             "<th align='right'>Last</th>",
             "<th align='right'>High seen</th>",
-            "<th align='right'>Trailing stop</th>",
-            "<th align='right'>RS %ile</th>",
+            "<th align='right'>Trail stop</th>",
             "</tr></thead><tbody>",
         ]
         for r in rows[:80]:
+            hl = " style='background:#fff4e5'" if r.get("attention") else ""
             parts.append(
-                "<tr>"
+                f"<tr{hl}>"
                 f"<td>{_esc(str(r.get('ticker','')))}</td>"
+                f"<td align='right'>{_esc(fmt_pct(r.get('today_pct')))}</td>"
+                f"<td align='right'>{_esc(fmt_pct(r.get('week_pct')))}</td>"
+                f"<td align='center'>{_esc(fmt_below(bool(r.get('below_20dma'))))}</td>"
                 f"<td align='right'>{_fmt_money(r.get('last'))}</td>"
                 f"<td align='right'>{_fmt_money(r.get('high_seen'))}</td>"
                 f"<td align='right'>{_fmt_money(r.get('stop'))}</td>"
-                f"<td align='right'>{_fmt_num(r.get('rs'))}</td>"
                 "</tr>"
             )
         parts.append("</tbody></table>")
@@ -520,9 +522,8 @@ def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
     meta = (
         f"<div style='font-size:11px;color:#666;margin-bottom:6px'>"
         f"Source: holdings_list.json · State: {_esc(str(result.get('state_file','')))} · "
-        f"Exit RS &lt; {RS_EXIT_THRESHOLD:g} · Trailing {TRAILING_STOP_PCT:.0%} · "
-        f"RS = total return over {RS_LOOKBACK_PERIOD} (adj. Close), pct-rank among holdings + SPY "
-        f"(same as momentum-analyzer.py)"
+        f"Trailing exit {TRAILING_STOP_PCT:.0%} off high_seen · "
+        f"Highlighted: down today, down ~1 week, or below 20-day MA"
         f"</div>"
     )
 
@@ -820,13 +821,16 @@ def format_momentum_email_section(result: Dict[str, Any]) -> str:
 
 
 def _positions_table_text(rows: List[Dict[str, Any]], *, max_rows: int = 80) -> str:
+    from .position_metrics import fmt_below, fmt_pct
+
     if not rows:
         return "  (none)"
-    lines = [f"  {'Ticker':<8} {'Last':>10} {'High':>10} {'Stop':>10} {'RS':>8}"]
+    lines = [f"  {'Ticker':<8} {'Today%':>8} {'Week%':>8} {'<20DMA':>6} {'Last':>10} {'Stop':>10}"]
     for r in rows[:max_rows]:
         lines.append(
-            f"  {str(r.get('ticker', '')):<8} {_fmt_money(r.get('last')):>10} "
-            f"{_fmt_money(r.get('high_seen')):>10} {_fmt_money(r.get('stop')):>10} {_fmt_num(r.get('rs')):>8}"
+            f"  {str(r.get('ticker', '')):<8} {fmt_pct(r.get('today_pct')):>8} "
+            f"{fmt_pct(r.get('week_pct')):>8} {fmt_below(bool(r.get('below_20dma'))):>6} "
+            f"{_fmt_money(r.get('last')):>10} {_fmt_money(r.get('stop')):>10}"
         )
     if len(rows) > max_rows:
         lines.append(f"  … {len(rows) - max_rows} more")
@@ -839,8 +843,8 @@ def format_holdings_trailing_text(result: Dict[str, Any]) -> str:
         return "  Holdings trailing exits disabled (HOLDINGS_TRAILING_EXITS_ENABLED=0)."
 
     lines: List[str] = [
-        f"  Exit RS < {RS_EXIT_THRESHOLD:g} · Trailing {TRAILING_STOP_PCT:.0%} · "
-        f"RS lookback {RS_LOOKBACK_PERIOD}",
+        f"  Trailing exit {TRAILING_STOP_PCT:.0%} off high_seen · "
+        f"Today% / Week% / &lt;20DMA on latest daily close",
     ]
     for m in result.get("messages") or []:
         lines.append(f"  • {m}")

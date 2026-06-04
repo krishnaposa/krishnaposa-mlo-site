@@ -299,7 +299,7 @@ def format_monitor_report_text(
     for title, body in sections:
         lines.extend([f"\n## {title}", body])
 
-    lines.append("\n## Holdings — trailing stop & RS exits")
+    lines.append("\n## Holdings — price watch & trailing stop")
     lines.append("Current holdings_list symbols:")
     _hl = list(holdings_list_tickers) if holdings_list_tickers else []
     lines.append(_list_text(_hl) if _hl else "  (none)")
@@ -429,7 +429,7 @@ def send_email_report_with_sims(*,
     # Skip the whole section when positions.json is absent (empty html from lifecycle).
     if (pcs_lifecycle_section_html or "").strip():
         html_pcs_lifecycle_block = (
-            "<h3>Positions — swing &amp; put-credit-spread lifecycle (positions.json)</h3>"
+            "<h3>Positions — price watch &amp; lifecycle (positions.json)</h3>"
             f"<div>{pcs_lifecycle_section_html}</div>"
         )
     else:
@@ -490,10 +490,10 @@ def send_email_report_with_sims(*,
       <div><i>Passed trend entry criteria</i></div>
       <div>{html_trend_entries}</div>
 
-      <h3>Holdings — trailing stop &amp; RS exits (holdings_list.json)</h3>
+      <h3>Holdings — price watch &amp; trailing stop (holdings_list.json)</h3>
       <div><b>Current holdings_list symbols</b></div>
       <div>{html_holdings_symbols}</div>
-      <div><i>Same rules as momentum: trailing stop off high_seen; exit if RS percentile &lt; threshold (default 70). holdings_list.json is only changed automatically if HOLDINGS_LIST_REMOVE_ON_EXIT=1.</i></div>
+      <div><i>Today% / Week% / below 20-DMA on each symbol. Trailing stop exit off high_seen only (RS removed). holdings_list.json is only auto-edited if HOLDINGS_LIST_REMOVE_ON_EXIT=1.</i></div>
       <div>{html_holdings_trailing}</div>
 
       {html_pcs_lifecycle_block}

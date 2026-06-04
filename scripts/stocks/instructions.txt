@@ -148,8 +148,9 @@ python pie_analyze_swing.py --review --alerts-only
 python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100 --pcs-roll-dte 14 --pcs-manage-dte 21
 
 # PCS scan filters (build_pcs_plan): min_open_interest=100, max_spread_pct=15, min_credit_width=0.20
-# Azure daily email: monitoring/pcs_lifecycle.py reads blob signals/positions.json
-#   (PCS_LIFECYCLE_ENABLED=1; thresholds via PCS_PROFIT_TARGET/PCS_STOP_LOSS/PCS_ROLL_DTE/PCS_MANAGE_DTE)
+# Azure daily email: positions.json + holdings_list show Today%, Week%, <20DMA (no RS).
+#   monitoring/pcs_lifecycle.py reads blob signals/positions.json (PCS_LIFECYCLE_ENABLED=1)
+#   Holdings trailing: trail stop only (RS exit removed from daily email)
 
 # positions.json shape:
 #   {"swings": [{"symbol","entry_price","entry_date","shares","stop_price"}],
@@ -170,12 +171,7 @@ cd "c:\pers\krishnaposa-mlo-site\azure\functions\stocks-func-app"
 func azure functionapp publish stocks-func-app --build remote
 
 
-az storage blob upload `
-  --account-name <your-storage-account> `
-  --container-name signals `
-  --name positions.json `
-  --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\positions.json" `
-  --auth-mode login --overwrite
+az storage blob upload --account-name stockmonitorsg  --container-name signals  --name positions.json --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\positions.json"  --auth-mode login --overwrite
 
 
 az functionapp config appsettings set -g <rg> -n stocks-func-app --settings PCS_LIFECYCLE_ENABLED=1 PCS_PROFIT_TARGET=50 PCS_STOP_LOSS=-100 PCS_ROLL_DTE=14 PCS_MANAGE_DTE=21

@@ -27,8 +27,8 @@ async function callAi(prompt, fallback) {
   }
 
   const azEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const azKey = process.env.AZURE_OPENAI_API_KEY;
-  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o-mini';
+  const azKey = process.env.AZURE_OPENAI_API_KEY || process.env.AZURE_OPENAI_KEY;
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o';
   const apiVer = process.env.AZURE_OPENAI_API_VERSION || '2024-10-21';
 
   if (azEndpoint && azKey) {

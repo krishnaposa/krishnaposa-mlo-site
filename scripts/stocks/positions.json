@@ -1,28 +1,12 @@
 {
-  "swings": [
-    {
-      "symbol": "AAPL",
-      "entry_price": 290.0,
-      "entry_date": "2026-04-15",
-      "shares": 50,
-      "stop_price": 275.0
-    },
-    {
-      "symbol": "AMD",
-      "entry_price": 420.0,
-      "entry_date": "2026-03-01",
-      "shares": 20,
-      "stop_price": 400.0
-    }
-  ],
   "spreads": [
     {
-      "symbol": "NVDA",
-      "short_put": 200.0,
-      "long_put": 190.0,
-      "expiration": "2026-07-02",
-      "credit": 1.20,
-      "entry_date": "2026-05-15"
+      "symbol": "MXL",
+      "short_put": 80.0,
+      "long_put": 70.0,
+      "expiration": "2026-07-17",
+      "credit": 4.55,
+      "entry_date": "2026-06-02"
     }
   ]
 }
