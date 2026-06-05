@@ -81,16 +81,34 @@ def fmt_below(v: bool) -> str:
     return "Yes" if v else "No"
 
 
-def needs_attention(m: dict) -> bool:
-    """Highlight when down today, down over ~1 week, or under 20-DMA."""
+def is_weak_all_three(m: dict) -> bool:
+    """Down today AND down ~1 week AND below 20-DMA."""
     if not m:
         return False
     c1 = m.get("chg_1d_pct")
     c5 = m.get("chg_5d_pct")
-    if c1 == c1 and float(c1) < 0:
-        return True
-    if c5 == c5 and float(c5) < 0:
-        return True
-    if m.get("below_20dma"):
-        return True
-    return False
+    if not (c1 == c1 and float(c1) < 0):
+        return False
+    if not (c5 == c5 and float(c5) < 0):
+        return False
+    return bool(m.get("below_20dma"))
+
+
+def weak_symbols_all_three(symbols: List[str]) -> List[str]:
+    metrics = get_position_price_metrics(symbols)
+    return sorted(
+        s for s in {str(x).upper().strip() for x in symbols if str(x).strip()}
+        if is_weak_all_three(metrics.get(s, {}))
+    )
+
+
+def format_weak_symbols_html(symbols: List[str], label: str) -> str:
+    from html import escape as _esc
+
+    weak = weak_symbols_all_three(symbols)
+    if not weak:
+        return (
+            f"<p><b>{_esc(label)}:</b> "
+            "<i>(none — no symbol down today, down ~1 week, and below 20-DMA)</i></p>"
+        )
+    return f"<p><b>{_esc(label)}:</b> {_esc(', '.join(weak))}</p>"

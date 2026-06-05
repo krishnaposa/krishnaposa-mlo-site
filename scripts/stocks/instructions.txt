@@ -6,7 +6,7 @@
 
 
 
-## momentum-analyzer.py — momentum portfolio (RS + trailing stop)
+## momentum-analyzer.py — momentum portfolio (Finviz seed + trailing stop)
 
 python momentum-analyzer.py --seed-from-finviz
 
@@ -24,11 +24,7 @@ Files: momentum-analyzer.json
 
 
 
-## holdings-analyzer.py — holdings list trailing + RS (local JSON)
-
-# RS ranks 6mo return; set peers-only (no SPY in rank) for “best grower in this list”:
-
-#   set MOMENTUM_RS_INCLUDE_SPY=0
+## holdings-analyzer.py — holdings list trailing stop (local JSON)
 
 python holdings-analyzer.py --set-from-file my_tickers.txt
 
@@ -42,7 +38,7 @@ python holdings-analyzer.py
 
 python holdings-analyzer.py --remove-on-exit
 
-# holdings-list.json analysis: RS (6mo) + Yahoo 5d trailing stop (this script only; not full quant scores)
+# holdings-list.json: Yahoo 5d trailing stop (this script only; not full quant scores)
 
 # --push-azure: uploads holdings-list.json to Azure (MONITOR_STORAGE or AzureWebJobsStorage)
 cd scripts\stocks
@@ -148,9 +144,13 @@ python pie_analyze_swing.py --review --alerts-only
 python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100 --pcs-roll-dte 14 --pcs-manage-dte 21
 
 # PCS scan filters (build_pcs_plan): min_open_interest=100, max_spread_pct=15, min_credit_width=0.20
-# Azure daily email: positions.json + holdings_list show Today%, Week%, <20DMA (no RS).
-#   monitoring/pcs_lifecycle.py reads blob signals/positions.json (PCS_LIFECYCLE_ENABLED=1)
-#   Holdings trailing: trail stop only (RS exit removed from daily email)
+# Azure daily email (stocks-func-app monitor_signals):
+#   Weak symbols only (no Today%/Week% tables): down today AND down ~1 week AND below 20-DMA
+#   PCS ideas for next session: monitoring/pcs_opportunities.py (pie_analyze_swing funnel)
+#     PCS_OPPORTUNITIES_ENABLED=1 (default), tickers from blob signals/my_tickers.txt else local_list+holdings_list
+#     PIE_MIN_GRADE=B  PIE_TARGET_DTE=35  PIE_OTM_PCT=0.06  PIE_MAX_PCS_CANDIDATES=12
+#   Open positions lifecycle: monitoring/pcs_lifecycle.py reads signals/positions.json (PCS_LIFECYCLE_ENABLED=1)
+#   Holdings / momentum: trailing stop only (no relative-strength exits)
 
 # positions.json shape:
 #   {"swings": [{"symbol","entry_price","entry_date","shares","stop_price"}],
@@ -173,5 +173,7 @@ func azure functionapp publish stocks-func-app --build remote
 
 az storage blob upload --account-name stockmonitorsg  --container-name signals  --name positions.json --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\positions.json"  --auth-mode login --overwrite
 
+az storage blob upload --account-name stockmonitorsg  --container-name signals  --name my_tickers.txt --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\my_tickers.txt"  --auth-mode login --overwrite
 
-az functionapp config appsettings set -g <rg> -n stocks-func-app --settings PCS_LIFECYCLE_ENABLED=1 PCS_PROFIT_TARGET=50 PCS_STOP_LOSS=-100 PCS_ROLL_DTE=14 PCS_MANAGE_DTE=21
+
+az functionapp config appsettings set -g <rg> -n stocks-func-app --settings PCS_LIFECYCLE_ENABLED=1 PCS_OPPORTUNITIES_ENABLED=1 PCS_PROFIT_TARGET=50 PCS_STOP_LOSS=-100 PCS_ROLL_DTE=14 PCS_MANAGE_DTE=21 PIE_MIN_GRADE=B

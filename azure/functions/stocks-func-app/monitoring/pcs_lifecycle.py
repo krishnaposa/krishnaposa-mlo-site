@@ -38,10 +38,8 @@ import pandas as pd
 import yfinance as yf
 
 from .position_metrics import (
-    fmt_below,
-    fmt_pct,
+    format_weak_symbols_html,
     get_position_price_metrics,
-    needs_attention,
 )
 
 logger = logging.getLogger(__name__)
@@ -139,16 +137,6 @@ def _mid(opt_row) -> float:
     return float(opt_row.get("lastPrice") or 0.0)
 
 
-def _metrics_row(sym: str, metrics: Dict[str, dict]) -> dict:
-    m = metrics.get(sym, {})
-    return {
-        "Today%": fmt_pct(m.get("chg_1d_pct")),
-        "Week%": fmt_pct(m.get("chg_5d_pct")),
-        "<20DMA": fmt_below(bool(m.get("below_20dma"))),
-        "_attention": needs_attention(m),
-    }
-
-
 # ------------------------------------------------------------------
 # Reviews
 # ------------------------------------------------------------------
@@ -186,12 +174,11 @@ def review_swings(swings: List[dict]) -> List[dict]:
 
         rows.append({
             "Ticker": sym,
-            "Entry": round(entry, 2),
             "Price": round(price, 2) if price == price else None,
+            "Entry": round(entry, 2),
             "Ret%": round(return_pct, 2),
             "Days": days_held,
             "Stop": round(stored_stop, 2),
-            "SugStop": round(suggested_stop, 2) if suggested_stop == suggested_stop else None,
             "Phase": phase,
             "Action": action,
         })
@@ -201,7 +188,8 @@ def review_swings(swings: List[dict]) -> List[dict]:
 def review_spreads(spreads: List[dict]) -> List[dict]:
     if not spreads:
         return []
-    prices = _last_prices([s.get("symbol", "") for s in spreads])
+    syms = [s.get("symbol", "") for s in spreads]
+    metrics = get_position_price_metrics(syms)
     rows = []
     for pos in spreads:
         sym = str(pos.get("symbol", "")).upper().strip()
@@ -241,9 +229,8 @@ def review_spreads(spreads: List[dict]) -> List[dict]:
             "OPENED": "HOLD",
         }[phase]
 
-        row = {
+        rows.append({
             "Ticker": sym,
-            **_metrics_row(sym, metrics),
             "Price": round(price, 2) if price == price else None,
             "DTE": dte,
             "Short": short_k,
@@ -251,9 +238,7 @@ def review_spreads(spreads: List[dict]) -> List[dict]:
             "Profit%": round(profit_pct, 1) if profit_pct == profit_pct else None,
             "Phase": phase,
             "Action": action,
-        }
-        row["_attention"] = needs_attention(m) or _is_action(action)
-        rows.append(row)
+        })
     return rows
 
 
@@ -291,8 +276,8 @@ def run_pcs_lifecycle() -> Dict[str, Any]:
     out["pcs_rows"] = pcs_rows
 
     actionable = sorted(set(
-        [r["Ticker"] for r in swing_rows if _is_action(r["Action"]) or r.get("_attention")]
-        + [r["Ticker"] for r in pcs_rows if _is_action(r["Action"]) or r.get("_attention")]
+        [r["Ticker"] for r in swing_rows if _is_action(r["Action"])]
+        + [r["Ticker"] for r in pcs_rows if _is_action(r["Action"])]
     ))
     out["actionable"] = actionable
     out["html"] = format_pcs_lifecycle_email_section(swing_rows, pcs_rows)
@@ -303,51 +288,41 @@ def run_pcs_lifecycle() -> Dict[str, Any]:
 # Email rendering
 # ------------------------------------------------------------------
 
-def _table(rows: List[dict]) -> str:
-    if not rows:
-        return "<div><i>None.</i></div>"
-    cols = [c for c in rows[0].keys() if not str(c).startswith("_")]
-    head = "".join(f"<th align='left'>{_esc(str(c))}</th>" for c in cols)
-    body = []
-    for r in rows:
-        act = str(r.get("Action", ""))
-        warn = bool(r.get("_attention")) or _is_action(act)
-        hl = " style='background:#fff4e5'" if warn else ""
-        tds = "".join(f"<td>{_esc('' if r.get(c) is None else str(r.get(c)))}</td>" for c in cols)
-        body.append(f"<tr{hl}>{tds}</tr>")
-    return (
-        "<table border='0' cellspacing='0' cellpadding='4'>"
-        f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
-    )
+def _action_lines(rows: List[dict]) -> str:
+    lines = [
+        f"<div>{_esc(r['Ticker'])}: {_esc(r['Action'])}</div>"
+        for r in rows
+        if _is_action(r.get("Action", ""))
+    ]
+    return "".join(lines) if lines else "<p><i>No position actions today.</i></p>"
 
 
 def format_pcs_lifecycle_email_section(swing_rows: List[dict], pcs_rows: List[dict]) -> str:
     if not swing_rows and not pcs_rows:
         return "<p><i>No tracked positions (positions.json empty or missing).</i></p>"
 
+    symbols = [r["Ticker"] for r in swing_rows] + [r["Ticker"] for r in pcs_rows]
+    weak_block = format_weak_symbols_html(
+        symbols,
+        "Open positions — weak (down today, down week, below 20-DMA)",
+    )
+
     actionable = sorted(set(
         [r["Ticker"] for r in swing_rows if _is_action(r["Action"])]
         + [r["Ticker"] for r in pcs_rows if _is_action(r["Action"])]
-        + [r["Ticker"] for r in swing_rows if r.get("_attention")]
-        + [r["Ticker"] for r in pcs_rows if r.get("_attention")]
     ))
     summary = ""
     if actionable:
-        summary = (
-            f"<div style='margin:4px 0'><b>Watch / action:</b> "
-            f"{_esc(', '.join(actionable))}</div>"
-        )
+        summary = f"<p><b>Position actions:</b> {_esc(', '.join(actionable))}</p>"
 
-    return (
-        f"{summary}"
-        "<div style='font-size:11px;color:#666;margin:4px 0'>"
-        "Highlighted: down today, down ~1 week (5 sessions), and/or price below 20-day moving average. "
-        "Today% / Week% use latest daily close.</div>"
-        "<div style='margin-top:6px'><b>Swing positions</b></div>"
-        f"{_table(swing_rows)}"
-        "<div style='margin-top:10px'><b>Put credit spreads (underlying)</b></div>"
-        f"{_table(pcs_rows)}"
-        "<div style='font-size:11px;color:#666;margin-top:6px'>"
-        "PCS: EXIT/STOP=close, DEFENSIVE=under short, ROLL/MANAGE=close or roll. "
-        "positions.json is not auto-edited.</div>"
-    )
+    parts = [
+        weak_block,
+        summary,
+        "<p style='font-size:11px;color:#666'>Weak = all three: lower today, lower vs 5 sessions ago, below 20-DMA.</p>",
+    ]
+    if swing_rows:
+        parts.append("<p><b>Swing — actions</b></p>" + _action_lines(swing_rows))
+    if pcs_rows:
+        parts.append("<p><b>PCS — actions</b></p>" + _action_lines(pcs_rows))
+
+    return "".join(parts)

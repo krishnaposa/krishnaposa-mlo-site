@@ -25,19 +25,8 @@ _UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0 Safari/537.36"
 )
-RS_ENTRY_THRESHOLD = 90
-RS_EXIT_THRESHOLD = 70
 TRAILING_STOP_PCT = 0.15
 PORTFOLIO_SIZE = 20
-# Relative-strength lookback for get_rs_ratings (yfinance period, e.g. "6mo", "1y")
-RS_LOOKBACK_PERIOD = "6mo"
-# 1 = rank vs symbols + SPY (default); 0 = rank only within the symbol list (best grower in list)
-RS_INCLUDE_SPY = os.getenv("MOMENTUM_RS_INCLUDE_SPY", "1").strip().lower() not in (
-    "0",
-    "false",
-    "no",
-    "off",
-)
 
 # --- DATA PERSISTENCE ---
 def load_portfolio() -> Dict[str, Any]:
@@ -178,16 +167,6 @@ def _last_closes(symbols: List[str]) -> Dict[str, float]:
     return out
 
 
-def _safe_rs(rs: pd.Series, sym: str) -> float:
-    try:
-        v = float(rs.loc[sym])
-        if pd.isna(v):
-            return 0.0
-        return v
-    except Exception:
-        return 0.0
-
-
 def _close_column(data: Any, ticker: str) -> pd.Series:
     if isinstance(data, pd.Series):
         return data
@@ -222,7 +201,6 @@ def _seed_positions_from_candidates(
         raise RuntimeError(f"No tickers to seed from {source_label}.")
 
     closes = _last_closes(syms)
-    rs = get_rs_ratings(syms)
     today = datetime.now().strftime("%Y-%m-%d")
 
     new_entries: Dict[str, Any] = {}
@@ -238,7 +216,6 @@ def _seed_positions_from_candidates(
             "entry_price": round(close, 4),
             "high_seen": round(hi, 4),
             "entry_date": today,
-            "rs_at_entry": round(_safe_rs(rs, sym), 2),
         }
 
     if not new_entries:
@@ -347,7 +324,7 @@ def seed_portfolio_from_file(path: str, merge: bool = False) -> Dict[str, Any]:
 
 def seed_portfolio_from_finviz(merge: bool = False) -> Dict[str, Any]:
     """
-    Build ``positions`` from Finviz screener rows + yfinance closes + RS ranks.
+    Build ``positions`` from Finviz screener rows + yfinance closes.
 
     - Default: replace portfolio with up to PORTFOLIO_SIZE names from the screener (in order).
     - merge=True: add Finviz names not already in positions (at most PORTFOLIO_SIZE - len(existing)).
@@ -371,23 +348,6 @@ def seed_portfolio_from_finviz(merge: bool = False) -> Dict[str, Any]:
 
 
 # --- CORE LOGIC ---
-def get_rs_ratings(tickers):
-    """Percentile RS over RS_LOOKBACK_PERIOD; peers = list only or list + SPY (RS_INCLUDE_SPY)."""
-    if not tickers:
-        return pd.Series()
-    tix = list(dict.fromkeys([str(t).upper().strip() for t in tickers if str(t).strip()]))
-    bench = tix + (["SPY"] if RS_INCLUDE_SPY else [])
-    data = yf.download(
-        bench,
-        period=RS_LOOKBACK_PERIOD,
-        interval="1d",
-        progress=False,
-    )["Close"]
-    print(f"RS lookback ({RS_LOOKBACK_PERIOD}) closes: {data}")
-    returns = (data.iloc[-1] / data.iloc[0]) - 1
-    ranked = returns.reindex(bench).rank(pct=True) * 100
-    return ranked.reindex(tix)
-
 def run_daily_update():
     try:
         fz = fetch_finviz_screener_tickers()
@@ -416,8 +376,6 @@ def run_daily_update():
     # Download latest data
     data = yf.download(tickers, period="5d", interval="1d", progress=False)["Close"]
     print(f"5 days data: {data}")
-    rs_ratings = get_rs_ratings(tickers)
-    print(f"rs_ratings: {rs_ratings}")
 
     updates_made = False
     to_delete = []
@@ -436,16 +394,10 @@ def run_daily_update():
             updates_made = True
             print(f"NEW HIGH: {ticker} hit ${current_price:.2f}. Stop moved to ${current_price * (1-TRAILING_STOP_PCT):.2f}")
 
-        # EXIT CHECK 1: Trailing Stop
+        # EXIT: Trailing Stop
         stop_price = float(portfolio[ticker]["high_seen"]) * (1 - TRAILING_STOP_PCT)
         if current_price <= stop_price:
             print(f"!!! SELL {ticker} !!! Trailing stop hit at ${current_price:.2f}")
-            to_delete.append(ticker)
-            continue
-
-        # EXIT CHECK 2: RS Decay
-        if ticker in rs_ratings.index and rs_ratings[ticker] < RS_EXIT_THRESHOLD:
-            print(f"!!! SELL {ticker} !!! RS Rating ({rs_ratings[ticker]:.1f}) dropped below {RS_EXIT_THRESHOLD}")
             to_delete.append(ticker)
 
     # Clean up portfolio
@@ -462,7 +414,7 @@ def run_daily_update():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Momentum analyzer: seed portfolio from Finviz or a ticker file + daily checks.",
+        description="Momentum analyzer: seed portfolio from Finviz or a ticker file + daily trailing-stop checks.",
     )
     seed = parser.add_mutually_exclusive_group()
     seed.add_argument(

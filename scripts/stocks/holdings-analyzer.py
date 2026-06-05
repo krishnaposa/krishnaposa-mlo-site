@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Holdings list — trailing stop + RS exits (local JSON files).
+Holdings list — trailing stop exits (local JSON files).
 
 Mirrors monitoring.momentum_portfolio.run_holdings_trailing_daily() but persists under
 scripts/stocks/ by default (no Azure required).
@@ -10,10 +10,7 @@ Files (same folder as this script):
   holdings-trailing-state.json — { "positions": { "AAPL": { "high_seen": 195.5 } } }
 
 Env (optional, passed through to momentum_portfolio):
-  MOMENTUM_RS_EXIT_THRESHOLD     — default 70
   MOMENTUM_TRAILING_STOP_PCT     — default 0.15
-  MOMENTUM_RS_LOOKBACK_PERIOD    — default 6mo
-  MOMENTUM_RS_INCLUDE_SPY=0      — rank RS only within holdings (recommended for “best in list”); default 1 includes SPY
   HOLDINGS_LIST_REMOVE_ON_EXIT=1 — remove exited tickers from holdings-list.json
 
 Usage:
@@ -21,7 +18,7 @@ Usage:
   python holdings-analyzer.py --set-from-file picks.txt --merge
   python holdings-analyzer.py --set-from-file my_tickers.txt --push-azure
   python holdings-analyzer.py --push-azure       # upload holdings-list.json to Azure blob
-  python holdings-analyzer.py                    # daily trailing + RS check
+  python holdings-analyzer.py                    # daily trailing stop check
   python holdings-analyzer.py --remove-on-exit   # also drop exits from list file
 
   --push-azure requires MONITOR_STORAGE (or AzureWebJobsStorage).
@@ -88,7 +85,7 @@ def run_daily(*, remove_on_exit: bool) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Holdings list trailing stop + RS (local JSON).")
+    parser = argparse.ArgumentParser(description="Holdings list trailing stop (local JSON).")
     parser.add_argument(
         "--set-from-file",
         metavar="PATH",

@@ -1,9 +1,9 @@
 """
-Momentum RS portfolio — trailing stop + RS percentile exits.
+Momentum portfolio — Finviz seeding + trailing stop exits.
 
 Separate from the main quant monitor; optional daily hook updates JSON and feeds the email.
 
-Holdings list (holdings_list.json) uses the same trailing-stop + RS exit rules via run_holdings_trailing_daily()
+Holdings list (holdings_list.json) uses trailing-stop exits via run_holdings_trailing_daily()
 (state: holdings_trailing_state.json). Disable with HOLDINGS_TRAILING_EXITS_ENABLED=0.
 Set HOLDINGS_LIST_REMOVE_ON_EXIT=1 to drop exited tickers from holdings_list.json automatically (default: manual edits only).
 
@@ -14,14 +14,8 @@ Env:
   MOMENTUM_PORTFOLIO_MIRROR_LOCAL=1 — after successful blob save, also write local file
   MOMENTUM_FINVIZ_URL            — Finviz screener URL (?f=...) for momentum only (separate from WHEEL_* Finviz)
   MOMENTUM_FINVIZ_SORT          — default sort if URL has no &o= (default -marketcap)
-  MOMENTUM_RS_ENTRY_THRESHOLD    — default 90 (Finviz seed filter when MOMENTUM_FINVIZ_RS_FILTER=1)
-  MOMENTUM_RS_EXIT_THRESHOLD     — default 70 (exit when RS is strictly below this; RS == threshold does not exit)
-  MOMENTUM_RS_LOOKBACK_PERIOD    — yfinance period for RS (default 6mo); total return first-to-last Close, rank(pct)*100
-  MOMENTUM_RS_INCLUDE_SPY        — default 1: rank vs holdings/candidates + SPY; set 0 to rank only within your symbol list (better for “best in list”)
   MOMENTUM_TRAILING_STOP_PCT     — default 0.15
-  MOMENTUM_FINVIZ_RS_FILTER      — default 1: only Finviz-seed names with RS %ile >= entry threshold
-  Same-day Finviz seeds: RS exit is skipped until the next daily run (trailing stop still applies).
-  Finviz momentum seeding prints staged lists to stdout under prefix ``[momentum Finviz]`` (raw URL list, new-slot filter, RS / Yahoo).
+  Finviz momentum seeding prints staged lists to stdout under prefix ``[momentum Finviz]`` (raw URL list, new-slot filter, Yahoo).
 """
 
 from __future__ import annotations
@@ -32,7 +26,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -70,22 +63,8 @@ except ImportError:
         holdings_trailing_storage_description,
     )
 
-RS_ENTRY_THRESHOLD = float(os.getenv("MOMENTUM_RS_ENTRY_THRESHOLD", "90"))
-RS_EXIT_THRESHOLD = float(os.getenv("MOMENTUM_RS_EXIT_THRESHOLD", "70"))
 TRAILING_STOP_PCT = float(os.getenv("MOMENTUM_TRAILING_STOP_PCT", "0.15"))
 PORTFOLIO_SIZE = int(os.getenv("MOMENTUM_PORTFOLIO_SIZE", "20"))
-FINVIZ_RS_FILTER = os.getenv("MOMENTUM_FINVIZ_RS_FILTER", "1").strip().lower() in (
-    "1",
-    "true",
-    "yes",
-)
-RS_LOOKBACK_PERIOD = (os.getenv("MOMENTUM_RS_LOOKBACK_PERIOD") or "6mo").strip()
-RS_INCLUDE_SPY = os.getenv("MOMENTUM_RS_INCLUDE_SPY", "1").strip().lower() not in (
-    "0",
-    "false",
-    "no",
-    "off",
-)
 
 
 def _close_panel(
@@ -148,8 +127,7 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
     """
     Fill empty slots in portfolio using tickers from a Finviz screener URL (wb4u_finviz).
     Does not remove existing holdings; caps total size at PORTFOLIO_SIZE.
-    Symbols appended here are recorded in ``out["seeded_this_run"]`` so ``run_momentum_daily`` can
-    defer RS-based exits until the next run (trailing stop still evaluated same day).
+    Symbols appended here are recorded in ``out["seeded_this_run"]`` for email/logging.
     """
     out["seeded_this_run"] = []
     url = (os.getenv("MOMENTUM_FINVIZ_URL") or "https://finviz.com/screener.ashx?v=111&f=cap_midover,sh_price_o5,ta_sma200_pa,ta_highlow52w_nh&ft=3").strip()
@@ -199,58 +177,6 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         )
         return
 
-    need_pre_rs = list(need)
-    out["finviz_seed_pre_rs_rows"] = []
-
-    if FINVIZ_RS_FILTER:
-        # RS %ile for seeding: Finviz new-slot names + SPY only (not current book — matches original design).
-        rs_all = get_rs_ratings(need_pre_rs)
-        for sym in need_pre_rs:
-            rv = rs_all.get(sym)
-            rs_f = float(rv) if rv is not None and pd.notna(rv) else None
-            out["finviz_seed_pre_rs_rows"].append({"ticker": sym, "rs": rs_f})
-        filtered_syms: List[str] = []
-        below_thr = 0
-        nan_rs = 0
-        for sym in need_pre_rs:
-            rv = rs_all.get(sym)
-            if rv is None or pd.isna(rv):
-                nan_rs += 1
-                continue
-            if float(rv) >= RS_ENTRY_THRESHOLD:
-                filtered_syms.append(sym)
-            else:
-                below_thr += 1
-        rs_parts: List[str] = []
-        for sym in need_pre_rs:
-            rv = rs_all.get(sym)
-            if rv is not None and pd.notna(rv):
-                rs_parts.append(f"{sym}={float(rv):.1f}")
-            else:
-                rs_parts.append(f"{sym}=—")
-        print("[momentum Finviz] RS %ile by ticker (Finviz new-slot set + SPY peer rank): " + ", ".join(rs_parts))
-        _print_momentum_finviz_stage(
-            f"after RS entry filter (keep RS ≥ {RS_ENTRY_THRESHOLD:g})",
-            filtered_syms,
-        )
-        if not filtered_syms:
-            out["messages"].append(
-                f"Finviz RS filter: no symbols meet RS ≥ {RS_ENTRY_THRESHOLD:g} "
-                f"({below_thr} below threshold, {nan_rs} insufficient RS data)."
-            )
-            return
-        out["messages"].append(
-            f"Finviz RS filter: {len(filtered_syms)}/{len(need_pre_rs)} pass RS ≥ {RS_ENTRY_THRESHOLD:g} "
-            f"({below_thr} below, {nan_rs} no RS)."
-        )
-        need = filtered_syms
-    else:
-        out["finviz_seed_pre_rs_rows"] = [{"ticker": s, "rs": None} for s in need_pre_rs]
-        print(
-            "[momentum Finviz] RS entry filter disabled (MOMENTUM_FINVIZ_RS_FILTER=0); "
-            "same list as new-slot step."
-        )
-
     closes_seed = _close_panel(need, period="5d", interval="1d")
     added: List[str] = []
     for sym in need:
@@ -287,62 +213,13 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         out["messages"].append("Finviz seed: could not price any new symbols via Yahoo.")
 
 
-def get_rs_ratings(tickers: List[str]) -> pd.Series:
-    """
-    Percentile RS vs peers — **same construction as** ``scripts/stocks/momentum-analyzer.get_rs_ratings``.
-
-    1. Download daily **Close** (split/dividend-adjusted) over ``RS_LOOKBACK_PERIOD`` (default ``6mo``).
-    2. Total return per symbol: ``last_close / first_close - 1``.
-    3. ``rank(pct=True) * 100`` on those returns.
-
-    Peer set (``MOMENTUM_RS_INCLUDE_SPY``, default ``1``):
-      - **1:** rank among your symbols **and SPY** (market acts as one competitor).
-      - **0:** rank **only among your symbols** — best name in the list → highest RS (good for “best grower in this list”).
-
-    **Entry:** Finviz candidates only. **Exit:** open position tickers (or holdings list) only.
-    """
-    if not tickers:
-        return pd.Series(dtype=float)
-    tix = list(dict.fromkeys([str(t).upper().strip() for t in tickers if str(t).strip()]))
-    bench = list(dict.fromkeys(tix + (["SPY"] if RS_INCLUDE_SPY else [])))
-    raw = yf.download(
-        bench,
-        period=RS_LOOKBACK_PERIOD,
-        interval="1d",
-        progress=False,
-        threads=False,
-        auto_adjust=True,
-    )
-    if raw is None or raw.empty:
-        return pd.Series(dtype=float)
-    if isinstance(raw.columns, pd.MultiIndex):
-        data = raw["Close"].copy()
-    else:
-        if "Close" not in raw.columns:
-            return pd.Series(dtype=float)
-        sym = str(bench[0]).upper()
-        data = pd.DataFrame({sym: raw["Close"].values}, index=raw.index)
-    data.columns = [str(c).upper() for c in data.columns]
-
-    rets = (data.iloc[-1] / data.iloc[0]) - 1.0
-    rets = rets.replace([np.inf, -np.inf], np.nan)
-    rank_pool = rets.reindex(bench)
-    ranked = rank_pool.rank(pct=True, method="average", ascending=True) * 100.0
-    return ranked.reindex(tix)
-
-
 def run_holdings_trailing_daily() -> Dict[str, Any]:
     """
     Trailing stop exits for symbols in holdings_list.json (blob).
-    Email table: today %, week %, below 20-DMA (no RS).
+    Email: weak symbols (price watch) + trailing stop messages.
     Persists high_seen in holdings_trailing_state.json.
     """
-    from .position_metrics import (
-        fmt_below,
-        fmt_pct,
-        get_position_price_metrics,
-        needs_attention,
-    )
+    from .position_metrics import get_position_price_metrics
 
     out: Dict[str, Any] = {
         "enabled": True,
@@ -454,7 +331,6 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
                 "below_20dma": pm.get("below_20dma"),
                 "high_seen": hi,
                 "stop": stop_px,
-                "attention": needs_attention(pm),
             }
         )
 
@@ -467,8 +343,8 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
 
 
 def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
-    """HTML fragment for send_email_report_with_sims (holdings_list price watch + trailing stop)."""
-    from .position_metrics import fmt_below, fmt_pct
+    """HTML fragment: weak symbols (all three) + trailing-stop messages/exits."""
+    from .position_metrics import format_weak_symbols_html
 
     if result.get("enabled") is False:
         return (
@@ -478,56 +354,29 @@ def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
     rows = result.get("holdings_rows") or []
     msgs = result.get("messages") or []
     exited = result.get("exited") or []
+    tickers = [str(r.get("ticker", "")).upper().strip() for r in rows if str(r.get("ticker", "")).strip()]
 
     msg_html = "".join(f"<div style='margin:2px 0'>{_esc(m)}</div>" for m in msgs)
 
     if exited:
         msg_html += (
             f"<div style='margin-top:6px'><b>Exit signal today:</b> {_esc(', '.join(exited))} "
-            f"<span style='font-size:11px;color:#666'>(holdings_list.json is not auto-edited — remove manually.)</span></div>"
+            f"<span style='font-size:11px;color:#666'>(holdings_list.json is not auto-edited unless HOLDINGS_LIST_REMOVE_ON_EXIT=1.)</span></div>"
         )
 
-    table = ""
-    if rows:
-        parts = [
-            "<table border='0' cellspacing='0' cellpadding='4'>",
-            "<thead><tr>",
-            "<th align='left'>Ticker</th>",
-            "<th align='right'>Today%</th>",
-            "<th align='right'>Week%</th>",
-            "<th align='center'>&lt;20DMA</th>",
-            "<th align='right'>Last</th>",
-            "<th align='right'>High seen</th>",
-            "<th align='right'>Trail stop</th>",
-            "</tr></thead><tbody>",
-        ]
-        for r in rows[:80]:
-            hl = " style='background:#fff4e5'" if r.get("attention") else ""
-            parts.append(
-                f"<tr{hl}>"
-                f"<td>{_esc(str(r.get('ticker','')))}</td>"
-                f"<td align='right'>{_esc(fmt_pct(r.get('today_pct')))}</td>"
-                f"<td align='right'>{_esc(fmt_pct(r.get('week_pct')))}</td>"
-                f"<td align='center'>{_esc(fmt_below(bool(r.get('below_20dma'))))}</td>"
-                f"<td align='right'>{_fmt_money(r.get('last'))}</td>"
-                f"<td align='right'>{_fmt_money(r.get('high_seen'))}</td>"
-                f"<td align='right'>{_fmt_money(r.get('stop'))}</td>"
-                "</tr>"
-            )
-        parts.append("</tbody></table>")
-        table = "".join(parts)
-    else:
-        table = "<i>No holdings remaining after exits.</i>"
+    weak_block = format_weak_symbols_html(
+        tickers,
+        "Holdings — weak (down today, down week, below 20-DMA)",
+    )
 
     meta = (
         f"<div style='font-size:11px;color:#666;margin-bottom:6px'>"
         f"Source: holdings_list.json · State: {_esc(str(result.get('state_file','')))} · "
-        f"Trailing exit {TRAILING_STOP_PCT:.0%} off high_seen · "
-        f"Highlighted: down today, down ~1 week, or below 20-day MA"
+        f"Trailing exit {TRAILING_STOP_PCT:.0%} off high_seen"
         f"</div>"
     )
 
-    return f"{meta}{msg_html}<div style='margin-top:10px'>{table}</div>"
+    return f"{meta}{weak_block}{msg_html}"
 
 
 def run_momentum_daily() -> Dict[str, Any]:
@@ -535,8 +384,6 @@ def run_momentum_daily() -> Dict[str, Any]:
     Update trailing highs, exits, persist JSON. Returns a dict for logging + email HTML.
     Persists to blob/local every successful run so storage matches the email snapshot,
     even when no highs/exits occurred that day.
-    RS exit is not applied on the same run to tickers just added from the Finviz seed step
-    (trailing stop still applies); those tickers are evaluated on the next daily run.
     """
     out: Dict[str, Any] = {
         "enabled": True,
@@ -546,7 +393,6 @@ def run_momentum_daily() -> Dict[str, Any]:
         "exited": [],
         "holdings_rows": [],
         "portfolio_saved": False,
-        "rs_series": {},
     }
 
     portfolio = load_momentum_portfolio()
@@ -564,19 +410,6 @@ def run_momentum_daily() -> Dict[str, Any]:
     if closes.empty:
         out["messages"].append("yfinance returned no price data for momentum holdings.")
         return out
-
-    rs_ratings = get_rs_ratings(tickers)
-    out["rs_series"] = {
-        k: float(v)
-        for k, v in rs_ratings.items()
-        if k in tickers and pd.notna(v)
-    }
-
-    skip_rs_exit_today = {
-        str(s).upper().strip()
-        for s in (out.get("seeded_this_run") or [])
-        if str(s).strip()
-    }
 
     to_delete: List[str] = []
     updates_made = False
@@ -612,25 +445,6 @@ def run_momentum_daily() -> Dict[str, Any]:
                 f"EXIT {ticker} — trailing stop (price ${current_price:.2f} ≤ stop ${stop_price:.2f})"
             )
             to_delete.append(ticker)
-            continue
-
-        rs_val = rs_ratings.get(ticker) if len(rs_ratings) else None
-        rs_would_exit = (
-            rs_val is not None
-            and pd.notna(rs_val)
-            and float(rs_val) < RS_EXIT_THRESHOLD
-        )
-        if rs_would_exit:
-            if ticker in skip_rs_exit_today:
-                out["messages"].append(
-                    f"{ticker}: RS exit deferred (Finviz seed this run; RS {float(rs_val):.1f} "
-                    f"< {RS_EXIT_THRESHOLD:g} — evaluated next day)."
-                )
-            else:
-                out["messages"].append(
-                    f"EXIT {ticker} — RS {float(rs_val):.1f} < exit threshold {RS_EXIT_THRESHOLD:g}"
-                )
-                to_delete.append(ticker)
 
     for ticker in to_delete:
         portfolio.pop(ticker, None)
@@ -656,8 +470,6 @@ def run_momentum_daily() -> Dict[str, Any]:
         t = str(ticker).upper().strip()
         hi = float((portfolio[t].get("high_seen")) or 0.0)
         cp = _last_close_from_panel(closes, t)
-        rs_v = rs_ratings.get(t)
-        rs_f = float(rs_v) if rs_v is not None and pd.notna(rs_v) else float("nan")
         stop_px = hi * (1.0 - TRAILING_STOP_PCT) if hi else float("nan")
         out["holdings_rows"].append(
             {
@@ -665,7 +477,6 @@ def run_momentum_daily() -> Dict[str, Any]:
                 "last": cp,
                 "high_seen": hi,
                 "stop": stop_px,
-                "rs": rs_f,
             }
         )
 
@@ -677,83 +488,29 @@ def run_momentum_daily() -> Dict[str, Any]:
     return out
 
 
-def _format_finviz_pre_rs_email_html(result: Dict[str, Any]) -> str:
-    """Email HTML: Finviz screener list + new-slot candidates before RS entry filter."""
+def _format_finviz_screen_email_html(result: Dict[str, Any]) -> str:
+    """Email HTML: Finviz screener preview + symbols seeded this run."""
     screen = result.get("finviz_screen_symbols") or []
-    rows = result.get("finviz_seed_pre_rs_rows") or []
-    if not screen and not rows:
+    seeded = [str(s).upper().strip() for s in (result.get("seeded_this_run") or []) if str(s).strip()]
+    if not screen and not seeded:
         return ""
 
     parts: List[str] = [
-        "<h4 style='margin:14px 0 6px;font-size:14px'>Finviz screen (before RS entry filter)</h4>"
+        "<h4 style='margin:14px 0 6px;font-size:14px'>Finviz momentum seed</h4>"
     ]
     if screen:
         preview = ", ".join(screen[:50])
         if len(screen) > 50:
             preview += f" … (+{len(screen) - 50} more)"
         parts.append(
-            "<div style='font-size:12px;margin-bottom:8px'>"
-            f"<b>Screener tickers</b> ({len(screen)} — Finviz order; list length capped by screener fetch):<br>"
+            "<div style='font-size:12px;margin-bottom:6px'>"
+            f"<b>Screener</b> ({len(screen)}): "
             f"<span style='font-family:ui-monospace,monospace'>{_esc(preview)}</span></div>"
         )
-    if rows:
-        gate = (
-            f"RS ≥ {RS_ENTRY_THRESHOLD:g} required to seed"
-            if FINVIZ_RS_FILTER
-            else "RS entry filter off (MOMENTUM_FINVIZ_RS_FILTER=0) — all below subject to Yahoo pricing"
-        )
+    if seeded:
         parts.append(
-            "<div style='font-size:12px;margin-bottom:4px'>"
-            f"<b>New-slot candidates</b> (not already in momentum book; {gate}). "
-            "RS %ile = total return over "
-            f"{RS_LOOKBACK_PERIOD} (adj. daily Close), then pct-rank among <b>these Finviz candidates + SPY only</b> "
-            "(same construction as scripts/stocks/momentum-analyzer.py). "
-            "(same formula as open positions; book not in this peer set for seeding). "
-            f"<span style='color:#444'>This table only gates <i>new seeds</i>; open positions still exit if "
-            f"RS &lt; {RS_EXIT_THRESHOLD:g} (MOMENTUM_RS_EXIT_THRESHOLD) or trailing stop hits "
-            f"(RS exit skipped same day for symbols just seeded from Finviz).</span></div>"
-        )
-        ent_col = (
-            f"Seed if RS≥{RS_ENTRY_THRESHOLD:g}?"
-            if FINVIZ_RS_FILTER
-            else "RS gate"
-        )
-        parts.extend(
-            [
-                "<table border='0' cellspacing='0' cellpadding='4' style='font-size:12px'>",
-                "<thead><tr><th align='left'>Ticker</th><th align='right'>RS %ile</th>"
-                f"<th align='left'>{_esc(ent_col)}</th></tr></thead><tbody>",
-            ]
-        )
-        for r in rows[:40]:
-            t = str(r.get("ticker", ""))
-            rs = r.get("rs")
-            if rs is not None and isinstance(rs, (int, float)) and rs == rs and np.isfinite(rs):
-                rs_s = f"{float(rs):.1f}"
-                if FINVIZ_RS_FILTER:
-                    thr = RS_ENTRY_THRESHOLD
-                    fv = float(rs)
-                    flag = f"yes (≥{thr:g})" if fv >= thr else f"no (<{thr:g})"
-                else:
-                    flag = "—"
-            else:
-                rs_s = "—"
-                flag = "no data" if FINVIZ_RS_FILTER else "—"
-            parts.append(
-                "<tr>"
-                f"<td>{_esc(t)}</td>"
-                f"<td align='right'>{_esc(rs_s)}</td>"
-                f"<td>{_esc(flag)}</td>"
-                "</tr>"
-            )
-        if len(rows) > 40:
-            parts.append(
-                f"<tr><td colspan='3'><i>… {len(rows) - 40} more</i></td></tr>"
-            )
-        parts.append("</tbody></table>")
-    elif screen:
-        parts.append(
-            "<div style='font-size:12px;color:#666'>Portfolio full or no new slots — candidate table omitted.</div>"
+            f"<div style='font-size:12px;margin-bottom:6px'>"
+            f"<b>Seeded this run:</b> {_esc(', '.join(seeded))}</div>"
         )
     return "".join(parts)
 
@@ -782,7 +539,6 @@ def format_momentum_email_section(result: Dict[str, Any]) -> str:
             "<th align='right'>Last</th>",
             "<th align='right'>High seen</th>",
             "<th align='right'>Trailing stop</th>",
-            "<th align='right'>RS %ile</th>",
             "</tr></thead><tbody>",
         ]
         for r in rows[: PORTFOLIO_SIZE + 5]:
@@ -792,7 +548,6 @@ def format_momentum_email_section(result: Dict[str, Any]) -> str:
                 f"<td align='right'>{_fmt_money(r.get('last'))}</td>"
                 f"<td align='right'>{_fmt_money(r.get('high_seen'))}</td>"
                 f"<td align='right'>{_fmt_money(r.get('stop'))}</td>"
-                f"<td align='right'>{_fmt_num(r.get('rs'))}</td>"
                 "</tr>"
             )
         parts.append("</tbody></table>")
@@ -800,37 +555,27 @@ def format_momentum_email_section(result: Dict[str, Any]) -> str:
     else:
         table = "<i>No open momentum positions.</i>"
 
-    momf = result.get("finviz_screen_symbols") or []
-    rs_note = (
-        "open book + SPY (momentum table). Finviz block = seed RS (candidates+SPY)."
-        if momf
-        else "open book + SPY"
-    )
     meta = (
         f"<div style='font-size:11px;color:#666;margin-bottom:6px'>"
         f"Storage: {_esc(str(result.get('portfolio_file','')))} · "
-        f"Exit RS &lt; {RS_EXIT_THRESHOLD:g} (next run for same-day Finviz seeds) · "
-        f"Trailing {TRAILING_STOP_PCT:.0%} · "
-        f"RS = total return over {RS_LOOKBACK_PERIOD} (adj. Close), pct-rank vs {_esc(rs_note)} "
-        f"(momentum-analyzer.py)"
+        f"Trailing exit {TRAILING_STOP_PCT:.0%} off high_seen"
         f"</div>"
     )
 
-    finviz_pre = _format_finviz_pre_rs_email_html(result)
-    return f"{meta}{finviz_pre}{msg_html}<div style='margin-top:10px'>{table}</div>"
+    finviz_block = _format_finviz_screen_email_html(result)
+    return f"{meta}{finviz_block}{msg_html}<div style='margin-top:10px'>{table}</div>"
 
 
-def _positions_table_text(rows: List[Dict[str, Any]], *, max_rows: int = 80) -> str:
-    from .position_metrics import fmt_below, fmt_pct
-
+def _momentum_holdings_table_text(rows: List[Dict[str, Any]], *, max_rows: int = 80) -> str:
     if not rows:
         return "  (none)"
-    lines = [f"  {'Ticker':<8} {'Today%':>8} {'Week%':>8} {'<20DMA':>6} {'Last':>10} {'Stop':>10}"]
+    lines = [f"  {'Ticker':<8} {'Last':>10} {'High':>10} {'Stop':>10}"]
     for r in rows[:max_rows]:
         lines.append(
-            f"  {str(r.get('ticker', '')):<8} {fmt_pct(r.get('today_pct')):>8} "
-            f"{fmt_pct(r.get('week_pct')):>8} {fmt_below(bool(r.get('below_20dma'))):>6} "
-            f"{_fmt_money(r.get('last')):>10} {_fmt_money(r.get('stop')):>10}"
+            f"  {str(r.get('ticker', '')):<8} "
+            f"{_fmt_money(r.get('last')):>10} "
+            f"{_fmt_money(r.get('high_seen')):>10} "
+            f"{_fmt_money(r.get('stop')):>10}"
         )
     if len(rows) > max_rows:
         lines.append(f"  … {len(rows) - max_rows} more")
@@ -839,53 +584,41 @@ def _positions_table_text(rows: List[Dict[str, Any]], *, max_rows: int = 80) -> 
 
 def format_holdings_trailing_text(result: Dict[str, Any]) -> str:
     """Plain-text holdings trailing section (same data as email HTML)."""
+    from .position_metrics import weak_symbols_all_three
+
     if result.get("enabled") is False:
         return "  Holdings trailing exits disabled (HOLDINGS_TRAILING_EXITS_ENABLED=0)."
 
+    rows = result.get("holdings_rows") or []
+    tickers = [str(r.get("ticker", "")).upper().strip() for r in rows if str(r.get("ticker", "")).strip()]
+    weak = weak_symbols_all_three(tickers)
+
     lines: List[str] = [
-        f"  Trailing exit {TRAILING_STOP_PCT:.0%} off high_seen · "
-        f"Today% / Week% / &lt;20DMA on latest daily close",
+        f"  Trailing exit {TRAILING_STOP_PCT:.0%} off high_seen",
+        "  Weak (down today, down week, below 20-DMA): "
+        + (", ".join(weak) if weak else "(none)"),
     ]
     for m in result.get("messages") or []:
         lines.append(f"  • {m}")
     exited = result.get("exited") or []
     if exited:
         lines.append(f"  Exit signal today: {', '.join(exited)}")
-    lines.append(_positions_table_text(result.get("holdings_rows") or []))
     return "\n".join(lines)
 
 
-def _format_finviz_pre_rs_text(result: Dict[str, Any]) -> str:
+def _format_finviz_screen_text(result: Dict[str, Any]) -> str:
     screen = result.get("finviz_screen_symbols") or []
-    rows = result.get("finviz_seed_pre_rs_rows") or []
-    if not screen and not rows:
+    seeded = [str(s).upper().strip() for s in (result.get("seeded_this_run") or []) if str(s).strip()]
+    if not screen and not seeded:
         return ""
-    lines: List[str] = ["  Finviz screen (before RS entry filter)"]
+    lines: List[str] = ["  Finviz momentum seed"]
     if screen:
         preview = ", ".join(screen[:50])
         if len(screen) > 50:
             preview += f" … (+{len(screen) - 50} more)"
         lines.append(f"  Screener ({len(screen)}): {preview}")
-    if rows:
-        gate = (
-            f"RS >= {RS_ENTRY_THRESHOLD:g} to seed"
-            if FINVIZ_RS_FILTER
-            else "RS entry filter off"
-        )
-        lines.append(f"  New-slot candidates ({gate}):")
-        lines.append(f"  {'Ticker':<8} {'RS':>8}  Gate")
-        for r in rows[:40]:
-            t = str(r.get("ticker", ""))
-            rs = r.get("rs")
-            if rs is not None and isinstance(rs, (int, float)) and rs == rs and np.isfinite(rs):
-                rs_s = f"{float(rs):.1f}"
-                flag = ("yes" if float(rs) >= RS_ENTRY_THRESHOLD else "no") if FINVIZ_RS_FILTER else "—"
-            else:
-                rs_s = "—"
-                flag = "no data" if FINVIZ_RS_FILTER else "—"
-            lines.append(f"  {t:<8} {rs_s:>8}  {flag}")
-        if len(rows) > 40:
-            lines.append(f"  … {len(rows) - 40} more")
+    if seeded:
+        lines.append(f"  Seeded this run: {', '.join(seeded)}")
     return "\n".join(lines)
 
 
@@ -896,9 +629,9 @@ def format_momentum_text(result: Dict[str, Any]) -> str:
 
     lines: List[str] = [
         f"  Storage: {result.get('portfolio_file', '')} · "
-        f"Exit RS < {RS_EXIT_THRESHOLD:g} · Trailing {TRAILING_STOP_PCT:.0%}",
+        f"Trailing exit {TRAILING_STOP_PCT:.0%} off high_seen",
     ]
-    finviz = _format_finviz_pre_rs_text(result)
+    finviz = _format_finviz_screen_text(result)
     if finviz:
         lines.append(finviz)
     for m in result.get("messages") or []:
@@ -906,7 +639,7 @@ def format_momentum_text(result: Dict[str, Any]) -> str:
     exited = result.get("exited") or []
     if exited:
         lines.append(f"  Removed: {', '.join(exited)}")
-    lines.append(_positions_table_text(result.get("holdings_rows") or [], max_rows=PORTFOLIO_SIZE + 5))
+    lines.append(_momentum_holdings_table_text(result.get("holdings_rows") or [], max_rows=PORTFOLIO_SIZE + 5))
     return "\n".join(lines)
 
 
@@ -925,16 +658,6 @@ def _fmt_money(x: Any) -> str:
         if v != v:  # NaN
             return "—"
         return f"${v:.2f}"
-    except Exception:
-        return "—"
-
-
-def _fmt_num(x: Any) -> str:
-    try:
-        v = float(x)
-        if v != v:
-            return "—"
-        return f"{v:.1f}"
     except Exception:
         return "—"
 

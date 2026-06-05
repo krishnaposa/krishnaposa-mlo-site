@@ -664,6 +664,21 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, p
             momentum_section_html = f"<p><i>Momentum portfolio error: {e}</i></p>"
             momentum_exited_tickers = []
 
+    # ---- PCS entry ideas (pie_analyze_swing funnel) ----
+    pcs_opportunities_section_html = None
+    pcs_opportunity_tickers: list[str] | None = None
+    if os.getenv("PCS_OPPORTUNITIES_ENABLED", "1") == "1":
+        try:
+            from .pcs_opportunities import run_pcs_opportunities
+
+            _opp = run_pcs_opportunities()
+            pcs_opportunities_section_html = _opp.get("html")
+            pcs_opportunity_tickers = list(_opp.get("tickers") or [])
+        except Exception as e:
+            logger.warning("[pcs_opportunities] scan failed: %s", e)
+            pcs_opportunities_section_html = f"<p><i>PCS opportunities error: {e}</i></p>"
+            pcs_opportunity_tickers = []
+
     # ---- PCS / swing position lifecycle (held positions) ----
     pcs_lifecycle_section_html = None
     pcs_lifecycle_actionable: list[str] | None = None
@@ -716,6 +731,8 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, p
         trend_entry_rows=trend_entry_rows,
         holdings_list_tickers=holdings_list,
         holdings_trailing_section_html=holdings_trailing_section_html,
+        pcs_opportunities_section_html=pcs_opportunities_section_html,
+        pcs_opportunity_tickers=pcs_opportunity_tickers,
         pcs_lifecycle_section_html=pcs_lifecycle_section_html,
         pcs_actionable_tickers=pcs_lifecycle_actionable,
         sim_rows=sim_rows,

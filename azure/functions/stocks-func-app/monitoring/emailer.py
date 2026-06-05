@@ -308,7 +308,7 @@ def format_monitor_report_text(
     else:
         lines.append("  (holdings trailing not run)")
 
-    lines.append("\n## Momentum RS portfolio (52w RS · trailing stop)")
+    lines.append("\n## Momentum portfolio (trailing stop)")
     if momentum_result is not None:
         mom_txt = format_momentum_text(momentum_result)
         lines.append(mom_txt if mom_txt.strip() else "  (empty)")
@@ -359,7 +359,9 @@ def send_email_report_with_sims(*,
     trend_entry_list: Optional[List[str]] = None,
     trend_entry_rows: Optional[List[Dict]] = None,
     holdings_list_tickers: Optional[List[str]] = None,  # current symbols from holdings_list.json (display only)
-    holdings_trailing_section_html: Optional[str] = None,  # holdings_list: trailing stop + RS exits
+    holdings_trailing_section_html: Optional[str] = None,  # holdings_list: weak symbols + trailing stop
+    pcs_opportunities_section_html: Optional[str] = None,  # pie funnel PCS ideas for next session
+    pcs_opportunity_tickers: Optional[List[str]] = None,  # PCS idea tickers (subject line)
     pcs_lifecycle_section_html: Optional[str] = None,  # swing + PCS held-position lifecycle
     pcs_actionable_tickers: Optional[List[str]] = None,  # positions needing action (subject line)
     sim_rows: Optional[List[Dict]] = None,    # ticker, mc30, hmm_bull, ml_prob
@@ -369,7 +371,7 @@ def send_email_report_with_sims(*,
     momentum_section_html: Optional[str] = None,  # monitoring.momentum_portfolio HTML fragment
     momentum_sim_rows: Optional[List[Dict]] = None,  # MC/HMM/ML for current momentum book only
     momentum_perf_rows: Optional[List[Dict]] = None,
-    holdings_exit_alert_tickers: Optional[List[str]] = None,  # trailing/RS exit tickers (subject line; list not auto-edited unless configured)
+    holdings_exit_alert_tickers: Optional[List[str]] = None,  # trailing exit tickers (subject line; list not auto-edited unless configured)
     momentum_exited_tickers: Optional[List[str]] = None,  # set when momentum ran; None if feature off
     subj_prefix: str = "Daily Stock Picks"
 ):
@@ -399,6 +401,12 @@ def send_email_report_with_sims(*,
         if len(momentum_exited_tickers) > 10:
             mx += " …"
         alert_parts.append(f"Momentum exits: {mx}")
+    po = pcs_opportunity_tickers or []
+    if po:
+        ox = ", ".join(str(t) for t in po[:8])
+        if len(po) > 8:
+            ox += " …"
+        alert_parts.append(f"PCS ideas: {ox}")
     pa = pcs_actionable_tickers or []
     if pa:
         px = ", ".join(str(t) for t in pa[:10])
@@ -426,10 +434,18 @@ def send_email_report_with_sims(*,
         if (holdings_trailing_section_html or "").strip()
         else "<i>Holdings trailing section not available.</i>"
     )
+    if (pcs_opportunities_section_html or "").strip():
+        html_pcs_opportunities_block = (
+            "<h3>PCS ideas for next session (pie scanner)</h3>"
+            f"<div>{pcs_opportunities_section_html}</div>"
+        )
+    else:
+        html_pcs_opportunities_block = ""
+
     # Skip the whole section when positions.json is absent (empty html from lifecycle).
     if (pcs_lifecycle_section_html or "").strip():
         html_pcs_lifecycle_block = (
-            "<h3>Positions — price watch &amp; lifecycle (positions.json)</h3>"
+            "<h3>Positions — weak symbols &amp; lifecycle (positions.json)</h3>"
             f"<div>{pcs_lifecycle_section_html}</div>"
         )
     else:
@@ -439,7 +455,7 @@ def send_email_report_with_sims(*,
     html_perf = _perf_table_html(perf_rows)
     if momentum_section_html:
         html_momentum_block = (
-            "<h3>Momentum RS portfolio (52w RS · trailing stop)</h3>"
+            "<h3>Momentum portfolio (trailing stop)</h3>"
             f"<div>{momentum_section_html}</div>"
         )
     else:
@@ -490,11 +506,13 @@ def send_email_report_with_sims(*,
       <div><i>Passed trend entry criteria</i></div>
       <div>{html_trend_entries}</div>
 
-      <h3>Holdings — price watch &amp; trailing stop (holdings_list.json)</h3>
+      <h3>Holdings — weak symbols &amp; trailing stop (holdings_list.json)</h3>
       <div><b>Current holdings_list symbols</b></div>
       <div>{html_holdings_symbols}</div>
-      <div><i>Today% / Week% / below 20-DMA on each symbol. Trailing stop exit off high_seen only (RS removed). holdings_list.json is only auto-edited if HOLDINGS_LIST_REMOVE_ON_EXIT=1.</i></div>
+      <div><i>Weak list = down today, down ~1 week, and below 20-DMA (all three). Trailing stop off high_seen. holdings_list.json is only auto-edited if HOLDINGS_LIST_REMOVE_ON_EXIT=1.</i></div>
       <div>{html_holdings_trailing}</div>
+
+      {html_pcs_opportunities_block}
 
       {html_pcs_lifecycle_block}
 
