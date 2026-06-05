@@ -40,6 +40,15 @@ export MOMENTUM_PORTFOLIO_MIRROR_LOCAL="${MOMENTUM_PORTFOLIO_MIRROR_LOCAL:-1}"
 export HOLDINGS_LIST_REMOVE_ON_EXIT="${HOLDINGS_LIST_REMOVE_ON_EXIT:-0}"
 export HOLDINGS_TRAILING_EXITS_ENABLED="${HOLDINGS_TRAILING_EXITS_ENABLED:-1}"
 
+# PCS funnel (pie_analyze_swing) — same table as local pie_analyze_swing.py
+export PCS_OPPORTUNITIES_ENABLED="${PCS_OPPORTUNITIES_ENABLED:-1}"
+export PIE_TICKERS_FILE="${PIE_TICKERS_FILE:-/c/pers/krishnaposa-mlo-site/scripts/stocks/my_tickers.txt}"
+export PIE_MIN_GRADE="${PIE_MIN_GRADE:-B}"
+export PIE_TARGET_DTE="${PIE_TARGET_DTE:-35}"
+export PIE_OTM_PCT="${PIE_OTM_PCT:-0.06}"
+export PIE_SPREAD_WIDTH_PCT="${PIE_SPREAD_WIDTH_PCT:-0.03}"
+export PIE_MAX_PCS_CANDIDATES="${PIE_MAX_PCS_CANDIDATES:-12}"
+
 # Optional wheel strategy knobs.
 export WHEEL_ENABLED="1"
 # WHEEL_DEBUG=1 prints extra wheel/Finviz pipeline INFO — noisy for adhoc email runs.

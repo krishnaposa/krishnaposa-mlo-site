@@ -21,9 +21,11 @@ from .pie_scanner import run_scan, select_buy_candidates
 logger = logging.getLogger(__name__)
 
 PIE_TICKERS_BLOB = os.getenv("PIE_TICKERS_BLOB", "my_tickers.txt")
+PIE_TICKERS_FILE = os.getenv("PIE_TICKERS_FILE", "").strip()
 PIE_MIN_GRADE = os.getenv("PIE_MIN_GRADE", "B")
 PIE_TARGET_DTE = int(os.getenv("PIE_TARGET_DTE", "35"))
 PIE_OTM_PCT = float(os.getenv("PIE_OTM_PCT", "0.06"))
+PIE_SPREAD_WIDTH_PCT = float(os.getenv("PIE_SPREAD_WIDTH_PCT", "0.03"))
 PIE_MAX_PCS_CANDIDATES = int(os.getenv("PIE_MAX_PCS_CANDIDATES", "12"))
 MIN_OPEN_INTEREST = int(os.getenv("PCS_MIN_OPEN_INTEREST", "100"))
 MAX_SPREAD_PCT = float(os.getenv("PCS_MAX_SPREAD_PCT", "15"))
@@ -41,6 +43,7 @@ class PutCreditSpread:
     credit: float
     max_risk: float
     pop: float
+    iv_pct: float
 
 
 def _parse_ticker_text(raw: str) -> List[str]:
@@ -54,7 +57,19 @@ def _parse_ticker_text(raw: str) -> List[str]:
 
 
 def load_pie_scan_tickers() -> List[str]:
-    """my_tickers.txt on blob, else local_list + holdings_list."""
+    """PIE_TICKERS_FILE, else blob my_tickers.txt, else local_list + holdings_list."""
+    if PIE_TICKERS_FILE:
+        try:
+            path = os.path.expanduser(PIE_TICKERS_FILE)
+            if os.path.isfile(path):
+                with open(path, encoding="utf-8", errors="ignore") as f:
+                    tickers = _parse_ticker_text(f.read())
+                if tickers:
+                    logger.info("[pcs_opportunities] %d tickers from file %s", len(tickers), path)
+                    return tickers
+        except Exception as e:
+            logger.warning("[pcs_opportunities] PIE_TICKERS_FILE read failed (%s): %s", PIE_TICKERS_FILE, e)
+
     try:
         from local_list_utils import (
             LOCAL_LIST_CONTAINER,
@@ -110,6 +125,7 @@ def build_pcs_plan(
     *,
     target_dte: int = PIE_TARGET_DTE,
     otm_pct: float = PIE_OTM_PCT,
+    spread_width_pct: float = PIE_SPREAD_WIDTH_PCT,
 ) -> Optional[PutCreditSpread]:
     tk = yf.Ticker(symbol)
     try:
@@ -151,7 +167,7 @@ def build_pcs_plan(
     short_row = short_candidates.iloc[-1]
     short_strike = float(short_row["strike"])
 
-    long_candidates = liquid[liquid["strike"] <= short_strike * 0.97]
+    long_candidates = liquid[liquid["strike"] <= short_strike * (1 - spread_width_pct)]
     if long_candidates.empty:
         lower = liquid[liquid["strike"] < short_strike]
         if lower.empty:
@@ -169,6 +185,8 @@ def build_pcs_plan(
     if credit <= 0 or (credit / width) < MIN_CREDIT_WIDTH:
         return None
 
+    iv_pct = float(short_row.get("impliedVolatility") or 0.0) * 100.0
+
     return PutCreditSpread(
         symbol=symbol,
         expiration=expiry,
@@ -179,6 +197,7 @@ def build_pcs_plan(
         credit=round(credit, 2),
         max_risk=round(width - credit, 2),
         pop=round(1.0 - (credit / width), 3),
+        iv_pct=round(iv_pct, 1),
     )
 
 
@@ -194,15 +213,20 @@ def run_pcs_opportunities() -> Dict[str, Any]:
 
     tickers = load_pie_scan_tickers()
     if not tickers:
-        out["html"] = (
-            "<p><i>No scan tickers — upload "
-            f"<code>{_esc(PIE_TICKERS_BLOB)}</code> to signals container or set local_list.</i></p>"
+        out["scanned"] = 0
+        out["buys"] = 0
+        hint = (
+            f"<code>{_esc(PIE_TICKERS_BLOB)}</code> to signals container, "
+            "set PIE_TICKERS_FILE (local), or populate local_list."
         )
+        out["html"] = f"<p><i>No scan tickers — upload {hint}</i></p>"
         return out
 
     scan = run_scan(tickers)
     buys = select_buy_candidates(scan, min_grade=PIE_MIN_GRADE)
     if buys.empty:
+        out["scanned"] = len(tickers)
+        out["buys"] = 0
         out["html"] = (
             f"<p><i>No BUY candidates (Grade &gt;= {_esc(PIE_MIN_GRADE)}) from {len(tickers)} scanned symbols.</i></p>"
         )
@@ -220,37 +244,104 @@ def run_pcs_opportunities() -> Dict[str, Any]:
             "DTE": plan.dte,
             "Short": plan.short_put,
             "Long": plan.long_put,
+            "Width": plan.width,
             "Credit": plan.credit,
             "MaxRisk": plan.max_risk,
             "POP~": plan.pop,
+            "IV%": plan.iv_pct,
         })
 
     out["rows"] = rows
     out["tickers"] = [r["Ticker"] for r in rows]
+    out["scanned"] = len(tickers)
+    out["buys"] = len(buys)
     out["html"] = format_pcs_opportunities_html(rows, scanned=len(tickers), buys=len(buys))
     return out
+
+
+PCS_TABLE_COLS = ["Ticker", "Expiry", "DTE", "Short", "Long", "Width", "Credit", "MaxRisk", "POP~", "IV%"]
+
+
+def _fmt_cell(col: str, val) -> str:
+    if val is None or val == "":
+        return ""
+    if col in ("Credit", "MaxRisk"):
+        try:
+            return f"{float(val):.2f}"
+        except (TypeError, ValueError):
+            return str(val)
+    if col in ("Short", "Long", "Width"):
+        try:
+            return f"{float(val):.1f}"
+        except (TypeError, ValueError):
+            return str(val)
+    if col == "POP~":
+        try:
+            return f"{float(val):.3f}"
+        except (TypeError, ValueError):
+            return str(val)
+    if col == "IV%":
+        try:
+            return f"{float(val):.1f}"
+        except (TypeError, ValueError):
+            return str(val)
+    return str(val)
+
+
+def format_pcs_opportunities_text(rows: List[dict], *, scanned: int, buys: int) -> str:
+    """Plain-text table matching pie_analyze_swing PCS output."""
+    header = (
+        f"  {'Ticker':<8} {'Expiry':<10} {'DTE':>4} {'Short':>7} {'Long':>7} "
+        f"{'Width':>6} {'Credit':>7} {'MaxRisk':>7} {'POP~':>6} {'IV%':>6}"
+    )
+    if not rows:
+        return (
+            f"  Scanned {scanned} symbols · {buys} BUY (grade >= {PIE_MIN_GRADE}) · "
+            "no PCS plans passed liquidity/credit filters."
+        )
+    lines = [
+        f"  Scanned {scanned} symbols · {buys} BUY (grade >= {PIE_MIN_GRADE}) · "
+        f"{len(rows)} PCS plan(s) for next session.",
+        header,
+    ]
+    for r in rows:
+        lines.append(
+            f"  {str(r.get('Ticker', '')):<8} "
+            f"{str(r.get('Expiry', '')):<10} "
+            f"{int(r.get('DTE', 0)):>4} "
+            f"{_fmt_cell('Short', r.get('Short')):>7} "
+            f"{_fmt_cell('Long', r.get('Long')):>7} "
+            f"{_fmt_cell('Width', r.get('Width')):>6} "
+            f"{_fmt_cell('Credit', r.get('Credit')):>7} "
+            f"{_fmt_cell('MaxRisk', r.get('MaxRisk')):>7} "
+            f"{_fmt_cell('POP~', r.get('POP~')):>6} "
+            f"{_fmt_cell('IV%', r.get('IV%')):>6}"
+        )
+    lines.append("  Estimates only — verify option chain before trading.")
+    return "\n".join(lines)
 
 
 def format_pcs_opportunities_html(rows: List[dict], *, scanned: int, buys: int) -> str:
     if not rows:
         return (
-            f"<p>Scanned {scanned} symbols · {buys} BUY names · "
+            f"<p>Scanned {scanned} symbols · {buys} BUY names (grade &gt;= {_esc(PIE_MIN_GRADE)}) · "
             "<i>no PCS plans passed liquidity/credit filters.</i></p>"
         )
 
-    cols = ["Ticker", "Expiry", "DTE", "Short", "Long", "Credit", "MaxRisk", "POP~"]
+    cols = PCS_TABLE_COLS
     head = "".join(f"<th align='left'>{_esc(c)}</th>" for c in cols)
     body = []
     for r in rows:
-        tds = "".join(f"<td>{_esc(str(r.get(c, '')))}</td>" for c in cols)
+        tds = "".join(f"<td>{_esc(_fmt_cell(c, r.get(c)))}</td>" for c in cols)
         body.append(f"<tr>{tds}</tr>")
 
     table = (
-        "<table border='0' cellspacing='0' cellpadding='4'>"
+        "<table border='1' cellspacing='0' cellpadding='4' style='border-collapse:collapse;font-family:ui-monospace,monospace;font-size:13px'>"
         f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
     )
     return (
-        f"<p>From pie scanner: {scanned} symbols, {buys} BUY (grade &gt;= {_esc(PIE_MIN_GRADE)}), "
-        f"{len(rows)} PCS plan(s) for next session. Estimates only — verify chain before trading.</p>"
+        f"<p><b>PUT CREDIT SPREAD PLAN</b> (pie_analyze_swing funnel) — "
+        f"{scanned} scanned, {buys} BUY, {len(rows)} PCS for next session.</p>"
         f"{table}"
+        "<p style='font-size:11px;color:#666'>Estimates only — verify chain before trading.</p>"
     )

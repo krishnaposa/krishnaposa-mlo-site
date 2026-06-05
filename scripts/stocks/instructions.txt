@@ -148,7 +148,9 @@ python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100
 #   Weak symbols only (no Today%/Week% tables): down today AND down ~1 week AND below 20-DMA
 #   PCS ideas for next session: monitoring/pcs_opportunities.py (pie_analyze_swing funnel)
 #     PCS_OPPORTUNITIES_ENABLED=1 (default), tickers from blob signals/my_tickers.txt else local_list+holdings_list
-#     PIE_MIN_GRADE=B  PIE_TARGET_DTE=35  PIE_OTM_PCT=0.06  PIE_MAX_PCS_CANDIDATES=12
+#     Local adhoc: PIE_TICKERS_FILE=scripts/stocks/my_tickers.txt (see run_email_adhoc.sh)
+#     Table columns match pie_analyze_swing: Ticker, Expiry, DTE, Short, Long, Width, Credit, MaxRisk, POP~, IV%
+#     PIE_MIN_GRADE=B  PIE_TARGET_DTE=35  PIE_OTM_PCT=0.06  PIE_SPREAD_WIDTH_PCT=0.03  PIE_MAX_PCS_CANDIDATES=12
 #   Open positions lifecycle: monitoring/pcs_lifecycle.py reads signals/positions.json (PCS_LIFECYCLE_ENABLED=1)
 #   Holdings / momentum: trailing stop only (no relative-strength exits)
 

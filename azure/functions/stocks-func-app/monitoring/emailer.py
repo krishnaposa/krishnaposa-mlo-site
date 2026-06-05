@@ -258,10 +258,12 @@ def format_monitor_report_text(
     momentum_perf_rows: Optional[List[Dict]] = None,
     holdings_exit_alert_tickers: Optional[List[str]] = None,
     momentum_exited_tickers: Optional[List[str]] = None,
+    pcs_opportunities_result: Optional[Dict] = None,
     subj_prefix: str = "Daily Stock Picks",
 ) -> str:
     """Plain-text report matching the daily email sections."""
     from .momentum_portfolio import format_holdings_trailing_text, format_momentum_text
+    from .pcs_opportunities import format_pcs_opportunities_text
 
     strong_buy_entries = _tickers_from_rows(alltime_high_trend_rows, entry_only=True)
     trend_entries = _tickers_from_rows(trend_entry_rows, entry_only=True)
@@ -307,6 +309,15 @@ def format_monitor_report_text(
         lines.append(format_holdings_trailing_text(holdings_trailing_result))
     else:
         lines.append("  (holdings trailing not run)")
+
+    lines.append("\n## PCS ideas for next session (pie_analyze_swing)")
+    if pcs_opportunities_result is not None:
+        opp_rows = pcs_opportunities_result.get("rows") or []
+        scanned = int(pcs_opportunities_result.get("scanned") or 0)
+        buys = int(pcs_opportunities_result.get("buys") or 0)
+        lines.append(format_pcs_opportunities_text(opp_rows, scanned=scanned, buys=buys))
+    else:
+        lines.append("  (PCS opportunities not run)")
 
     lines.append("\n## Momentum portfolio (trailing stop)")
     if momentum_result is not None:
@@ -434,13 +445,10 @@ def send_email_report_with_sims(*,
         if (holdings_trailing_section_html or "").strip()
         else "<i>Holdings trailing section not available.</i>"
     )
-    if (pcs_opportunities_section_html or "").strip():
-        html_pcs_opportunities_block = (
-            "<h3>PCS ideas for next session (pie scanner)</h3>"
-            f"<div>{pcs_opportunities_section_html}</div>"
-        )
-    else:
-        html_pcs_opportunities_block = ""
+    html_pcs_opportunities_block = (
+        "<h3>PCS ideas for next session (pie_analyze_swing)</h3>"
+        f"<div>{pcs_opportunities_section_html or '<i>PCS section not run.</i>'}</div>"
+    )
 
     # Skip the whole section when positions.json is absent (empty html from lifecycle).
     if (pcs_lifecycle_section_html or "").strip():

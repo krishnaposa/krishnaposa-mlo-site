@@ -667,17 +667,21 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, p
     # ---- PCS entry ideas (pie_analyze_swing funnel) ----
     pcs_opportunities_section_html = None
     pcs_opportunity_tickers: list[str] | None = None
+    pcs_opportunities_result: dict | None = None
     if os.getenv("PCS_OPPORTUNITIES_ENABLED", "1") == "1":
         try:
             from .pcs_opportunities import run_pcs_opportunities
 
-            _opp = run_pcs_opportunities()
-            pcs_opportunities_section_html = _opp.get("html")
-            pcs_opportunity_tickers = list(_opp.get("tickers") or [])
+            pcs_opportunities_result = run_pcs_opportunities()
+            pcs_opportunities_section_html = pcs_opportunities_result.get("html")
+            pcs_opportunity_tickers = list(pcs_opportunities_result.get("tickers") or [])
         except Exception as e:
             logger.warning("[pcs_opportunities] scan failed: %s", e)
             pcs_opportunities_section_html = f"<p><i>PCS opportunities error: {e}</i></p>"
             pcs_opportunity_tickers = []
+            pcs_opportunities_result = {"rows": [], "error": str(e)}
+    else:
+        pcs_opportunities_section_html = "<p><i>PCS opportunities disabled (PCS_OPPORTUNITIES_ENABLED=0).</i></p>"
 
     # ---- PCS / swing position lifecycle (held positions) ----
     pcs_lifecycle_section_html = None
@@ -711,6 +715,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, p
         momentum_perf_rows=momentum_perf_rows,
         holdings_exit_alert_tickers=holdings_trailing_exited,
         momentum_exited_tickers=momentum_exited_tickers,
+        pcs_opportunities_result=pcs_opportunities_result,
         subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),
     )
 
