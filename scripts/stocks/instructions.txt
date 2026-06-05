@@ -145,7 +145,7 @@ python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100
 
 # PCS scan filters (build_pcs_plan): min_open_interest=100, max_spread_pct=15, min_credit_width=0.20
 # Azure daily email (stocks-func-app monitor_signals):
-#   Weak symbols only (no Today%/Week% tables): down today AND down ~1 week AND below 20-DMA
+#   Price watch table: down today OR down ~1 week OR below 20-DMA (shows Today%, Week%, <20DMA for each)
 #   PCS ideas for next session: monitoring/pcs_opportunities.py (pie_analyze_swing funnel)
 #     PCS_OPPORTUNITIES_ENABLED=1 (default), tickers from blob signals/my_tickers.txt else local_list+holdings_list
 #     Local adhoc: PIE_TICKERS_FILE=scripts/stocks/my_tickers.txt (see run_email_adhoc.sh)
@@ -173,9 +173,14 @@ cd "c:\pers\krishnaposa-mlo-site\azure\functions\stocks-func-app"
 func azure functionapp publish stocks-func-app --build remote
 
 
-az storage blob upload --account-name stockmonitorsg  --container-name signals  --name positions.json --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\positions.json"  --auth-mode login --overwrite
-
-az storage blob upload --account-name stockmonitorsg  --container-name signals  --name my_tickers.txt --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\my_tickers.txt"  --auth-mode login --overwrite
+# Blob upload: --auth-mode login needs Storage Blob Data Contributor on the account.
+# If login fails, use MONITOR_STORAGE connection string (same key as stocks-func-app app setting):
+#   $env:MONITOR_STORAGE = "<connection-string-from-portal-or-function_app_env.json>"
+#   az storage blob upload --connection-string $env:MONITOR_STORAGE --container-name signals --name positions.json --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\positions.json" --overwrite
+#   az storage blob upload --connection-string $env:MONITOR_STORAGE --container-name signals --name my_tickers.txt --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\my_tickers.txt" --overwrite
 
 
 az functionapp config appsettings set -g <rg> -n stocks-func-app --settings PCS_LIFECYCLE_ENABLED=1 PCS_OPPORTUNITIES_ENABLED=1 PCS_PROFIT_TARGET=50 PCS_STOP_LOSS=-100 PCS_ROLL_DTE=14 PCS_MANAGE_DTE=21 PIE_MIN_GRADE=B
+
+ export MONITOR_STORAGE="DefaultEndpointsProtocol=https;AccountName=stockmonitorsg;AccountKey=EuLxqWwCZ372e3t91CXTf0WLnvt08ZEWZZyxPLPURGhQilq38WiWi6mXED1yWAdclMP7v5jwRwm2+AStwoHE9w==;EndpointSuffix=core.windows.net" 
+az storage blob upload --connection-string $MONITOR_STORAGE --container-name signals --name my_tickers.txt --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\my_tickers.txt" --overwrite

@@ -304,7 +304,7 @@ def format_pcs_lifecycle_email_section(swing_rows: List[dict], pcs_rows: List[di
     symbols = [r["Ticker"] for r in swing_rows] + [r["Ticker"] for r in pcs_rows]
     weak_block = format_weak_symbols_html(
         symbols,
-        "Open positions — weak (down today, down week, below 20-DMA)",
+        "Open positions — price watch",
     )
 
     actionable = sorted(set(
@@ -318,7 +318,7 @@ def format_pcs_lifecycle_email_section(swing_rows: List[dict], pcs_rows: List[di
     parts = [
         weak_block,
         summary,
-        "<p style='font-size:11px;color:#666'>Weak = all three: lower today, lower vs 5 sessions ago, below 20-DMA.</p>",
+        "<p style='font-size:11px;color:#666'>Listed if any of: down today, down ~1 week, below 20-DMA. Highlighted = all three.</p>",
     ]
     if swing_rows:
         parts.append("<p><b>Swing — actions</b></p>" + _action_lines(swing_rows))

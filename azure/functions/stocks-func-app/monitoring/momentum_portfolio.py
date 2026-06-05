@@ -343,7 +343,7 @@ def run_holdings_trailing_daily() -> Dict[str, Any]:
 
 
 def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
-    """HTML fragment: weak symbols (all three) + trailing-stop messages/exits."""
+    """HTML fragment: price watch table + trailing-stop messages/exits."""
     from .position_metrics import format_weak_symbols_html
 
     if result.get("enabled") is False:
@@ -366,7 +366,7 @@ def format_holdings_trailing_email_section(result: Dict[str, Any]) -> str:
 
     weak_block = format_weak_symbols_html(
         tickers,
-        "Holdings — weak (down today, down week, below 20-DMA)",
+        "Holdings — price watch",
     )
 
     meta = (
@@ -584,19 +584,17 @@ def _momentum_holdings_table_text(rows: List[Dict[str, Any]], *, max_rows: int =
 
 def format_holdings_trailing_text(result: Dict[str, Any]) -> str:
     """Plain-text holdings trailing section (same data as email HTML)."""
-    from .position_metrics import weak_symbols_all_three
+    from .position_metrics import format_weak_symbols_text
 
     if result.get("enabled") is False:
         return "  Holdings trailing exits disabled (HOLDINGS_TRAILING_EXITS_ENABLED=0)."
 
     rows = result.get("holdings_rows") or []
     tickers = [str(r.get("ticker", "")).upper().strip() for r in rows if str(r.get("ticker", "")).strip()]
-    weak = weak_symbols_all_three(tickers)
 
     lines: List[str] = [
         f"  Trailing exit {TRAILING_STOP_PCT:.0%} off high_seen",
-        "  Weak (down today, down week, below 20-DMA): "
-        + (", ".join(weak) if weak else "(none)"),
+        format_weak_symbols_text(tickers, label="Price watch"),
     ]
     for m in result.get("messages") or []:
         lines.append(f"  • {m}")

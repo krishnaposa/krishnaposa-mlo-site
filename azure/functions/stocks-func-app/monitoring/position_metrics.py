@@ -81,6 +81,19 @@ def fmt_below(v: bool) -> str:
     return "Yes" if v else "No"
 
 
+def is_weak_any(m: dict) -> bool:
+    """Down today OR down ~1 week OR below 20-DMA."""
+    if not m:
+        return False
+    c1 = m.get("chg_1d_pct")
+    c5 = m.get("chg_5d_pct")
+    if c1 == c1 and float(c1) < 0:
+        return True
+    if c5 == c5 and float(c5) < 0:
+        return True
+    return bool(m.get("below_20dma"))
+
+
 def is_weak_all_three(m: dict) -> bool:
     """Down today AND down ~1 week AND below 20-DMA."""
     if not m:
@@ -94,21 +107,85 @@ def is_weak_all_three(m: dict) -> bool:
     return bool(m.get("below_20dma"))
 
 
-def weak_symbols_all_three(symbols: List[str]) -> List[str]:
-    metrics = get_position_price_metrics(symbols)
-    return sorted(
-        s for s in {str(x).upper().strip() for x in symbols if str(x).strip()}
-        if is_weak_all_three(metrics.get(s, {}))
-    )
+def weak_price_rows(symbols: List[str], *, match: str = "any") -> List[dict]:
+    """
+    Symbols matching price weakness with Today%, Week%, <20DMA on each row.
+    match='any' — down today OR down week OR below 20-DMA (default).
+    match='all' — all three required.
+    """
+    syms = sorted({str(x).upper().strip() for x in symbols if str(x).strip()})
+    if not syms:
+        return []
+
+    metrics = get_position_price_metrics(syms)
+    pred = is_weak_all_three if match == "all" else is_weak_any
+    rows: List[dict] = []
+    for s in syms:
+        m = metrics.get(s, {})
+        if not pred(m):
+            continue
+        rows.append({
+            "ticker": s,
+            "today_pct": m.get("chg_1d_pct"),
+            "week_pct": m.get("chg_5d_pct"),
+            "below_20dma": bool(m.get("below_20dma")),
+            "all_three": is_weak_all_three(m),
+        })
+    return rows
 
 
 def format_weak_symbols_html(symbols: List[str], label: str) -> str:
     from html import escape as _esc
 
-    weak = weak_symbols_all_three(symbols)
-    if not weak:
+    rows = weak_price_rows(symbols, match="any")
+    if not rows:
         return (
-            f"<p><b>{_esc(label)}:</b> "
-            "<i>(none — no symbol down today, down ~1 week, and below 20-DMA)</i></p>"
+            f"<p><b>{_esc(label)}</b></p>"
+            "<p><i>(none — no symbol down today, down ~1 week, or below 20-DMA)</i></p>"
         )
-    return f"<p><b>{_esc(label)}:</b> {_esc(', '.join(weak))}</p>"
+
+    parts = [
+        f"<p><b>{_esc(label)}</b> "
+        "<span style='font-size:11px;color:#666'>"
+        "(any of: down today, down ~1 week, below 20-DMA — all three metrics shown)</span></p>",
+        "<table border='0' cellspacing='0' cellpadding='4' style='font-size:13px'>",
+        "<thead><tr>",
+        "<th align='left'>Ticker</th>",
+        "<th align='right'>Today%</th>",
+        "<th align='right'>Week%</th>",
+        "<th align='center'>&lt;20DMA</th>",
+        "</tr></thead><tbody>",
+    ]
+    for r in rows:
+        hl = " style='background:#fff4e5'" if r.get("all_three") else ""
+        parts.append(
+            f"<tr{hl}>"
+            f"<td>{_esc(str(r.get('ticker', '')))}</td>"
+            f"<td align='right'>{_esc(fmt_pct(r.get('today_pct')))}</td>"
+            f"<td align='right'>{_esc(fmt_pct(r.get('week_pct')))}</td>"
+            f"<td align='center'>{_esc(fmt_below(bool(r.get('below_20dma'))))}</td>"
+            "</tr>"
+        )
+    parts.append("</tbody></table>")
+    return "".join(parts)
+
+
+def format_weak_symbols_text(symbols: List[str], *, label: str = "") -> str:
+    rows = weak_price_rows(symbols, match="any")
+    lines: List[str] = []
+    if label:
+        lines.append(f"  {label}")
+        lines.append("  (any of: down today, down week, below 20-DMA)")
+    if not rows:
+        lines.append("  (none)")
+        return "\n".join(lines)
+
+    lines.append(f"  {'Ticker':<8} {'Today%':>8} {'Week%':>8} {'<20DMA':>6}")
+    for r in rows:
+        lines.append(
+            f"  {str(r.get('ticker', '')):<8} "
+            f"{fmt_pct(r.get('today_pct')):>8} "
+            f"{fmt_pct(r.get('week_pct')):>8} "
+            f"{fmt_below(bool(r.get('below_20dma'))):>6}"
+        )
+    return "\n".join(lines)

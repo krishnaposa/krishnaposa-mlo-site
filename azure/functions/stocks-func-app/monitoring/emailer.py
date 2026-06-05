@@ -517,7 +517,7 @@ def send_email_report_with_sims(*,
       <h3>Holdings — weak symbols &amp; trailing stop (holdings_list.json)</h3>
       <div><b>Current holdings_list symbols</b></div>
       <div>{html_holdings_symbols}</div>
-      <div><i>Weak list = down today, down ~1 week, and below 20-DMA (all three). Trailing stop off high_seen. holdings_list.json is only auto-edited if HOLDINGS_LIST_REMOVE_ON_EXIT=1.</i></div>
+      <div><i>Price watch: symbols with down today, down ~1 week, or below 20-DMA (any); table shows all three metrics. Trailing stop off high_seen. holdings_list.json is only auto-edited if HOLDINGS_LIST_REMOVE_ON_EXIT=1.</i></div>
       <div>{html_holdings_trailing}</div>
 
       {html_pcs_opportunities_block}
