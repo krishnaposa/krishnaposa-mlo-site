@@ -49,6 +49,10 @@ export PIE_OTM_PCT="${PIE_OTM_PCT:-0.06}"
 export PIE_SPREAD_WIDTH_PCT="${PIE_SPREAD_WIDTH_PCT:-0.03}"
 export PIE_MAX_PCS_CANDIDATES="${PIE_MAX_PCS_CANDIDATES:-12}"
 
+# Open PCS/swing positions lifecycle (pie_analyze_swing --review)
+export PCS_LIFECYCLE_ENABLED="${PCS_LIFECYCLE_ENABLED:-1}"
+export PCS_POSITIONS_FILE="${PCS_POSITIONS_FILE:-/c/pers/krishnaposa-mlo-site/scripts/stocks/positions.json}"
+
 # Optional wheel strategy knobs.
 export WHEEL_ENABLED="1"
 # WHEEL_DEBUG=1 prints extra wheel/Finviz pipeline INFO — noisy for adhoc email runs.

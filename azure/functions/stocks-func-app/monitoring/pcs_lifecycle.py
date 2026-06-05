@@ -232,10 +232,14 @@ def review_spreads(spreads: List[dict]) -> List[dict]:
         rows.append({
             "Ticker": sym,
             "Price": round(price, 2) if price == price else None,
+            "Expiry": expiry,
             "DTE": dte,
             "Short": short_k,
             "Long": long_k,
+            "Width": round(width, 2),
+            "Credit": round(credit0, 2),
             "Profit%": round(profit_pct, 1) if profit_pct == profit_pct else None,
+            "Buffer%": round(buffer_pct, 1) if buffer_pct == buffer_pct else None,
             "Phase": phase,
             "Action": action,
         })
@@ -266,7 +270,10 @@ def run_pcs_lifecycle() -> Dict[str, Any]:
 
     positions = load_positions()
     if positions is None:
-        # No positions.json anywhere -> skip the section (html stays empty).
+        out["html"] = (
+            "<p><i>No positions.json found — upload to signals/positions.json "
+            "or set PCS_POSITIONS_FILE (see scripts/stocks/positions.json).</i></p>"
+        )
         return out
     out["found"] = True
 
@@ -288,18 +295,31 @@ def run_pcs_lifecycle() -> Dict[str, Any]:
 # Email rendering
 # ------------------------------------------------------------------
 
-def _action_lines(rows: List[dict]) -> str:
-    lines = [
-        f"<div>{_esc(r['Ticker'])}: {_esc(r['Action'])}</div>"
-        for r in rows
-        if _is_action(r.get("Action", ""))
-    ]
-    return "".join(lines) if lines else "<p><i>No position actions today.</i></p>"
+def _table(rows: List[dict], cols: List[str]) -> str:
+    if not rows:
+        return "<p><i>None.</i></p>"
+    head = "".join(f"<th align='left'>{_esc(c)}</th>" for c in cols)
+    body = []
+    for r in rows:
+        act = str(r.get("Action", ""))
+        hl = " style='background:#fff4e5'" if _is_action(act) else ""
+        tds = "".join(
+            f"<td>{_esc('' if r.get(c) is None else str(r.get(c)))}</td>" for c in cols
+        )
+        body.append(f"<tr{hl}>{tds}</tr>")
+    return (
+        "<table border='0' cellspacing='0' cellpadding='4' style='font-size:13px'>"
+        f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+    )
+
+
+SWING_COLS = ["Ticker", "Price", "Entry", "Ret%", "Days", "Stop", "Phase", "Action"]
+PCS_COLS = ["Ticker", "Expiry", "DTE", "Short", "Long", "Width", "Credit", "Profit%", "Buffer%", "Phase", "Action"]
 
 
 def format_pcs_lifecycle_email_section(swing_rows: List[dict], pcs_rows: List[dict]) -> str:
     if not swing_rows and not pcs_rows:
-        return "<p><i>No tracked positions (positions.json empty or missing).</i></p>"
+        return "<p><i>No tracked positions (positions.json empty).</i></p>"
 
     symbols = [r["Ticker"] for r in swing_rows] + [r["Ticker"] for r in pcs_rows]
     weak_block = format_weak_symbols_html(
@@ -313,16 +333,47 @@ def format_pcs_lifecycle_email_section(swing_rows: List[dict], pcs_rows: List[di
     ))
     summary = ""
     if actionable:
-        summary = f"<p><b>Position actions:</b> {_esc(', '.join(actionable))}</p>"
+        summary = f"<p><b>Needs action:</b> {_esc(', '.join(actionable))}</p>"
 
     parts = [
-        weak_block,
         summary,
-        "<p style='font-size:11px;color:#666'>Listed if any of: down today, down ~1 week, below 20-DMA. Highlighted = all three.</p>",
+        weak_block,
+        "<p style='font-size:11px;color:#666'>Price watch: any of down today / down week / below 20-DMA. Highlighted rows = lifecycle action.</p>",
     ]
-    if swing_rows:
-        parts.append("<p><b>Swing — actions</b></p>" + _action_lines(swing_rows))
     if pcs_rows:
-        parts.append("<p><b>PCS — actions</b></p>" + _action_lines(pcs_rows))
+        parts.append("<p><b>Put credit spreads (review)</b></p>" + _table(pcs_rows, PCS_COLS))
+    if swing_rows:
+        parts.append("<p><b>Swing positions (review)</b></p>" + _table(swing_rows, SWING_COLS))
 
     return "".join(parts)
+
+
+def format_pcs_lifecycle_text(swing_rows: List[dict], pcs_rows: List[dict]) -> str:
+    if not swing_rows and not pcs_rows:
+        return "  (no open positions in positions.json)"
+
+    lines: List[str] = []
+    actionable = sorted(set(
+        [r["Ticker"] for r in swing_rows if _is_action(r["Action"])]
+        + [r["Ticker"] for r in pcs_rows if _is_action(r["Action"])]
+    ))
+    if actionable:
+        lines.append(f"  Needs action: {', '.join(actionable)}")
+
+    if pcs_rows:
+        lines.append("  Put credit spreads:")
+        for r in pcs_rows:
+            lines.append(
+                f"    {r.get('Ticker','')} {r.get('Expiry','')} DTE={r.get('DTE','')} "
+                f"short={r.get('Short','')} long={r.get('Long','')} "
+                f"profit={r.get('Profit%','')}% buffer={r.get('Buffer%','')}% "
+                f"phase={r.get('Phase','')} -> {r.get('Action','')}"
+            )
+    if swing_rows:
+        lines.append("  Swings:")
+        for r in swing_rows:
+            lines.append(
+                f"    {r.get('Ticker','')} ret={r.get('Ret%','')}% days={r.get('Days','')} "
+                f"phase={r.get('Phase','')} -> {r.get('Action','')}"
+            )
+    return "\n".join(lines)

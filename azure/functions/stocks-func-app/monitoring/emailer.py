@@ -259,10 +259,12 @@ def format_monitor_report_text(
     holdings_exit_alert_tickers: Optional[List[str]] = None,
     momentum_exited_tickers: Optional[List[str]] = None,
     pcs_opportunities_result: Optional[Dict] = None,
+    pcs_lifecycle_result: Optional[Dict] = None,
     subj_prefix: str = "Daily Stock Picks",
 ) -> str:
     """Plain-text report matching the daily email sections."""
     from .momentum_portfolio import format_holdings_trailing_text, format_momentum_text
+    from .pcs_lifecycle import format_pcs_lifecycle_text
     from .pcs_opportunities import format_pcs_opportunities_text
 
     strong_buy_entries = _tickers_from_rows(alltime_high_trend_rows, entry_only=True)
@@ -318,6 +320,15 @@ def format_monitor_report_text(
         lines.append(format_pcs_opportunities_text(opp_rows, scanned=scanned, buys=buys))
     else:
         lines.append("  (PCS opportunities not run)")
+
+    lines.append("\n## Open positions — lifecycle (positions.json)")
+    if pcs_lifecycle_result is not None:
+        lines.append(format_pcs_lifecycle_text(
+            pcs_lifecycle_result.get("swing_rows") or [],
+            pcs_lifecycle_result.get("pcs_rows") or [],
+        ))
+    else:
+        lines.append("  (PCS lifecycle not run)")
 
     lines.append("\n## Momentum portfolio (trailing stop)")
     if momentum_result is not None:
@@ -450,14 +461,10 @@ def send_email_report_with_sims(*,
         f"<div>{pcs_opportunities_section_html or '<i>PCS section not run.</i>'}</div>"
     )
 
-    # Skip the whole section when positions.json is absent (empty html from lifecycle).
-    if (pcs_lifecycle_section_html or "").strip():
-        html_pcs_lifecycle_block = (
-            "<h3>Positions — weak symbols &amp; lifecycle (positions.json)</h3>"
-            f"<div>{pcs_lifecycle_section_html}</div>"
-        )
-    else:
-        html_pcs_lifecycle_block = ""
+    html_pcs_lifecycle_block = (
+        "<h3>Open positions — lifecycle review (positions.json)</h3>"
+        f"<div>{pcs_lifecycle_section_html or '<i>PCS lifecycle not run.</i>'}</div>"
+    )
     html_wheel_tickers = _list_html(wheel_tickers)
     html_sims = _sim_table_html(sim_rows)
     html_perf = _perf_table_html(perf_rows)

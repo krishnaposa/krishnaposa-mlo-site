@@ -686,17 +686,21 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, p
     # ---- PCS / swing position lifecycle (held positions) ----
     pcs_lifecycle_section_html = None
     pcs_lifecycle_actionable: list[str] | None = None
+    pcs_lifecycle_result: dict | None = None
     if os.getenv("PCS_LIFECYCLE_ENABLED", "1") == "1":
         try:
             from .pcs_lifecycle import run_pcs_lifecycle
 
-            _pcs = run_pcs_lifecycle()
-            pcs_lifecycle_section_html = _pcs.get("html")
-            pcs_lifecycle_actionable = list(_pcs.get("actionable") or [])
+            pcs_lifecycle_result = run_pcs_lifecycle()
+            pcs_lifecycle_section_html = pcs_lifecycle_result.get("html")
+            pcs_lifecycle_actionable = list(pcs_lifecycle_result.get("actionable") or [])
         except Exception as e:
             logger.warning("[pcs_lifecycle] review failed: %s", e)
             pcs_lifecycle_section_html = f"<p><i>PCS lifecycle error: {e}</i></p>"
             pcs_lifecycle_actionable = []
+            pcs_lifecycle_result = {"swing_rows": [], "pcs_rows": [], "error": str(e)}
+    else:
+        pcs_lifecycle_section_html = "<p><i>PCS lifecycle disabled (PCS_LIFECYCLE_ENABLED=0).</i></p>"
 
     report_kwargs = dict(
         stamp=stamp,
@@ -716,6 +720,7 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, p
         holdings_exit_alert_tickers=holdings_trailing_exited,
         momentum_exited_tickers=momentum_exited_tickers,
         pcs_opportunities_result=pcs_opportunities_result,
+        pcs_lifecycle_result=pcs_lifecycle_result,
         subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),
     )
 
