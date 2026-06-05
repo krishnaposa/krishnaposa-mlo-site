@@ -182,5 +182,5 @@ func azure functionapp publish stocks-func-app --build remote
 
 az functionapp config appsettings set -g <rg> -n stocks-func-app --settings PCS_LIFECYCLE_ENABLED=1 PCS_OPPORTUNITIES_ENABLED=1 PCS_PROFIT_TARGET=50 PCS_STOP_LOSS=-100 PCS_ROLL_DTE=14 PCS_MANAGE_DTE=21 PIE_MIN_GRADE=B
 
- export MONITOR_STORAGE="DefaultEndpointsProtocol=https;AccountName=stockmonitorsg;AccountKey=EuLxqWwCZ372e3t91CXTf0WLnvt08ZEWZZyxPLPURGhQilq38WiWi6mXED1yWAdclMP7v5jwRwm2+AStwoHE9w==;EndpointSuffix=core.windows.net" 
+ export MONITOR_STORAGE="" 
 az storage blob upload --connection-string $MONITOR_STORAGE --container-name signals --name my_tickers.txt --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\my_tickers.txt" --overwrite
