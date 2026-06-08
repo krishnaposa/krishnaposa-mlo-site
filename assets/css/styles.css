@@ -70,8 +70,16 @@ html, body { overflow-x: hidden; }
   background:linear-gradient(135deg,var(--accent),var(--brand));
   color:#001016; text-decoration:none; font-weight:700;
 }
+.logo.logo-img-wrap{
+  width:auto; min-width:0; height:auto; padding:4px 6px;
+  background:#fff; border-radius:8px;
+}
+.logo-img{
+  display:block; height:40px; width:auto; max-width:150px; object-fit:contain;
+}
 .brand-text h1{ font-size:1.1rem; margin:0; }
 .brand-text p{ margin:0; color:var(--muted); font-size:.9rem; }
+.brand-text .brand-sub{ font-size:.82rem; margin-top:2px; opacity:.9; }
 
 /* NAV */
 .nav{ min-width:0; }
@@ -216,6 +224,18 @@ html, body { overflow-x: hidden; }
 .site-footer{ border-top:1px solid rgba(255,255,255,.08); padding:24px 0; margin-top:40px; }
 .footer-grid{ display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:20px; }
 .social-icons{ display:flex; gap:10px; align-items:center; }
+.copyright{ margin:16px 0 0; text-align:center; color:var(--muted); font-size:.88rem; }
+.powered-by{
+  display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px;
+  margin-top:12px; padding-top:12px;
+  border-top:1px solid rgba(255,255,255,.06);
+  color:var(--muted); font-size:.82rem;
+}
+.powered-by-logo{
+  display:block; height:36px; width:auto; border-radius:6px;
+  background:#fff; padding:2px 4px;
+}
+.powered-by-name{ font-weight:600; color:rgba(232,238,247,.85); }
 
 /* =============================
    STICKY MOBILE CTA
