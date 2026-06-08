@@ -64,12 +64,12 @@ html, body { overflow-x: hidden; }
   border-bottom:1px solid rgba(255,255,255,.06);
 }
 .topbar{
-  display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
-  padding:14px 0;
+  display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between;
+  gap:10px 16px; padding:14px 0;
 }
-.brand{
+.brand-col{
   display:flex; flex-direction:column; align-items:flex-start; gap:6px;
-  min-width:0; flex:0 1 auto; max-width:min(100%, 320px);
+  flex:1 1 200px; min-width:0; max-width:240px;
 }
 .logo{
   display:grid; place-items:center; width:42px; height:42px; border-radius:10px;
@@ -85,22 +85,35 @@ html, body { overflow-x: hidden; }
   display:block; height:36px; width:auto; max-width:200px; object-fit:contain;
 }
 .brand-text{ min-width:0; width:100%; line-height:1.25; }
-.brand-text h1{ font-size:1rem; margin:0; line-height:1.2; white-space:nowrap; }
+.brand-text h1{ font-size:1rem; margin:0; line-height:1.2; }
 .brand-text p{
   margin:0; color:var(--muted); font-size:.8rem;
   line-height:1.35;
 }
 .brand-text .brand-company{ margin-top:2px; }
 .brand-text .brand-sub{ font-size:.76rem; margin-top:2px; opacity:.9; }
-.site-header .nav{ margin-top:2px; }
-@media (max-width: 768px){
-  .brand{ max-width:calc(100% - 48px); }
+.site-header .nav{ flex:0 0 auto; margin-left:auto; }
+@media (max-width: 1023.98px){
+  .brand-col{ max-width:calc(100% - 52px); }
   .logo-img{ height:32px; max-width:min(100%, 180px); }
-  .brand-text h1{ white-space:normal; }
 }
 @media (min-width: 1024px){
-  .topbar{ align-items:center; }
-  .site-header .nav{ margin-top:0; }
+  .topbar{
+    display:grid;
+    grid-template-columns:minmax(200px, 240px) minmax(0, 1fr);
+    grid-template-rows:auto;
+    align-items:start;
+    column-gap:24px;
+  }
+  .brand-col{
+    grid-column:1; grid-row:1;
+    max-width:none; flex:none;
+  }
+  .site-header .nav{
+    grid-column:2; grid-row:1;
+    margin-left:0; min-width:0; width:100%;
+    align-self:start; justify-self:stretch;
+  }
 }
 
 /* NAV */
@@ -316,7 +329,7 @@ html, body { overflow-x: hidden; }
 }
 
 /* Safety: allow flex children to shrink, avoid overflow */
-.topbar, .brand, .nav, .nav .menu { min-width:0; }
+.topbar, .brand-col, .nav, .nav .menu { min-width:0; }
 
 /* Home hero CTAs wrap on narrow screens */
 .hero .cta{ display:flex; flex-wrap:wrap; gap:10px; }

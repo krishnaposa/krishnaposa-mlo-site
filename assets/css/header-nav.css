@@ -3,7 +3,6 @@
 /* Header container stays above page content */
 .site-header { position: relative; z-index: 10; background: var(--bg, #0f172a); }
 .site-header .topbar { position: relative; }
-.site-header .nav { flex: 0 0 auto; }
 
 /* Nav and toggle */
 #site-nav { position: relative; z-index: 11; }
@@ -61,11 +60,20 @@
   #primary-menu {
     position: static !important;
     display: flex !important;
-    gap: .5rem;
+    flex-wrap: wrap !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    gap: .35rem .5rem;
+    width: 100%;
     background: transparent !important;
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     padding: 0 !important;
+  }
+
+  #primary-menu a {
+    padding: .45rem .55rem;
+    font-size: .92rem;
   }
 }
