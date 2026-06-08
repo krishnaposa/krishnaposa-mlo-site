@@ -3,6 +3,7 @@
 /* Header container stays above page content */
 .site-header { position: relative; z-index: 10; background: var(--bg, #0f172a); }
 .site-header .topbar { position: relative; }
+.site-header .nav { flex: 0 0 auto; }
 
 /* Nav and toggle */
 #site-nav { position: relative; z-index: 11; }
