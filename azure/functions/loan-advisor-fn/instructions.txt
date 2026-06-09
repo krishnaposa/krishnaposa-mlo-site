@@ -16,6 +16,7 @@ FUNCTIONS_WORKER_RUNTIME=node in local.settings.json is LOCAL ONLY (for func CLI
 
 Endpoints (route prefix /api):
   POST /api/loanAdvisor
+  POST /api/leOcr          — Loan Estimate OCR (PDF text or image → structured fields)
   POST /api/refiCheck
   POST /api/refiWatch
   Timer refiCron — Mon & Thu 14:00 UTC
@@ -59,6 +60,10 @@ Republish static site after deploy.
 
 STEP 4 — Test
 -------------
+  curl -X POST "https://loan-advisor-func-app-b4etgvgde3eycsb5.eastus2-01.azurewebsites.net/api/leOcr" ^
+    -H "Content-Type: application/json" ^
+    -d "{\"text\":\"Loan Amount $360,000 Interest Rate 6.75% Estimated Total Monthly Payment $2,450 Principal & Interest $2,000\"}"
+
   curl -X POST "https://loan-advisor-func-app-b4etgvgde3eycsb5.eastus2-01.azurewebsites.net/api/refiCheck" ^
     -H "Content-Type: application/json" ^
     -d "{\"loanBalance\":320000,\"currentRate\":7.25,\"homeValue\":450000,\"yearsRemaining\":27,\"term\":\"30 Year Fixed\",\"refiCosts\":6000,\"stayYears\":5,\"fico\":\"740-759\",\"dti\":36}"

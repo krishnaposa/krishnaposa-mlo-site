@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-KJZPQKBM');</script>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5fff">
+  <meta name="robots" content="index,follow">
+
+  <title>Upload & Compare Loan Estimates | Krish Posa, MLO</title>
+  <meta name="description" content="Upload two Loan Estimate PDFs or photos. OCR extracts the numbers, then compare monthly payment, cash to close, and 5-year cost side by side.">
+  <link rel="canonical" href="https://www.krishposa.com/le-upload.html">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Upload & Compare Loan Estimates | Krish Posa">
+  <meta property="og:description" content="Upload LEs, auto-extract key numbers, and compare offers.">
+  <meta property="og:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
+  <meta property="og:url" content="https://www.krishposa.com/le-upload.html">
+
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/header-nav.css?v=final1">
+  <link rel="stylesheet" href="assets/css/form-contrast.css">
+  <link rel="stylesheet" href="assets/css/le-compare.css">
+  <link rel="stylesheet" href="assets/css/le-upload.css">
+  <link rel="icon" href="assets/img/favicon.png" type="image/png">
+
+  <script defer src="assets/js/script.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="assets/js/loan-api-config.js"></script>
+  <script defer src="assets/js/le-compare-core.js"></script>
+</head>
+<body>
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+
+  <div id="header"></div>
+  <script defer src="assets/js/header.js?v=final1"></script>
+
+  <main>
+    <section class="hero le-upload-hero">
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <h1>Upload & Compare Loan Estimates</h1>
+          <p>Drop two Loan Estimate PDFs or photos. We read the key numbers, let you fix anything that looks off, then show monthly payment, cash to close, and 5-year cost. Educational only — not a loan offer.</p>
+          <div class="cta">
+            <a class="btn btn-blue" href="calculator-le-compare.html">Manual entry instead</a>
+            <a class="btn-outline btn-green" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book a review call</a>
+          </div>
+          <ul class="trust">
+            <li>Georgia · Purchase &amp; Refinance</li>
+            <li>Innovative Mortgage Services, Inc. NMLS #250769 · Krish Posa NMLS #2533287</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="container">
+      <div class="card">
+        <div class="le-upload-steps">
+          <div class="le-upload-step"><strong>1. Upload</strong><span class="small">PDF or photo for each lender</span></div>
+          <div class="le-upload-step"><strong>2. Review</strong><span class="small">Edit any OCR fields</span></div>
+          <div class="le-upload-step"><strong>3. Compare</strong><span class="small">See payment, cash, 5-yr cost</span></div>
+        </div>
+        <p class="le-upload-privacy">Files are sent securely for OCR and are not stored on this site. Verify all numbers against your official Loan Estimate.</p>
+      </div>
+    </section>
+
+    <section class="container" id="le-upload-section" style="margin-top:1rem">
+      <div class="le-upload-zones" style="margin-bottom:1rem">
+        <div class="le-upload-zone" id="zoneA" tabindex="0" role="button" aria-label="Upload Lender A Loan Estimate">
+          <span class="le-upload-zone-icon" aria-hidden="true">📄</span>
+          <strong>Lender A</strong>
+          <span class="small" id="zoneA_label">Drop PDF or image, or click to browse</span>
+          <input type="file" id="fileA" accept="application/pdf,image/jpeg,image/png,image/webp">
+        </div>
+        <div class="le-upload-zone" id="zoneB" tabindex="0" role="button" aria-label="Upload Lender B Loan Estimate">
+          <span class="le-upload-zone-icon" aria-hidden="true">📄</span>
+          <strong>Lender B</strong>
+          <span class="small" id="zoneB_label">Drop PDF or image, or click to browse</span>
+          <input type="file" id="fileB" accept="application/pdf,image/jpeg,image/png,image/webp">
+        </div>
+      </div>
+
+      <div class="grid-3" id="le-compare-section">
+        <div class="card">
+          <h2 style="margin:0 0 .25rem">Lender A — extracted fields</h2>
+          <p class="small le-upload-status" id="a_status"></p>
+          <p class="tiny muted" id="a_notes"></p>
+          <form id="formA">
+            <div class="field"><label for="a_amount">Loan Amount</label><input id="a_amount" inputmode="decimal" placeholder="360000"></div>
+            <div class="grid-3">
+              <div class="field"><label for="a_rate">Rate (%)</label><input id="a_rate" inputmode="decimal" placeholder="6.75"></div>
+              <div class="field"><label for="a_term">Term (years)</label><input id="a_term" inputmode="numeric" placeholder="30"></div>
+              <div class="field"><label for="a_points">Discount Points (%)</label><input id="a_points" inputmode="decimal" placeholder="0"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="a_lender_fees">Lender Fees ($)</label><input id="a_lender_fees" inputmode="decimal" placeholder="1295"></div>
+              <div class="field"><label for="a_credits">Lender Credits ($)</label><input id="a_credits" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="a_shop_total">Shoppable 3rd-Party ($)</label><input id="a_shop_total" inputmode="decimal"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="a_other_3p">Other 3rd-Party ($)</label><input id="a_other_3p" inputmode="decimal"></div>
+              <div class="field"><label for="a_prepaids">Prepaids + Escrows ($)</label><input id="a_prepaids" inputmode="decimal"></div>
+              <div class="field"><label for="a_taxes_ins">Taxes + HOI / mo ($)</label><input id="a_taxes_ins" inputmode="decimal"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="a_pmi">PMI / mo ($)</label><input id="a_pmi" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="a_down">Down Payment ($)</label><input id="a_down" inputmode="decimal"></div>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2 style="margin:0 0 .25rem">Lender B — extracted fields</h2>
+          <p class="small le-upload-status" id="b_status"></p>
+          <p class="tiny muted" id="b_notes"></p>
+          <form id="formB">
+            <div class="field"><label for="b_amount">Loan Amount</label><input id="b_amount" inputmode="decimal" placeholder="360000"></div>
+            <div class="grid-3">
+              <div class="field"><label for="b_rate">Rate (%)</label><input id="b_rate" inputmode="decimal" placeholder="6.625"></div>
+              <div class="field"><label for="b_term">Term (years)</label><input id="b_term" inputmode="numeric" placeholder="30"></div>
+              <div class="field"><label for="b_points">Discount Points (%)</label><input id="b_points" inputmode="decimal" placeholder="0.5"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="b_lender_fees">Lender Fees ($)</label><input id="b_lender_fees" inputmode="decimal"></div>
+              <div class="field"><label for="b_credits">Lender Credits ($)</label><input id="b_credits" inputmode="decimal"></div>
+              <div class="field"><label for="b_shop_total">Shoppable 3rd-Party ($)</label><input id="b_shop_total" inputmode="decimal"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="b_other_3p">Other 3rd-Party ($)</label><input id="b_other_3p" inputmode="decimal"></div>
+              <div class="field"><label for="b_prepaids">Prepaids + Escrows ($)</label><input id="b_prepaids" inputmode="decimal"></div>
+              <div class="field"><label for="b_taxes_ins">Taxes + HOI / mo ($)</label><input id="b_taxes_ins" inputmode="decimal"></div>
+            </div>
+            <div class="grid-3">
+              <div class="field"><label for="b_pmi">PMI / mo ($)</label><input id="b_pmi" inputmode="decimal"></div>
+              <div class="field"><label for="b_down">Down Payment ($)</label><input id="b_down" inputmode="decimal"></div>
+            </div>
+          </form>
+        </div>
+
+        <aside class="card">
+          <h2 style="margin:0 0 .25rem">Tips</h2>
+          <ul class="small">
+            <li>Clear photos or native PDFs work best.</li>
+            <li>Always double-check OCR numbers against your LE.</li>
+            <li>Shop title, insurance, and lender fees to lower cash to close.</li>
+          </ul>
+          <div class="cta" style="gap:.5rem;margin-top:.75rem">
+            <button class="btn btn-blue" id="compareBtn" type="button">Compare Estimates</button>
+            <button class="btn-outline" id="resetBtn" type="button">Reset</button>
+          </div>
+          <div class="card" style="margin-top:.75rem">
+            <strong>Need a second opinion?</strong>
+            <p class="tiny" style="margin:.35rem 0 0">Send both LEs and I’ll walk through what’s really different — rate, fees, and cash to close.</p>
+            <a class="btn btn-green" style="margin-top:.5rem" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Schedule review</a>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="container" id="le-compare-results" hidden>
+      <div class="card">
+        <h2 style="margin:0 0 .25rem">Comparison Results</h2>
+        <div id="compare_summary" class="small" style="margin-bottom:.75rem"></div>
+
+        <div class="grid-3" style="grid-template-columns:1fr 1fr 1fr;gap:var(--pad)">
+          <div class="card">
+            <strong>Monthly Payment</strong>
+            <div class="grid-3">
+              <div><p class="small muted">Lender A</p><p id="resA_monthly">$—</p></div>
+              <div><p class="small muted">Lender B</p><p id="resB_monthly">$—</p></div>
+              <div><p class="small muted">Diff</p><p id="resDiff_monthly">—</p></div>
+            </div>
+          </div>
+          <div class="card">
+            <strong>Cash to Close</strong>
+            <div class="grid-3">
+              <div><p class="small muted">Lender A</p><p id="resA_cash">$—</p></div>
+              <div><p class="small muted">Lender B</p><p id="resB_cash">$—</p></div>
+              <div><p class="small muted">Diff</p><p id="resDiff_cash">—</p></div>
+            </div>
+          </div>
+          <div class="card">
+            <strong>5-Year Cost</strong>
+            <div class="grid-3">
+              <div><p class="small muted">Lender A</p><p id="resA_5yr">$—</p></div>
+              <div><p class="small muted">Lender B</p><p id="resB_5yr">$—</p></div>
+              <div><p class="small muted">Diff</p><p id="resDiff_5yr">—</p></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-3" style="grid-template-columns:1fr 1fr;gap:var(--pad);margin-top:.5rem">
+          <div class="card">
+            <strong>Points Break-Even</strong>
+            <div class="grid-3">
+              <div><p class="small muted">Lender A</p><p id="resA_breakeven">—</p></div>
+              <div><p class="small muted">Lender B</p><p id="resB_breakeven">—</p></div>
+              <div><p class="small muted">Who wins?</p><p id="res_breakeven_winner">—</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="sticky-cta" role="region" aria-label="Quick actions">
+      <a class="btn" href="tel:+16784818252">Call</a>
+      <a class="btn" href="sms:+16784818252">Text</a>
+      <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book</a>
+    </div>
+  </main>
+
+  <div id="footer"></div>
+  <script src="assets/js/footer.js"></script>
+  <script defer src="assets/js/le-upload.js"></script>
+</body>
+</html>

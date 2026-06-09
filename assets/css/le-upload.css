@@ -1,0 +1,93 @@
+/* Loan Estimate upload + OCR compare */
+
+.le-upload-hero .hero-copy p { max-width: 42rem; }
+
+.le-upload-steps {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--pad);
+  margin: 1rem 0;
+}
+@media (min-width: 768px) {
+  .le-upload-steps { grid-template-columns: repeat(3, 1fr); }
+}
+.le-upload-step {
+  text-align: center;
+  padding: .75rem;
+}
+.le-upload-step strong { display: block; margin-bottom: .25rem; }
+
+.le-upload-zones {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--pad);
+}
+@media (min-width: 900px) {
+  .le-upload-zones { grid-template-columns: 1fr 1fr; }
+}
+
+.le-upload-zone {
+  border: 2px dashed var(--muted);
+  border-radius: 10px;
+  padding: 1.25rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  background: var(--panel);
+  transition: border-color .15s, background .15s;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+}
+.le-upload-zone:focus { outline: 2px solid var(--blue); outline-offset: 2px; }
+.le-upload-zone--hover,
+.le-upload-zone:hover { border-color: var(--blue); background: rgba(11, 95, 255, .06); }
+.le-upload-zone--loading { opacity: .7; pointer-events: none; }
+.le-upload-zone input[type="file"] { display: none; }
+.le-upload-zone-icon { font-size: 1.75rem; line-height: 1; opacity: .85; }
+
+.le-upload-status {
+  font-size: .85rem;
+  margin: .35rem 0 0;
+  color: var(--muted);
+}
+.le-upload-status--high { color: #2ecc71; }
+.le-upload-status--medium { color: #f1c40f; }
+.le-upload-status--low { color: #e67e22; }
+
+#le-upload-section .field { min-width: 120px; }
+#le-upload-section label {
+  color: var(--text);
+  font-weight: 500;
+  display: block;
+  margin-bottom: .25rem;
+}
+#le-upload-section input {
+  width: 100%;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--muted);
+  padding: .55rem .6rem;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+#le-upload-section .grid-3 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--pad);
+}
+@media (min-width: 600px) {
+  #le-upload-section .grid-3 { grid-template-columns: repeat(3, 1fr); }
+}
+
+#le-compare-results[hidden] { display: none !important; }
+
+#compare_summary p { margin: .35rem 0 0; }
+
+.le-upload-privacy {
+  font-size: .8rem;
+  color: var(--muted);
+  margin-top: .5rem;
+}
