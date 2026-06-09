@@ -7,14 +7,23 @@ const FIELD_LABELS = {
   rate: 'Rate (%)',
   term: 'Term (years)',
   points: 'Points (%)',
-  lender_fees: 'Lender fees',
+  section_a: 'Section A — Origination',
+  section_b: 'Section B — Cannot shop',
+  section_c: 'Section C — Can shop',
+  section_e: 'Section E — Govt fees',
+  section_f: 'Section F — Prepaids',
+  section_g: 'Section G — Escrow',
+  section_h: 'Section H — Other',
+  section_j: 'Section J — Total closing',
+  lender_fees: 'Lender fees (rollup)',
   credits: 'Lender credits',
   shop_total: 'Shoppable 3rd-party',
   other_3p: 'Other 3rd-party',
   prepaids: 'Prepaids + escrows',
   taxes_ins: 'Taxes + HOI / mo',
   pmi: 'PMI / mo',
-  down: 'Down payment'
+  down: 'Down payment',
+  cash_to_close: 'Est. cash to close'
 };
 
 function formatFields(fields) {

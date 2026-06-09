@@ -44,10 +44,13 @@
     const taxesInsMo = num(v.taxes_ins);
     const pmiMo = num(v.pmi);
     const down = num(v.down);
+    const statedCash = num(v.cash_to_close);
 
     const am = amortSummary(L, rate, years, 60);
     const monthlyPmt = am.monthlyPI + taxesInsMo + pmiMo;
-    const cashToClose = pointsCost + lenderFees + shop + other3p + prepaids - credits + down;
+    const cashToClose = statedCash > 0
+      ? statedCash
+      : pointsCost + lenderFees + shop + other3p + prepaids - credits + down;
     const fiveYearCost = am.interest60 + (pmiMo * 60) + pointsCost + lenderFees + shop + other3p - credits;
 
     return {
@@ -71,7 +74,8 @@
       prepaids: $(prefix + '_prepaids')?.value,
       taxes_ins: $(prefix + '_taxes_ins')?.value,
       pmi: $(prefix + '_pmi')?.value,
-      down: $(prefix + '_down')?.value
+      down: $(prefix + '_down')?.value,
+      cash_to_close: $(prefix + '_cash_to_close')?.value
     });
   }
 

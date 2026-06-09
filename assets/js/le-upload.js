@@ -5,7 +5,18 @@
 
   const FIELD_IDS = [
     'amount', 'rate', 'term', 'points', 'lender_fees', 'credits',
-    'shop_total', 'other_3p', 'prepaids', 'taxes_ins', 'pmi', 'down'
+    'shop_total', 'other_3p', 'prepaids', 'taxes_ins', 'pmi', 'down', 'cash_to_close'
+  ];
+
+  const SECTION_LABELS = [
+    ['section_a', 'A · Origination'],
+    ['section_b', 'B · Cannot shop'],
+    ['section_c', 'C · Can shop'],
+    ['section_e', 'E · Govt fees'],
+    ['section_f', 'F · Prepaids'],
+    ['section_g', 'G · Escrow'],
+    ['section_h', 'H · Other'],
+    ['section_j', 'J · Total closing']
   ];
 
   const MODE = {
@@ -352,6 +363,21 @@
     }
     const notes = $(prefix + '_notes');
     if (notes) notes.textContent = fields.notes || '';
+
+    const wrap = $(prefix + '_sections_wrap');
+    const grid = $(prefix + '_sections');
+    if (wrap && grid) {
+      const rows = SECTION_LABELS
+        .filter(([k]) => fields[k] != null && Number(fields[k]) > 0)
+        .map(([k, label]) => `<span><strong>${label}</strong> $${Number(fields[k]).toLocaleString()}</span>`);
+      if (rows.length) {
+        grid.innerHTML = rows.join('');
+        wrap.hidden = false;
+      } else {
+        grid.innerHTML = '';
+        wrap.hidden = true;
+      }
+    }
   }
 
   function renderResults(res) {

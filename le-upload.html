@@ -129,7 +129,12 @@
             <div class="grid-3">
               <div class="field"><label for="a_pmi">PMI / mo ($)</label><input id="a_pmi" inputmode="decimal" placeholder="0"></div>
               <div class="field"><label for="a_down">Down Payment ($)</label><input id="a_down" inputmode="decimal"></div>
+              <div class="field"><label for="a_cash_to_close">Est. Cash to Close ($)</label><input id="a_cash_to_close" inputmode="decimal" placeholder="from LE page 2"></div>
             </div>
+            <details class="le-section-breakdown" id="a_sections_wrap" hidden>
+              <summary>Closing Cost section totals (page 2)</summary>
+              <div class="le-section-grid" id="a_sections"></div>
+            </details>
           </form>
         </div>
 
@@ -157,7 +162,12 @@
             <div class="grid-3">
               <div class="field"><label for="b_pmi">PMI / mo ($)</label><input id="b_pmi" inputmode="decimal"></div>
               <div class="field"><label for="b_down">Down Payment ($)</label><input id="b_down" inputmode="decimal"></div>
+              <div class="field"><label for="b_cash_to_close">Est. Cash to Close ($)</label><input id="b_cash_to_close" inputmode="decimal"></div>
             </div>
+            <details class="le-section-breakdown" id="b_sections_wrap" hidden>
+              <summary>Closing Cost section totals (page 2)</summary>
+              <div class="le-section-grid" id="b_sections"></div>
+            </details>
           </form>
         </div>
 
