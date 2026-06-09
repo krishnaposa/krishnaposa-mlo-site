@@ -2,13 +2,14 @@
 (function () {
   const { parseNumber: num, fmtCurrency: fmt, fmtPercent: pct, calc, cfg } = window.MortgageCalc;
 
-  // ---------- Shared amortization helper (used by Payment + Refi + Extra) ----------
+  function parseRatePct(field, fallback = cfg.defaultRatePct) {
+    const raw = (field ?? "").toString().trim();
+    if (!raw) return fallback;
+    return raw.endsWith("%") ? num(raw) * 100 : num(raw);
+  }
+
   function monthlyPI(loan, ratePct, years = 30) {
-    const n = years * 12;
-    const m = (ratePct / 100) / 12;
-    if (m === 0) return loan / n;
-    const pow = Math.pow(1 + m, n);
-    return loan * (m * pow) / (pow - 1);
+    return calc.monthlyPI(loan, ratePct, years);
   }
 
   // ========================================================
@@ -31,8 +32,7 @@
   function affCalc() {
     const income = num(document.getElementById("aff_income").value);
     const debts = num(document.getElementById("aff_debts").value || 0);
-    const rateInput = document.getElementById("aff_rate").value || cfg.defaultRatePct;
-    const ratePct = (rateInput.toString().trim().endsWith("%") ? num(rateInput) * 100 : num(rateInput));
+    const ratePct = parseRatePct(document.getElementById("aff_rate").value);
     const zip = (document.getElementById("aff_zip").value || "").trim();
     const county = (document.getElementById("aff_county").value || "").trim() || null;
     const downInput = (document.getElementById("aff_down").value || "").trim();
@@ -74,8 +74,7 @@
     const downInput = (document.getElementById("pay_down").value || "").trim();
     const down = downInput.endsWith("%") ? price * num(downInput) : num(downInput || 0);
 
-    const rateField = (document.getElementById("pay_rate").value || cfg.defaultRatePct);
-    const ratePct = (rateField.toString().trim().endsWith("%") ? num(rateField) * 100 : num(rateField));
+    const ratePct = parseRatePct(document.getElementById("pay_rate").value);
 
     const zip = (document.getElementById("pay_zip").value || "").trim();
     const county = (document.getElementById("pay_county").value || "").trim() || null;
@@ -93,7 +92,10 @@
     const programForTI = (program === "arm") ? "conventional" : program;
 
     // Get taxes/ins/pmi/ltv using your engine, but DO NOT use its pAndI (assumes 30yr)
-    const basis = calc.totalMonthly({ price, down, ratePct, program: programForTI, zip, county });
+    const basis = calc.totalMonthly({
+      price, down, ratePct, program: programForTI, zip, county,
+      years: (program === "arm") ? 30 : userTermYears
+    });
 
     // ARM rule: payment during fixed period uses 30-year amortization
     const amortYearsForPI = (program === "arm") ? 30 : userTermYears;
@@ -109,9 +111,11 @@
     document.getElementById("pay_ti").textContent = fmt(taxesInsPmi);
     document.getElementById("pay_total").textContent = fmt(total);
 
-    // PMI note for Conventional + ARM when LTV > 80%
     const pmiNote = document.getElementById("pay_pmi_note");
-    if ((programForTI === "conventional") && basis.ltv > 0.80) {
+    if (programForTI === "fha" && basis.pmi > 0) {
+      pmiNote.style.display = "";
+      pmiNote.textContent = "FHA mortgage insurance (MIP) estimated. Actual MIP depends on loan term, LTV, and FHA policy.";
+    } else if (programForTI === "conventional" && basis.ltv > 0.80) {
       pmiNote.style.display = "";
       pmiNote.textContent = "PMI estimated due to LTV above 80 percent. It can fall off when equity improves.";
     } else {
@@ -155,14 +159,12 @@
   // ========================================================
   function refiCalc() {
     const loan = num(document.getElementById("refi_loan").value);
-    const oldRateField = (document.getElementById("refi_old_rate").value || cfg.defaultRatePct);
-    const newRateField = (document.getElementById("refi_new_rate").value || cfg.defaultRatePct);
     const costs = num(document.getElementById("refi_costs").value || 0);
 
     if (!loan) { alert("Please enter current loan balance."); return; }
 
-    const oldRatePct = (oldRateField.toString().trim().endsWith("%") ? num(oldRateField) * 100 : num(oldRateField));
-    const newRatePct = (newRateField.toString().trim().endsWith("%") ? num(newRateField) * 100 : num(newRateField));
+    const oldRatePct = parseRatePct(document.getElementById("refi_old_rate").value);
+    const newRatePct = parseRatePct(document.getElementById("refi_new_rate").value);
 
     const pi = window.RefiEval ? window.RefiEval.monthlyPI : monthlyPI;
     const be = window.RefiEval ? window.RefiEval.breakEvenMonths : null;
@@ -189,12 +191,11 @@
   // ========================================================
   function extraCalc() {
     const loan = num(document.getElementById("extra_loan").value);
-    const rateField = (document.getElementById("extra_rate").value || cfg.defaultRatePct);
     const years = Math.max(1, parseInt(document.getElementById("extra_years").value || "30", 10));
     const extra = num(document.getElementById("extra_add").value || 0);
 
     if (!loan) { alert("Please enter loan amount."); return; }
-    const ratePct = (rateField.toString().trim().endsWith("%") ? num(rateField) * 100 : num(rateField));
+    const ratePct = parseRatePct(document.getElementById("extra_rate").value);
 
     const base = monthlyPI(loan, ratePct, years);
     let balance = loan;

@@ -1,4 +1,11 @@
 /* Tools / Calculators hub layout */
+.page-calculators .hero--text-only .hero-inner{
+  grid-template-columns:1fr;
+  max-width:760px;
+}
+.page-calculators .hero--text-only{
+  padding-bottom:12px;
+}
 .tools-section{ padding:8px 0 40px; }
 .tools-promo{
   display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px;
@@ -33,6 +40,16 @@
 .calc-tool-card .card strong{ color:#94a3b8; font-size:.82rem; }
 .calc-tool-card .card p{ color:#f1f5f9; font-size:1.05rem; font-weight:600; }
 .calc-tool-card--wide{ grid-column:1 / -1; }
+.calc-tool-card .calc-results-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:.5rem;
+}
+.calc-tool-card .grid-3{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:.5rem;
+}
 @media (max-width:1100px){
   .calc-grid{ grid-template-columns:1fr 1fr; }
 }
@@ -40,4 +57,6 @@
   .tools-promo{ grid-template-columns:1fr; }
   .calc-grid{ grid-template-columns:1fr; }
   .calc-tool-card--wide{ grid-column:auto; }
+  .calc-tool-card .calc-results-grid,
+  .calc-tool-card .grid-3{ grid-template-columns:1fr; }
 }

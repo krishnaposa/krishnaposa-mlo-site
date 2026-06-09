@@ -34,14 +34,14 @@
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/form-contrast.css?v=3">
-  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/tools-page.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/tools-page.css?v=2">
   <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
 
   <!-- Site JS -->
   <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
 
 </head>
-<body>
+<body class="page-calculators">
   <!-- GTM (noscript) -->
   <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM"
   height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
@@ -52,7 +52,7 @@
 
   <main>
     <!-- HERO -->
-    <section class="hero">
+    <section class="hero hero--text-only">
       <div class="container hero-inner">
         <div class="hero-copy">
           <h1>Mortgage Calculators</h1>
@@ -65,10 +65,6 @@
             <li>Georgia • Purchase and Refinance</li>
             <li>Innovative Mortgage Services, Inc. NMLS #250769 · Krish Posa NMLS #2533287 · Equal Housing Lender</li>
           </ul>
-        </div>
-        <div class="hero-photo-card">
-          <img src="https://www.krishposa.com/assets/img/headshot.jpg" alt="Krish Posa" width="600" height="600" loading="lazy" decoding="async">
-          <p class="small center">Your mortgage guide in Atlanta, GA</p>
         </div>
       </div>
     </section>
@@ -215,9 +211,9 @@
               <button class="btn btn-blue" type="button" id="pay_calc">Calculate</button>
               <button class="btn-outline" type="reset" id="pay_reset">Reset</button>
             </div>
-            <div class="grid-3" style="margin-top:.5rem">
+            <div class="calc-results-grid" style="margin-top:.5rem">
               <div class="card"><strong>P + I</strong><p id="pay_pi" style="margin:.35rem 0 0">$—</p></div>
-              <div class="card"><strong>Taxes + Ins + PMI</strong><p id="pay_ti" style="margin:.35rem 0 0">$—</p></div>
+              <div class="card"><strong>Taxes + Ins + MI</strong><p id="pay_ti" style="margin:.35rem 0 0">$—</p></div>
               <div class="card"><strong>Total Monthly</strong><p id="pay_total" style="margin:.35rem 0 0">$—</p></div>
             </div>
             <p class="tiny" id="pay_pmi_note" style="display:none"></p>
@@ -278,19 +274,15 @@
                 <input id="extra_years" inputmode="numeric" placeholder="30">
               </div>
             </div>
-            <div class="grid-3" style="margin-top:.5rem">
-              <div class="field">
-                <label for="extra_add">Extra per Month</label>
-                <input id="extra_add" inputmode="decimal" placeholder="200">
-              </div>
-              <div class="field" aria-hidden="true"></div>
-              <div class="field" aria-hidden="true"></div>
+            <div class="field" style="margin-top:.5rem;max-width:280px">
+              <label for="extra_add">Extra per Month</label>
+              <input id="extra_add" inputmode="decimal" placeholder="200">
             </div>
             <div class="cta" style="gap:.5rem;margin-top:.5rem">
               <button class="btn btn-blue" type="button" id="extra_calc">Calculate</button>
               <button class="btn-outline" type="reset" id="extra_reset">Reset</button>
             </div>
-            <div class="grid-3" style="margin-top:.5rem">
+            <div class="calc-results-grid" style="margin-top:.5rem">
               <div class="card"><strong>Base Payment (P+I)</strong><p id="extra_base" style="margin:.35rem 0 0">$—</p></div>
               <div class="card"><strong>With Extra Payment</strong><p id="extra_with" style="margin:.35rem 0 0">$—</p></div>
               <div class="card"><strong>Time Saved</strong><p id="extra_time" style="margin:.35rem 0 0">—</p></div>
@@ -315,9 +307,9 @@
   <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
   <!-- JS: shared helpers then page wiring -->
-  <script defer src="https://www.krishposa.com/assets/js/mortgage-calc.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/mortgage-calc.js?v=2"></script>
   <script defer src="https://www.krishposa.com/assets/js/refi-eval.js"></script>
-  <script defer src="https://www.krishposa.com/assets/js/calculators.js?v=4"></script>
+  <script defer src="https://www.krishposa.com/assets/js/calculators.js?v=5"></script>
 
   <!-- Tiny enhancer: show/hide ARM subtype -->
   <script>

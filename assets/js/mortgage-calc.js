@@ -61,18 +61,23 @@
     insurancePerMonth() {
       return cfg.insurancePerYear / 12;
     },
-    pmiPerMonth(price, ltv, program, annualPmiPctOverride) {
+    pmiPerMonth(price, ltv, program, annualPmiPctOverride, loan) {
+      if (program === "fha") {
+        const annualMip = ltv > 0.95 ? 0.0055 : 0.0050;
+        return ((loan || price) * annualMip) / 12;
+      }
       if (program !== "conventional" || ltv <= 0.80) return 0;
       const pct = (annualPmiPctOverride ?? cfg.defaultPmiPct) / 100;
       return (price * pct) / 12;
     },
-    totalMonthly({ price, down, ratePct, program, zip, county }) {
+    totalMonthly({ price, down, ratePct, program, zip, county, years }) {
       const loan = Math.max(0, price - (down || 0));
-      const pAndI = calc.monthlyPI(loan, ratePct);
+      const termYears = years || 30;
+      const pAndI = calc.monthlyPI(loan, ratePct, termYears);
       const taxes = calc.taxesPerMonth(price, zip, county);
       const ins = calc.insurancePerMonth();
       const ltv = price ? loan / price : 0;
-      const pmi = calc.pmiPerMonth(price, ltv, program);
+      const pmi = calc.pmiPerMonth(price, ltv, program, undefined, loan);
       return { loan, ltv, pAndI, taxes, ins, pmi, total: pAndI + taxes + ins + pmi };
     },
     dti(totalMonthlyHousing, otherMonthlyDebts, grossMonthlyIncome) {
