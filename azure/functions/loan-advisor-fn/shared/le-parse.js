@@ -155,15 +155,29 @@ async function parseWithAi({ text, imageBase64, mimeType }) {
 }
 
 async function parseLoanEstimate({ text, imageBase64, mimeType }) {
-  try {
-    if (imageBase64 || (text && text.length > 80)) {
-      return await parseWithAi({ text, imageBase64, mimeType });
-    }
-  } catch (err) {
-    console.error('AI LE parse failed', err);
+  const hasText = text && text.length > 40;
+  const hasImage = Boolean(imageBase64);
+
+  if (hasText) {
+    const quick = parseLoanEstimateText(text);
+    if (quick.amount && quick.rate) return quick;
   }
-  if (text && text.length > 40) {
-    return parseLoanEstimateText(text);
+
+  if (hasImage || (text && text.length > 80)) {
+    try {
+      return await parseWithAi({ text, imageBase64, mimeType });
+    } catch (err) {
+      console.error('AI LE parse failed', err);
+      if (hasText) return parseLoanEstimateText(text);
+    }
+  }
+
+  if (hasText) return parseLoanEstimateText(text);
+
+  if (hasImage) {
+    throw new Error(
+      'Could not read this file automatically. Try a clearer photo, a text-based PDF, or enter numbers manually on the compare page.'
+    );
   }
   throw new Error('No readable text or image provided');
 }

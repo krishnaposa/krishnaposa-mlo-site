@@ -233,7 +233,7 @@
       body: JSON.stringify(payload)
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'OCR request failed');
+    if (!res.ok) throw new Error(data.error || `OCR request failed (HTTP ${res.status})`);
     return data;
   }
 
@@ -367,8 +367,12 @@
         showReviewPanel();
       }
     } catch (err) {
+      const msg = String(err.message || '');
+      const friendly = /failed to fetch|networkerror|load failed/i.test(msg)
+        ? 'Upload could not reach the server. Refresh and try again, or use manual entry below.'
+        : (msg || 'Could not read Loan Estimate');
       if (label) label.textContent = 'Upload failed — try again';
-      alert(err.message || 'Could not read Loan Estimate');
+      alert(friendly + '\n\nTip: Text-based PDFs work best. Photos need a clear image of pages 1–2.');
     } finally {
       if (zone) zone.classList.remove('le-upload-zone--loading');
     }
