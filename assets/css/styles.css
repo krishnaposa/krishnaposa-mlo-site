@@ -166,6 +166,11 @@ html, body { overflow-x: hidden; }
     linear-gradient(180deg, rgba(11,95,255,.06), transparent 70%);
 }
 .hero-inner{ display:grid; grid-template-columns:1.2fr .8fr; gap:28px; align-items:center; }
+.hero--text-only .hero-inner{
+  grid-template-columns:1fr;
+  max-width:760px;
+}
+.hero--text-only{ padding-bottom:12px; }
 .hero-eyebrow{
   display:inline-block; margin:0 0 10px; padding:5px 12px;
   font-size:.78rem; font-weight:600; letter-spacing:.03em; text-transform:uppercase;

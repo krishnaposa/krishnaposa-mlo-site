@@ -9,6 +9,12 @@
   const fmt  = calcAPI.fmtCurrency;
   const calc = calcAPI.calc;
 
+  function parseRatePct(field, fallback = cfg?.defaultRatePct ?? 6.75) {
+    const raw = (field ?? "").toString().trim();
+    if (!raw) return fallback;
+    return raw.endsWith("%") ? num(raw) * 100 : num(raw);
+  }
+
   const $  = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -309,8 +315,7 @@ document.querySelector("#intakeForm")?.addEventListener("submit", async (e) => {
     const price = num($("#price")?.value);
     const downInput = ($("#down")?.value || "").trim();
     const down = downInput.endsWith("%") ? price * num(downInput) : num(downInput || 0);
-    const rateField = ($("#rate")?.value || (cfg && cfg.defaultRatePct));
-    const ratePct = (rateField?.toString().trim().endsWith("%") ? num(rateField) * 100 : num(rateField));
+    const ratePct = parseRatePct($("#rate")?.value);
     const zip = ($("#zip")?.value || "").trim();
     const program = $("#program")?.value || "conventional";
     const income = num($("#income")?.value);
@@ -338,7 +343,10 @@ document.querySelector("#intakeForm")?.addEventListener("submit", async (e) => {
 
     const pmiLine = $("#pmiLine");
     if (pmiLine) {
-      if (program === "conventional" && res.ltv > 0.80) {
+      if (program === "fha" && res.pmi > 0) {
+        pmiLine.style.display = "";
+        pmiLine.textContent = "FHA mortgage insurance (MIP) estimated. Actual MIP depends on loan term, LTV, and FHA policy.";
+      } else if (program === "conventional" && res.ltv > 0.80) {
         pmiLine.style.display = "";
         pmiLine.textContent = "Mortgage insurance estimated due to down payment under 20 percent. This can drop as LTV improves.";
       } else {

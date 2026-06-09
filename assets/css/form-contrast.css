@@ -133,3 +133,12 @@
 #refiForm .help:hover, #extraForm .help:hover {
   background: rgba(209,215,227,.15);
 }
+
+/* Buyer funnel layout */
+.page-buyer-funnel .funnel-two-col{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+@media (max-width:720px){
+  .page-buyer-funnel .funnel-two-col{ grid-template-columns:1fr; }
+  .page-buyer-funnel #estimatesWrap{ grid-template-columns:1fr !important; }
+}

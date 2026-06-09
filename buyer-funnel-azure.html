@@ -34,14 +34,14 @@
   <!-- CSS & Favicon -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
-  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/form-contrast.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/form-contrast.css?v=2">
   <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
 
   <!-- Site JS -->
   <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
 
 </head>
-<body>
+<body class="page-buyer-funnel">
   <!-- Google Tag Manager (noscript) -->
   <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM"
   height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
@@ -52,7 +52,7 @@
 
   <main>
     <!-- HERO -->
-    <section class="hero">
+    <section class="hero hero--text-only">
       <div class="container hero-inner">
         <div class="hero-copy">
           <h1>Get Pre-Approved and Shop With Confidence</h1>
@@ -65,10 +65,6 @@
             <li>Georgia • Purchase and Refinance</li>
             <li>Innovative Mortgage Services, Inc. NMLS #250769 · Krish Posa NMLS #2533287 · Equal Housing Lender</li>
           </ul>
-        </div>
-        <div class="hero-photo-card">
-          <img src="https://www.krishposa.com/assets/img/headshot.jpg" alt="Krish Posa" width="600" height="600" loading="lazy" decoding="async">
-          <p class="small center">Your mortgage guide in Atlanta, GA</p>
         </div>
       </div>
     </section>
@@ -140,7 +136,7 @@
             </div>
           </div>
 
-          <div class="grid-3" style="margin-top:.75rem">
+          <div class="grid-3 funnel-two-col" style="margin-top:.75rem">
             <div class="field">
               <label for="income">Gross Monthly Income</label>
               <input id="income" name="income" inputmode="decimal" placeholder="8500" required autocomplete="off">
@@ -149,7 +145,6 @@
               <label for="debts">Monthly Debts</label>
               <input id="debts" name="debts" inputmode="decimal" placeholder="Car, cards, loans" autocomplete="off">
             </div>
-            <div class="field" aria-hidden="true"></div>
           </div>
 
           <div class="cta" style="gap:.5rem;margin-top:.75rem">
@@ -167,7 +162,7 @@
             <p id="pAndI" style="font-size:1.1rem;margin:.35rem 0 0">$—</p>
           </div>
           <div class="card">
-            <strong>Taxes + Insurance</strong>
+            <strong>Taxes + Ins + MI</strong>
             <p id="taxes" style="font-size:1.1rem;margin:.35rem 0 0">$—</p>
           </div>
           <div class="card">
@@ -191,7 +186,7 @@
         <p class="small" style="margin:.25rem 0 1rem">Five minute form. Secure. I will follow up with next steps and a document checklist.</p>
 
         <!-- TODO: Replace action with your Formspree/Netlify/Zapier endpoint -->
-        <form id="intakeForm" action="https://formspree.io/f/your_form_id" method="POST">
+        <form id="intakeForm" action="#" method="POST">
           <div class="grid-3">
             <div class="field">
               <label for="fullName">Full Name</label>
@@ -262,10 +257,11 @@
           </div>
 
           <div class="cta" style="gap:.5rem;margin-top:1rem">
-            <button class="btn btn-blue" type="submit">Submit Pre-Approval</button>
+            <button class="btn btn-blue" type="submit" id="submitBtn">Submit Pre-Approval</button>
           </div>
 
-          <p class="small" style="margin-top:.5rem">You will receive a confirmation email and a document checklist.</p>
+          <p id="submitMsg" class="small" style="margin-top:.5rem"></p>
+          <p class="small muted">You will receive a confirmation email and a document checklist.</p>
         </form>
       </div>
     </section>
@@ -365,7 +361,7 @@
   <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
   <!-- Shared mortgage helpers, then page wiring -->
-  <script defer src="https://www.krishposa.com/assets/js/mortgage-calc.js"></script>
-  <script defer src="https://www.krishposa.com/assets/js/buyer-funnel-azure.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/mortgage-calc.js?v=2"></script>
+  <script defer src="https://www.krishposa.com/assets/js/buyer-funnel-azure.js?v=2"></script>
 </body>
 </html>
