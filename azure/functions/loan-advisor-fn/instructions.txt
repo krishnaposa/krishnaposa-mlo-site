@@ -61,6 +61,11 @@ Republish static site after deploy.
 
 STEP 4 — Test
 -------------
+  curl -X POST "https://loan-advisor-func-app-b4etgvgde3eycsb5.eastus2-01.azurewebsites.net/api/loanAdvisor" ^
+    -H "Content-Type: application/json" ^
+    -d "{\"state\":\"GA\",\"occupancy\":\"Primary Residence\",\"purpose\":\"Purchase\",\"propertyType\":\"Single Family\",\"homeValue\":400000,\"loanAmount\":380000,\"fico\":\"660-679\",\"dti\":38,\"term\":\"30 Year Fixed\",\"veteran\":\"No\",\"goals\":\"Lowest Cash to Close\"}"
+  (Check recommendation.aiSource is azure, not fallback, when OpenAI is configured.)
+
   curl -X POST "https://loan-advisor-func-app-b4etgvgde3eycsb5.eastus2-01.azurewebsites.net/api/leOcr" ^
     -H "Content-Type: application/json" ^
     -d "{\"text\":\"Loan Amount $360,000 Interest Rate 6.75% Estimated Total Monthly Payment $2,450 Principal & Interest $2,000\"}"

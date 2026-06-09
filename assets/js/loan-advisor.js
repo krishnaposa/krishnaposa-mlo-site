@@ -1,10 +1,26 @@
-(function(){
+(function () {
   const form = document.getElementById('loan-form');
   const submitBtn = document.getElementById('submitBtn');
   const err = document.getElementById('err');
   const result = document.getElementById('result');
 
-  function dollars(n){ return Number(n).toLocaleString(undefined, { style: 'currency', currency: 'USD' }); }
+  function dollars(n) {
+    return Number(n).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderReasoning(text) {
+    const parts = String(text || '').split(/\n\s*\n/).filter(Boolean);
+    if (!parts.length) return '<p>—</p>';
+    return parts.map((p) => `<p>${escapeHtml(p.trim())}</p>`).join('');
+  }
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -21,7 +37,7 @@
       return;
     }
     if (!hv || !la || la <= 0 || hv <= 0 || la > hv * 1.1) {
-      err.textContent = 'Please confirm Home Value and Loan Amount. Loan should not exceed about 110% of value.';
+      err.textContent = 'Please confirm home value and loan amount. Loan should not exceed about 110% of value.';
       err.style.display = 'block';
       return;
     }
@@ -37,41 +53,54 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      if (!res.ok) throw new Error('Server error. Please try again.');
 
-      const out = await res.json();
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(out.error || `Could not get a recommendation (HTTP ${res.status}).`);
+      }
+
+      const rec = out.recommendation || {};
 
       document.getElementById('summary').innerHTML =
-        `<p><strong>Scenario</strong>: ${data.purpose} · ${data.propertyType} · ${data.occupancy} in ${data.state}</p>
-         <p><strong>Value</strong>: ${dollars(hv)} · <strong>Loan</strong>: ${dollars(la)} · <strong>LTV</strong>: ${out.metrics.ltv}% · <strong>FICO</strong>: ${data.fico} · <strong>DTI</strong>: ${data.dti}%</p>`;
+        `<p><strong>Scenario</strong>: ${escapeHtml(data.purpose)} · ${escapeHtml(data.propertyType)} · ${escapeHtml(data.occupancy)} in ${escapeHtml(data.state)}</p>
+         <p><strong>Value</strong>: ${dollars(hv)} · <strong>Loan</strong>: ${dollars(la)} · <strong>LTV</strong>: ${out.metrics.ltv}% · <strong>FICO</strong>: ${escapeHtml(data.fico)} · <strong>DTI</strong>: ${escapeHtml(data.dti)}%</p>`;
+
+      const aiNote = rec.aiSource === 'fallback'
+        ? '<p class="tiny muted">Note: AI explanation unavailable — showing rule-based summary. Book a call for personalized guidance.</p>'
+        : '';
 
       document.getElementById('aiRec').innerHTML =
-        `<p><strong>Recommended Product</strong>: ${out.recommendation.product}</p>
-         <p>${out.recommendation.reasoning}</p>`;
+        `<p><strong>Recommended Product</strong>: ${escapeHtml(rec.product)}${rec.term ? ` · <strong>Term</strong>: ${escapeHtml(rec.term)}` : ''}</p>
+         ${rec.note ? `<p class="small">${escapeHtml(rec.note)}</p>` : ''}
+         ${renderReasoning(rec.reasoning)}
+         ${aiNote}`;
 
       document.getElementById('rates').innerHTML =
-        `<p><strong>Estimated Rate Range</strong>: ${out.rates.base.toFixed(3)}% to ${out.rates.high.toFixed(3)}% (rate). Est. APR may be higher.</p>`;
+        `<p><strong>Estimated Rate Range</strong>: ${out.rates.base.toFixed(3)}% to ${out.rates.high.toFixed(3)}% (rate). APR may be higher.</p>
+         ${out.rates.asOf ? `<p class="tiny muted">${escapeHtml(out.rates.asOf)}</p>` : ''}`;
 
       document.getElementById('nextSteps').innerHTML =
-        `<p><strong>Next Steps</strong>: ${out.nextSteps}</p>`;
+        `<p><strong>Next Steps</strong>: ${escapeHtml(out.nextSteps || '')}</p>`;
 
       result.style.display = 'block';
+      result.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-      // GTM event for analytics
       window.dataLayer = window.dataLayer || [];
       window.dataLayer.push({
         event: 'loan_advisor_submit',
         purpose: data.purpose,
         occupancy: data.occupancy,
         propertyType: data.propertyType,
-        term: data.term,
+        term: rec.term || data.term,
+        product: rec.product,
         ltv: out.metrics.ltv,
-        ficoBand: data.fico
+        ficoBand: data.fico,
+        aiSource: rec.aiSource
       });
-
     } catch (ex) {
-      err.textContent = ex.message;
+      err.textContent = ex.message || 'Something went wrong. Please try again or call 678-481-8252.';
       err.style.display = 'block';
+      err.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Get Recommendation';

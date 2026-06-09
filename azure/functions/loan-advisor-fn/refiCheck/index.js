@@ -12,8 +12,8 @@ module.exports = async function (context, req) {
     const result = evaluateRefi(data);
     if (!result.ok) return sendJson(context, 400, { error: result.errors.join('; ') });
 
-    let explanation = result.summary;
-    explanation = await callAi(buildAiPrompt(result, data), result.summary);
+    const ai = await callAi(buildAiPrompt(result, data), result.summary);
+    const explanation = ai.text;
 
     return sendJson(context, 200, {
       ...result,

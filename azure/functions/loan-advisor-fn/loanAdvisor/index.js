@@ -1,4 +1,5 @@
 const { estimateRate, ltvPercent } = require('../shared/rate-pricing');
+const { recommendProduct } = require('../shared/product-rules');
 const { handleOptions, sendJson, parseBody } = require('../shared/http');
 const { callAi } = require('../shared/ai');
 
@@ -16,35 +17,58 @@ module.exports = async function (context, req) {
     const hv = Number(homeValue);
     const la = Number(loanAmount);
     if (!hv || !la || la <= 0 || hv <= 0) {
-      return sendJson(context, 400, { error: 'Invalid value or loan amount' });
+      return sendJson(context, 400, { error: 'Invalid home value or loan amount.' });
+    }
+    if (la > hv * 1.1) {
+      return sendJson(context, 400, { error: 'Loan amount should not exceed about 110% of property value.' });
     }
 
     const ltv = ltvPercent(hv, la);
-    const rates = estimateRate({ term, fico, ltv, occupancy, propertyType, dti, purpose, veteran });
+    const fit = recommendProduct({
+      occupancy, purpose, loanAmount: la, ltv, fico, veteran, goals, term
+    });
 
-    const vaEligible = veteran === 'Yes'
-      && occupancy === 'Primary Residence'
-      && (purpose === 'Purchase' || String(purpose).includes('Refinance'));
+    const rates = estimateRate({
+      term: fit.term,
+      fico,
+      ltv,
+      occupancy,
+      propertyType,
+      dti,
+      purpose,
+      veteran
+    });
 
-    const product = vaEligible ? 'VA Fixed' :
-      (goals === 'Pay Off Faster' ? '15 Year Fixed' :
-        (goals === 'Lowest Monthly Payment' && /ARM/.test(term || '')) ? term : term);
+    const fallback = [
+      `For your scenario (${purpose}, ${occupancy}, ${ltv}% LTV), ${fit.product} on a ${fit.term} is a sensible starting point.`,
+      fit.note,
+      'This is educational guidance only — final eligibility, rate, and APR depend on full underwriting.'
+    ].join(' ');
 
-    let reasoning = 'Based on your credit tier, LTV, occupancy, and goal, this product balances eligibility and cost while aligning with your payment objective.';
+    const prompt = `Explain this mortgage recommendation in 2 short paragraphs, plain English, no jargon.
+Recommended product: ${fit.product}
+Suggested term: ${fit.term}
+Why (underwriting note): ${fit.note}
+User profile: state=${state}, occupancy=${occupancy}, purpose=${purpose}, property=${propertyType}, LTV=${ltv}%, FICO band=${fico}, DTI=${dti}%, goal=${goals}, VA eligible=${veteran}.
+Do not change the recommended product. End with one caution about PMI, rate changes, or closing costs.`;
 
-    const prompt = `User profile: ${JSON.stringify({
-      state, occupancy, purpose, propertyType, ltv, fico, dti, term, veteran, goals
-    })}.
-Recommend the best loan type and explain why in 2 short paragraphs, plain English, no jargon.
-End with one cautionary note about risks (like rate changes, PMI, or costs).`;
-
-    reasoning = await callAi(prompt, reasoning);
+    const ai = await callAi(prompt, fallback);
 
     return sendJson(context, 200, {
       metrics: { ltv },
-      recommendation: { product, reasoning },
-      rates: { base: rates.base, high: rates.high },
-      nextSteps: 'If this looks good, start a full application to lock a rate. We will verify income, assets, credit, and property details.'
+      recommendation: {
+        product: fit.product,
+        term: fit.term,
+        note: fit.note,
+        reasoning: ai.text,
+        aiSource: ai.source
+      },
+      rates: {
+        base: rates.base,
+        high: rates.high,
+        asOf: 'Educational baseline — not a live market feed'
+      },
+      nextSteps: 'Next: upload an existing Loan Estimate for a second opinion, book a quick call, or start a full application to lock pricing after verification.'
     });
   } catch (err) {
     context.log.error(err);
