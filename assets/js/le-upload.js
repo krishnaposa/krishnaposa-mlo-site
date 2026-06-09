@@ -192,9 +192,26 @@
     });
   }
 
+  async function consumePendingFromHome() {
+    const raw = sessionStorage.getItem('lePending');
+    if (!raw) return;
+    sessionStorage.removeItem('lePending');
+    try {
+      const pending = JSON.parse(raw);
+      if (Date.now() - pending.ts > 10 * 60 * 1000) return;
+      const res = await fetch(pending.dataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], pending.name, { type: pending.type });
+      await handleUpload(pending.side || 'A', file);
+    } catch (err) {
+      console.warn('Pending LE upload failed', err);
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     wireZone('A');
     wireZone('B');
+    consumePendingFromHome();
     $('compareBtn')?.addEventListener('click', runCompare);
     $('resetBtn')?.addEventListener('click', () => {
       ['formA', 'formB'].forEach((id) => $(id)?.reset());
