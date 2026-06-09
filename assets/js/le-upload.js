@@ -87,20 +87,20 @@
     const activeLabel = $('leModeActiveLabel');
     if (activeLabel) {
       activeLabel.innerHTML = isReview
-        ? '<strong>1 Loan Estimate</strong> — second opinion path. Upload yours, verify the numbers, submit — Krish prepares a competitive quote. <button type="button" class="le-switch-mode" data-switch="compare-two">Switch to 2-LE compare</button>'
+        ? '<strong>1 Loan Estimate</strong> — I\'ll compete. Upload yours, verify the numbers, submit — Krish prepares a competitive quote. <button type="button" class="le-switch-mode" data-switch="compare-two">Switch to 2-LE compare</button>'
         : '<strong>2 Loan Estimates</strong> — head-to-head compare. Upload both lenders, then run the comparison. <button type="button" class="le-switch-mode" data-switch="vs-ours">Switch to 1-LE review</button>';
     }
 
     if ($('leHeroTitle')) {
       $('leHeroTitle').textContent = isReview
-        ? 'Second Opinion — One Loan Estimate'
+        ? 'Send Your LE — I\'ll Compete'
         : 'Compare Two Loan Estimates';
     }
 
     const heroLead = $('leHeroLead');
     if (heroLead) {
       heroLead.textContent = isReview
-        ? 'Upload the Loan Estimate you already have. We extract the numbers so you can confirm them, then save your file for review. Krish will follow up with a competitive Loan Estimate.'
+        ? 'Send the Loan Estimate you already have. We extract the numbers so you can confirm them, then save your file for review. Krish will follow up with a competitive quote — I\'ll compete.'
         : 'Upload both Loan Estimate PDFs or photos. Fix any OCR numbers, then compare monthly payment, cash to close, and 5-year cost instantly.';
     }
 

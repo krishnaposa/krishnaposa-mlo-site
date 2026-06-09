@@ -68,7 +68,7 @@ Do not change the recommended product. End with one caution about PMI, rate chan
         high: rates.high,
         asOf: 'Educational baseline — not a live market feed'
       },
-      nextSteps: 'Next: upload an existing Loan Estimate for a second opinion, book a quick call, or start a full application to lock pricing after verification.'
+      nextSteps: 'Next: send your existing Loan Estimate — I\'ll compete, book a quick call, or start a full application to lock pricing after verification.'
     });
   } catch (err) {
     context.log.error(err);
