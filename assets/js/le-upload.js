@@ -15,6 +15,7 @@
 
   let currentMode = MODE.COMPARE_TWO;
   let lastUploadMeta = { fileName: '', lenderName: '' };
+  let lastExtractedText = '';
 
   const LABELS = {
     [MODE.VS_OURS]: { a: 'Your current quote', b: 'Our quote' },
@@ -191,17 +192,105 @@
     return text;
   }
 
-  async function pdfFirstPageImage(file) {
-    const pdfjsLib = initPdfJs();
-    if (!pdfjsLib) return '';
-    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 2 });
+  async function pdfPageToCanvas(pdf, pageNum, scale) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
     canvas.height = viewport.height;
     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    return canvas.toDataURL('image/jpeg', 0.9).split(',')[1] || '';
+    return canvas;
+  }
+
+  async function pdfToCompositeImage(file, maxPages = 2) {
+    const pdfjsLib = initPdfJs();
+    if (!pdfjsLib) return '';
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const pages = Math.min(pdf.numPages, maxPages);
+    const scale = 1.75;
+    const canvases = [];
+    for (let p = 1; p <= pages; p++) canvases.push(await pdfPageToCanvas(pdf, p, scale));
+
+    const width = Math.max(...canvases.map((c) => c.width));
+    const height = canvases.reduce((sum, c) => sum + c.height, 0);
+    const out = document.createElement('canvas');
+    out.width = width;
+    out.height = height;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, width, height);
+    let y = 0;
+    canvases.forEach((c) => {
+      ctx.drawImage(c, 0, y);
+      y += c.height;
+    });
+    return out.toDataURL('image/jpeg', 0.82).split(',')[1] || '';
+  }
+
+  function compressImageBase64(base64, mimeType, maxWidth = 1400) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve({
+          base64: canvas.toDataURL('image/jpeg', 0.82).split(',')[1] || base64,
+          mimeType: 'image/jpeg'
+        });
+      };
+      img.onerror = () => resolve({ base64, mimeType });
+      img.src = `data:${mimeType || 'image/jpeg'};base64,${base64}`;
+    });
+  }
+
+  /** Browser-side regex fallback (matches server le-parse.js) */
+  function parseTextLocally(text) {
+    const t = String(text || '');
+    const grab = (patterns) => {
+      for (const re of patterns) {
+        const m = t.match(re);
+        if (m) return parseFloat(m[1].replace(/[,$]/g, ''));
+      }
+      return 0;
+    };
+    const rate = grab([/Interest Rate\s*([\d.]+)\s*%/i, /Rate\s*([\d.]+)\s*%/i]);
+    const amount = grab([
+      /Loan Amount\s*\$?\s*([\d,]+(?:\.\d{2})?)/i,
+      /Amount Financed\s*\$?\s*([\d,]+(?:\.\d{2})?)/i
+    ]);
+    const monthlyPI = grab([/Principal & Interest\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]);
+    const totalMonthly = grab([/Estimated Total Monthly Payment\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]);
+    const sectionA = grab([/A\. Origination Charges\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]);
+    const sectionB = grab([/B\. Services You Cannot Shop For\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]);
+    const sectionC = grab([/C\. Services You Can Shop For\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]);
+    const sectionE = grab([/E\. Taxes and Other Government Fees\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]);
+    const sectionF = grab([/F\. Prepaids\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]);
+    const sectionG = grab([/G\. Initial Escrow Payment at Closing\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]);
+    const taxesIns = totalMonthly && monthlyPI ? Math.max(0, totalMonthly - monthlyPI) : 0;
+    return {
+      lender_name: null,
+      amount,
+      rate,
+      term: /15[\s-]*Year|15\s*yr/i.test(t) ? 15 : 30,
+      points: 0,
+      lender_fees: sectionA,
+      credits: 0,
+      shop_total: sectionC,
+      other_3p: sectionB + sectionE,
+      prepaids: sectionF + sectionG,
+      taxes_ins: taxesIns,
+      pmi: 0,
+      down: grab([/Down Payment\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]),
+      confidence: amount && rate ? 'low' : 'low',
+      notes: 'Parsed locally from PDF text. Please verify all fields.'
+    };
+  }
+
+  function fieldsUsable(fields) {
+    return fields && (Number(fields.amount) > 0 || Number(fields.rate) > 0);
   }
 
   async function readFileContent(file) {
@@ -211,14 +300,24 @@
 
     if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
       text = await extractPdfText(file);
-      if (text.trim().length < 200) {
-        imageBase64 = await pdfFirstPageImage(file);
+      lastExtractedText = text;
+      try {
+        imageBase64 = await pdfToCompositeImage(file, 2);
         mimeType = 'image/jpeg';
+      } catch (e) {
+        console.warn('PDF rasterize failed', e);
       }
     } else if (file.type.startsWith('image/')) {
       imageBase64 = await fileToBase64(file);
+      lastExtractedText = '';
     } else {
       throw new Error('Upload a PDF or image (JPG, PNG)');
+    }
+
+    if (imageBase64) {
+      const compressed = await compressImageBase64(imageBase64, mimeType);
+      imageBase64 = compressed.base64;
+      mimeType = compressed.mimeType;
     }
     return { text, imageBase64, mimeType };
   }
@@ -352,9 +451,30 @@
     if (label) label.textContent = 'Reading ' + file.name + '…';
 
     try {
-      const { fields } = await ocrLoanEstimate(file);
+      let fields;
+      try {
+        ({ fields } = await ocrLoanEstimate(file));
+      } catch (ocrErr) {
+        const local = parseTextLocally(lastExtractedText);
+        if (fieldsUsable(local)) {
+          fields = local;
+          fields.notes = (local.notes || '') + ' Server OCR unavailable — verify every field.';
+        } else {
+          throw ocrErr;
+        }
+      }
+
       fillForm(side.toLowerCase(), fields);
-      if (label) label.textContent = file.name + ' ✓';
+      const needsManual = !fieldsUsable(fields);
+      const partial = needsManual || fields.confidence === 'low' || (fields.notes && /verify|manually|automatic read/i.test(fields.notes));
+      if (label) {
+        label.textContent = needsManual
+          ? file.name + ' — enter numbers below'
+          : partial ? file.name + ' ✓ (verify fields)' : file.name + ' ✓';
+      }
+      if (needsManual) {
+        alert('We could not auto-read every number from this file. Please type your Loan Estimate values into the form below, then submit for review.');
+      }
 
       if (side === 'A') {
         lastUploadMeta = {
@@ -366,13 +486,33 @@
       if (currentMode === MODE.VS_OURS && side === 'A') {
         showReviewPanel();
       }
+      if (partial) {
+        ($('leWorkflow') || $('le-upload-section'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     } catch (err) {
       const msg = String(err.message || '');
+      const local = parseTextLocally(lastExtractedText);
+      if (fieldsUsable(local)) {
+        fillForm(side.toLowerCase(), local);
+        if (label) label.textContent = file.name + ' ✓ (enter missing fields)';
+        if (side === 'A') {
+          lastUploadMeta = { fileName: file.name, lenderName: local.lender_name || '' };
+        }
+        if (currentMode === MODE.VS_OURS && side === 'A') showReviewPanel();
+        ($('leWorkflow') || $('le-upload-section'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        alert('We could only read part of your file. The form is pre-filled where possible — please enter or fix any missing numbers, then submit.');
+        return;
+      }
       const friendly = /failed to fetch|networkerror|load failed/i.test(msg)
-        ? 'Upload could not reach the server. Refresh and try again, or use manual entry below.'
-        : (msg || 'Could not read Loan Estimate');
-      if (label) label.textContent = 'Upload failed — try again';
-      alert(friendly + '\n\nTip: Text-based PDFs work best. Photos need a clear image of pages 1–2.');
+        ? 'Upload could not reach the server. Refresh and try again.'
+        : /text-based pdf|could not read/i.test(msg)
+          ? 'Automatic read did not work for this file. You can still type your LE numbers into the form below — no need to re-upload.'
+          : (msg || 'Could not read Loan Estimate');
+      if (label) label.textContent = 'Upload failed — enter numbers manually';
+      showWorkflow(true);
+      if (currentMode === MODE.VS_OURS && side === 'A') showReviewPanel();
+      ($('le-upload-section') || $('leWorkflow'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      alert(friendly);
     } finally {
       if (zone) zone.classList.remove('le-upload-zone--loading');
     }

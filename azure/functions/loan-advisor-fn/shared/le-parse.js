@@ -138,7 +138,7 @@ async function parseWithAi({ text, imageBase64, mimeType }) {
   if (imageBase64 && mimeType) {
     userParts.push({
       type: 'image_url',
-      image_url: { url: `data:${mimeType};base64,${imageBase64}` }
+      image_url: { url: `data:${mimeType};base64,${imageBase64}`, detail: 'high' }
     });
   }
 
@@ -154,29 +154,56 @@ async function parseWithAi({ text, imageBase64, mimeType }) {
   }
 }
 
+function emptyManualFields(note) {
+  return normalizeFields({
+    lender_name: null,
+    amount: 0,
+    rate: 0,
+    term: 30,
+    points: 0,
+    lender_fees: 0,
+    credits: 0,
+    shop_total: 0,
+    other_3p: 0,
+    prepaids: 0,
+    taxes_ins: 0,
+    pmi: 0,
+    down: 0,
+    confidence: 'low',
+    notes: note || 'Enter your Loan Estimate numbers manually in the form.'
+  });
+}
+
+function fieldsUsable(fields) {
+  return fields && (Number(fields.amount) > 0 || Number(fields.rate) > 0);
+}
+
 async function parseLoanEstimate({ text, imageBase64, mimeType }) {
   const hasText = text && text.length > 40;
   const hasImage = Boolean(imageBase64);
 
   if (hasText) {
     const quick = parseLoanEstimateText(text);
-    if (quick.amount && quick.rate) return quick;
+    if (fieldsUsable(quick)) return quick;
   }
 
   if (hasImage || (text && text.length > 80)) {
     try {
-      return await parseWithAi({ text, imageBase64, mimeType });
+      const ai = await parseWithAi({ text, imageBase64, mimeType });
+      if (fieldsUsable(ai)) return ai;
     } catch (err) {
       console.error('AI LE parse failed', err);
-      if (hasText) return parseLoanEstimateText(text);
     }
   }
 
-  if (hasText) return parseLoanEstimateText(text);
+  if (hasText) {
+    const fallback = parseLoanEstimateText(text);
+    if (fieldsUsable(fallback)) return fallback;
+  }
 
-  if (hasImage) {
-    throw new Error(
-      'Could not read this file automatically. Try a clearer photo, a text-based PDF, or enter numbers manually on the compare page.'
+  if (hasImage || hasText) {
+    return emptyManualFields(
+      'Automatic read could not extract all numbers. Please type your Loan Estimate values into the form — loan amount, rate, fees, and cash to close.'
     );
   }
   throw new Error('No readable text or image provided');
