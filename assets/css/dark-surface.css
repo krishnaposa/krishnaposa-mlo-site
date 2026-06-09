@@ -57,9 +57,52 @@
 /* ---------- Cards / containers ---------- */
 .dark-surface .tool-card,
 .dark-surface .card{
-  background:var(--kp-card);
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
   border:1px solid var(--kp-border);
-  box-shadow:none;
+  border-radius:14px;
+  box-shadow:0 12px 32px rgba(0,0,0,.22);
+}
+.dark-surface .tool-card{
+  padding:22px;
+  border-color:rgba(56,189,248,.2);
+}
+.dark-surface .tool-card h3{
+  color:var(--kp-text);
+  font-size:1rem;
+  margin:1rem 0 .5rem;
+}
+.dark-surface .result-wrap h2{ color:var(--kp-text); font-size:1.25rem; }
+.dark-surface .disclosure{ color:var(--kp-muted); }
+.dark-surface .error-box{
+  display:none;
+  background:rgba(127,29,29,.25);
+  border:1px solid rgba(248,113,113,.35);
+  color:#fecaca;
+  padding:10px 12px;
+  border-radius:10px;
+}
+.dark-surface .metric{
+  background:var(--kp-card-soft);
+  border:1px solid var(--kp-border);
+  border-radius:10px;
+  padding:10px;
+}
+.dark-surface .metric strong{ color:var(--kp-muted); }
+.dark-surface .metric span{ color:var(--kp-text); }
+.dark-surface .verdict-go{ background:rgba(22,101,52,.35); color:#86efac; }
+.dark-surface .verdict-maybe{ background:rgba(133,77,14,.3); color:#fde047; }
+.dark-surface .verdict-hold{ background:rgba(55,48,163,.3); color:#c7d2fe; }
+.dark-surface .verdict-no{ background:rgba(127,29,29,.35); color:#fca5a5; }
+.dark-surface #watchMsg{
+  background:rgba(6,78,59,.35);
+  border:1px solid rgba(52,211,153,.35);
+  color:#a7f3d0;
+}
+.dark-surface .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.dark-surface .grid-3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+@media (max-width:768px){
+  .dark-surface .grid-2,
+  .dark-surface .grid-3{ grid-template-columns:1fr; }
 }
 
 /* ---------- Buttons ---------- */
@@ -82,10 +125,13 @@
 }
 
 /* ---------- Fields (inputs/selects/textarea) ---------- */
+.dark-surface .field{ margin-bottom:.5rem; }
 .dark-surface .field label{
   color:var(--kp-muted);
   font-size:.9rem;
   font-weight:600;
+  display:block;
+  margin:6px 0;
 }
 
 .dark-surface .field input,

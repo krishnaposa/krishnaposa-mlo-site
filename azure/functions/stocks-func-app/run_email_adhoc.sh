@@ -17,16 +17,46 @@ fi
 # Email settings. Use a Gmail app password, not your normal Gmail password.
 export SEND_EMAIL="1"
 export EMAIL_FROM="krishna.posa@gmail.com"
-export EMAIL_PASSWORD="${EMAIL_PASSWORD:-<gmail-app-password>}"
+export EMAIL_PASSWORD="ivwy ubxh jzjd atmr"
 export EMAIL_TO="krishnaposa@gmail.com"
 export EMAIL_SUBJECT_PREFIX="Adhoc Stock Picks"
 
 # Required for universe/local-list Blob access.
 export MONITOR_STORAGE="${MONITOR_STORAGE:-<azure-storage-connection-string>}"
 
+# --- Momentum portfolio (trailing stop; email section) ---
+# Persists to blob momentum_portfolio.json (override container/name if needed).
+export MOMENTUM_PORTFOLIO_ENABLED="${MOMENTUM_PORTFOLIO_ENABLED:-1}"
+export MOMENTUM_FINVIZ_URL="${MOMENTUM_FINVIZ_URL:-https://finviz.com/screener.ashx?v=111&f=cap_midover,sh_price_o5,ta_highlow52w_nh&ft=3}"
+# Used when the URL has no &o= sort param (yfinance/Finviz screener order).
+export MOMENTUM_FINVIZ_SORT="${MOMENTUM_FINVIZ_SORT:--marketcap}"
+export MOMENTUM_PORTFOLIO_SIZE="${MOMENTUM_PORTFOLIO_SIZE:-20}"
+export MOMENTUM_TRAILING_STOP_PCT="${MOMENTUM_TRAILING_STOP_PCT:-0.15}"
+# After successful blob save, also write ./momentum_portfolio.json (handy for local).
+export MOMENTUM_PORTFOLIO_MIRROR_LOCAL="${MOMENTUM_PORTFOLIO_MIRROR_LOCAL:-1}"
+
+# Holdings list: trailing stop; state in holdings_trailing_state.json.
+# holdings_list.json is NOT auto-edited on exit (you remove tickers manually). Set to 1 to auto-drop exits from the blob:
+export HOLDINGS_LIST_REMOVE_ON_EXIT="${HOLDINGS_LIST_REMOVE_ON_EXIT:-0}"
+export HOLDINGS_TRAILING_EXITS_ENABLED="${HOLDINGS_TRAILING_EXITS_ENABLED:-1}"
+
+# PCS funnel (pie_analyze_swing) — same table as local pie_analyze_swing.py
+export PCS_OPPORTUNITIES_ENABLED="${PCS_OPPORTUNITIES_ENABLED:-1}"
+export PIE_TICKERS_FILE="${PIE_TICKERS_FILE:-/c/pers/krishnaposa-mlo-site/scripts/stocks/my_tickers.txt}"
+export PIE_MIN_GRADE="${PIE_MIN_GRADE:-B}"
+export PIE_TARGET_DTE="${PIE_TARGET_DTE:-35}"
+export PIE_OTM_PCT="${PIE_OTM_PCT:-0.06}"
+export PIE_SPREAD_WIDTH_PCT="${PIE_SPREAD_WIDTH_PCT:-0.03}"
+export PIE_MAX_PCS_CANDIDATES="${PIE_MAX_PCS_CANDIDATES:-12}"
+
+# Open PCS/swing positions lifecycle (pie_analyze_swing --review)
+export PCS_LIFECYCLE_ENABLED="${PCS_LIFECYCLE_ENABLED:-1}"
+export PCS_POSITIONS_FILE="${PCS_POSITIONS_FILE:-/c/pers/krishnaposa-mlo-site/scripts/stocks/positions.json}"
+
 # Optional wheel strategy knobs.
 export WHEEL_ENABLED="1"
-export WHEEL_DEBUG="1"
+# WHEEL_DEBUG=1 prints extra wheel/Finviz pipeline INFO — noisy for adhoc email runs.
+export WHEEL_DEBUG="${WHEEL_DEBUG:-0}"
 export WHEEL_INCLUDE_FINVIZ="1"
 export WHEEL_FINVIZ_TOPN="25"
 export WHEEL_USE_EQUITY_FILTERS="0"
@@ -52,5 +82,9 @@ export WHEEL_MIN_MARKET_CAP="10000000000"
 export WHEEL_MAX_RSI="70"
 export EARNINGS_BLOCK_DAYS="45"
 export WHEEL_BLOCK_EARNINGS="1"
+
+# Quieter console: uncomment to hide most monitor INFO (ERROR/CRITICAL still show; logger.WARNING is dropped by run_daily_monitor unless DAILY_MONITOR_SHOW_WARNINGS=1).
+# export DAILY_MONITOR_LOG_LEVEL=WARNING
+# To show logger.WARNING lines again: export DAILY_MONITOR_SHOW_WARNINGS=1
 
 python run_daily_monitor.py

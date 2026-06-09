@@ -30,8 +30,8 @@
     submitBtn.textContent = 'Working…';
 
     try {
-      // IMPORTANT: replace with your deployed serverless endpoint
-      const API_URL = 'https://loan-advisor.krishna-posa.workers.dev';
+      const base = (window.LoanApi && window.LoanApi.base) || '/api';
+      const API_URL = base.endsWith('/loanAdvisor') ? base : base.replace(/\/$/, '') + '/loanAdvisor';
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

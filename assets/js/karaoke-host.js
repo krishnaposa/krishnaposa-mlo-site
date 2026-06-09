@@ -25,14 +25,108 @@
     const vocalsEl = document.getElementById("vocalsEl");
     const listenerUrlEl = document.getElementById("listenerUrl");
     const refreshBtn = document.getElementById("refreshList");
+    const clearFiltersBtn = document.getElementById("clearFilters");
+    const filterSearchEl = document.getElementById("filterSearch");
+    const filterMovieEl = document.getElementById("filterMovie");
+    const filterSingerEl = document.getElementById("filterSinger");
     const publishBtn = document.getElementById("publishNow");
+    const hostLyricsPlain = document.getElementById("hostLyricsPlain");
+    const hostLyricsSynced = document.getElementById("hostLyricsSynced");
 
-    const PB = K.initPlaybackControls();
+    const isPhone = typeof K.isCoarseMobile === "function" && K.isCoarseMobile();
+    if (isPhone) {
+      document.documentElement.classList.add("karaoke-mobile-host");
+      const mobNotice = document.getElementById("hostMobileNotice");
+      if (mobNotice) mobNotice.hidden = false;
+    }
+
+    const PB = K.initPlaybackControls({
+      autoInitDevices: !isPhone,
+      preferMobileMix: isPhone,
+    });
 
     let items = [];
     let current = null;
     let currentLyrics = { synced: false, lrc: "", text: "" };
     let timer = null;
+    let hostLrcCleanup = null;
+    let hostLrcParsed = [];
+
+    function stopHostLyricsSync() {
+      if (typeof hostLrcCleanup === "function") {
+        try {
+          hostLrcCleanup();
+        } catch (_) {
+          /* ignore */
+        }
+      }
+      hostLrcCleanup = null;
+      hostLrcParsed = [];
+    }
+
+    function renderHostLrcLines(container, lines) {
+      container.innerHTML = "";
+      lines.forEach((line, i) => {
+        const div = document.createElement("div");
+        div.className = "line";
+        div.dataset.idx = String(i);
+        div.textContent = line.text || " ";
+        container.appendChild(div);
+      });
+    }
+
+    function tickHostLyrics() {
+      if (!hostLrcParsed.length || !hostLyricsSynced || hostLyricsSynced.hidden || !vocalsEl) return;
+      const t = vocalsEl.currentTime || 0;
+      let idx = 0;
+      for (let i = 0; i < hostLrcParsed.length; i++) {
+        if (hostLrcParsed[i].t <= t) idx = i;
+        else break;
+      }
+      const els = hostLyricsSynced.querySelectorAll(".line");
+      els.forEach((el, i) => el.classList.toggle("active", i === idx));
+      const active = els[idx];
+      if (active && typeof active.scrollIntoView === "function") {
+        active.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function startHostLyricsSync(parsed) {
+      stopHostLyricsSync();
+      hostLrcParsed = parsed;
+      if (!vocalsEl || !parsed.length) return;
+      function tick() {
+        tickHostLyrics();
+      }
+      vocalsEl.addEventListener("timeupdate", tick);
+      vocalsEl.addEventListener("seeked", tick);
+      hostLrcCleanup = function () {
+        vocalsEl.removeEventListener("timeupdate", tick);
+        vocalsEl.removeEventListener("seeked", tick);
+      };
+      tick();
+    }
+
+    function applyHostLyricsUI() {
+      if (!hostLyricsPlain || !hostLyricsSynced) return;
+      const hasLrc = currentLyrics.synced && String(currentLyrics.lrc || "").trim();
+      if (hasLrc) {
+        const parsed = K.parseLRC(currentLyrics.lrc);
+        if (parsed.length) {
+          hostLyricsPlain.hidden = true;
+          hostLyricsSynced.hidden = false;
+          renderHostLrcLines(hostLyricsSynced, parsed);
+          startHostLyricsSync(parsed);
+          return;
+        }
+      }
+      stopHostLyricsSync();
+      hostLyricsSynced.hidden = true;
+      hostLyricsSynced.innerHTML = "";
+      hostLyricsPlain.hidden = false;
+      const plain = String(currentLyrics.text || "").trim();
+      hostLyricsPlain.textContent = plain ? plain : "—";
+    }
 
     function apiOrigin() {
       try {
@@ -65,23 +159,63 @@
       return s.replace(/\s{2,}/g, " ").trim();
     }
 
+    function singerLabel(item) {
+      const singers = Array.isArray(item && item.singers)
+        ? item.singers.map((x) => String(x || "").trim()).filter(Boolean)
+        : [];
+      if (singers.length) return singers.join(", ");
+      return (item && item.artist && String(item.artist).trim()) || "";
+    }
+
     function buildSongDisplayLabel(item) {
       const title = normalizeHumanTitle((item && item.title) || "");
-      const artist = (item && item.artist && String(item.artist).trim()) || "";
       const movie = (item && item.movie && String(item.movie).trim()) || "";
-      const language = (item && item.language && String(item.language).trim()) || "";
-      const category = (item && item.category && String(item.category).trim()) || "";
-      const tags = Array.isArray(item && item.tags)
-        ? item.tags.slice(0, 2).map((x) => String(x || "").trim()).filter(Boolean)
-        : [];
+      const singer = singerLabel(item);
       const primary = title || item.job_id;
       const meta = [];
-      if (artist) meta.push(artist);
       if (movie) meta.push(movie);
-      if (language) meta.push(language);
-      if (category) meta.push(category);
-      if (tags.length) meta.push(tags.join(", "));
+      if (singer) meta.push(singer);
       return meta.length ? primary + " — " + meta.join(" | ") : primary;
+    }
+
+    function buildListUrl() {
+      const url = new URL(endpoints.list);
+      const setIf = (key, el) => {
+        const v = el && String(el.value || "").trim();
+        if (v) url.searchParams.set(key, v);
+        else url.searchParams.delete(key);
+      };
+      setIf("q", filterSearchEl);
+      setIf("movie", filterMovieEl);
+      setIf("singer", filterSingerEl);
+      return url.toString();
+    }
+
+    function populateSongPick(list) {
+      const prev = songPickEl ? songPickEl.value : "";
+      if (!songPickEl) return;
+      songPickEl.innerHTML = "";
+      const ph = document.createElement("option");
+      ph.value = "";
+      ph.textContent = list.length ? "Select a song..." : "No songs match filters";
+      songPickEl.appendChild(ph);
+      list.forEach((it) => {
+        const o = document.createElement("option");
+        o.value = it.job_id;
+        const labelBase = buildSongDisplayLabel(it);
+        const dup = list.filter((x) => buildSongDisplayLabel(x) === labelBase).length;
+        o.textContent = dup > 1 ? labelBase + " [" + it.job_id + "]" : labelBase;
+        songPickEl.appendChild(o);
+      });
+      if (prev && list.some((x) => x.job_id === prev)) {
+        songPickEl.value = prev;
+      } else if (list.length === 1) {
+        songPickEl.value = list[0].job_id;
+        songPickEl.dispatchEvent(new Event("change"));
+      } else if (prev && !list.some((x) => x.job_id === prev)) {
+        songPickEl.value = "";
+        songPickEl.dispatchEvent(new Event("change"));
+      }
     }
 
     function setStatus(t) {
@@ -107,36 +241,53 @@
 
     async function loadSongs() {
       setStatus("Loading songs...");
-      const r = await fetch(endpoints.list, { mode: "cors" });
+      const r = await fetch(buildListUrl(), { mode: "cors" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
       const d = await r.json();
       items = Array.isArray(d.items) ? d.items : [];
-      songPickEl.innerHTML = "";
-      const ph = document.createElement("option");
-      ph.value = "";
-      ph.textContent = items.length ? "Select a song..." : "No completed songs";
-      songPickEl.appendChild(ph);
-      items.forEach((it) => {
-        const o = document.createElement("option");
-        o.value = it.job_id;
-        const labelBase = buildSongDisplayLabel(it);
-        const dup = items.filter((x) => buildSongDisplayLabel(x) === labelBase).length;
-        o.textContent = dup > 1 ? labelBase + " [" + it.job_id + "]" : labelBase;
-        songPickEl.appendChild(o);
-      });
-      listenerUrlEl.value = listenerUrl();
-      setStatus(items.length ? "Loaded " + items.length + " song(s)." : "No songs found.");
+      populateSongPick(items);
+      if (listenerUrlEl) listenerUrlEl.value = listenerUrl();
+      const q = filterSearchEl && filterSearchEl.value.trim();
+      const mov = filterMovieEl && filterMovieEl.value.trim();
+      const sing = filterSingerEl && filterSingerEl.value.trim();
+      const filt =
+        q || mov || sing
+          ? " (filters: " +
+            [
+              q ? "search=" + q : "",
+              mov ? "movie=" + mov : "",
+              sing ? "singer=" + sing : "",
+            ]
+              .filter(Boolean)
+              .join(", ") +
+            ")"
+          : "";
+      setStatus(
+        items.length
+          ? "Loaded " + items.length + " song(s)." + filt
+          : "No songs match" + (filt || " — try clearing filters.")
+      );
     }
 
     async function loadLyrics(jobId) {
-      const u = new URL(endpoints.lyrics);
-      u.searchParams.set("job_id", jobId);
-      const r = await fetch(u.toString(), { mode: "cors" });
-      const d = await r.json();
-      currentLyrics = {
-        synced: !!d.synced,
-        lrc: d.lrc || "",
-        text: d.text || "",
-      };
+      currentLyrics = { synced: false, lrc: "", text: "" };
+      applyHostLyricsUI();
+      try {
+        const u = new URL(endpoints.lyrics);
+        u.searchParams.set("job_id", jobId);
+        const r = await fetch(u.toString(), { mode: "cors" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const d = await r.json();
+        currentLyrics = {
+          synced: !!d.synced,
+          lrc: d.lrc || "",
+          text: d.text || "",
+        };
+      } catch (e) {
+        console.warn("loadLyrics", e);
+        currentLyrics = { synced: false, lrc: "", text: "" };
+      }
+      applyHostLyricsUI();
     }
 
     async function publishSession() {
@@ -167,6 +318,16 @@
       const id = songPickEl.value;
       current = items.find((x) => x.job_id === id) || null;
       if (!current) {
+        stopHostLyricsSync();
+        currentLyrics = { synced: false, lrc: "", text: "" };
+        if (hostLyricsPlain) {
+          hostLyricsPlain.hidden = false;
+          hostLyricsPlain.textContent = "—";
+        }
+        if (hostLyricsSynced) {
+          hostLyricsSynced.hidden = true;
+          hostLyricsSynced.innerHTML = "";
+        }
         PB.setSources("", "");
         setStatus("");
         return;
@@ -182,6 +343,25 @@
 
     refreshBtn.addEventListener("click", function () {
       loadSongs().catch((e) => setStatus(String(e)));
+    });
+    if (clearFiltersBtn) {
+      clearFiltersBtn.addEventListener("click", function () {
+        if (filterSearchEl) filterSearchEl.value = "";
+        if (filterMovieEl) filterMovieEl.value = "";
+        if (filterSingerEl) filterSingerEl.value = "";
+        loadSongs().catch((e) => setStatus(String(e)));
+      });
+    }
+    let filterTimer = null;
+    function scheduleFilterReload() {
+      if (filterTimer) clearTimeout(filterTimer);
+      filterTimer = setTimeout(function () {
+        loadSongs().catch((e) => setStatus(String(e)));
+      }, 350);
+    }
+    [filterSearchEl, filterMovieEl, filterSingerEl].forEach(function (el) {
+      el &&
+        el.addEventListener("input", scheduleFilterReload);
     });
     publishBtn.addEventListener("click", function () {
       publishSession().then(() => setStatus("Published.")).catch((e) => setStatus(String(e)));

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-KJZPQKBM');</script>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5fff">
+
+  <title>Refinance Monitor | Rate Check &amp; Alerts | Krish Posa, MLO</title>
+  <meta name="description" content="Check whether refinancing makes sense for your mortgage. Compare your rate to estimated market rates, break-even, and optional email alerts. Educational only.">
+  <link rel="canonical" href="https://www.krishposa.com/refi-monitor.html">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Refinance Monitor | Krish Posa, MLO">
+  <meta property="og:description" content="See if refinancing may be worth it — rate comparison, break-even, and plain-English guidance.">
+  <meta property="og:url" content="https://www.krishposa.com/refi-monitor.html">
+  <meta property="og:image" content="https://www.krishposa.com/assets/img/headshot.jpg">
+
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
+  <link rel="icon" href="https://www.krishposa.com/assets/img/favicon.png" type="image/png">
+  <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
+
+  <style>
+    .verdict-badge { display:inline-block; padding:.35rem .75rem; border-radius:999px; font-weight:700; font-size:.95rem; margin-bottom:.75rem; }
+    .metric-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:1rem 0; }
+    @media (max-width: 640px) { .metric-grid { grid-template-columns:1fr 1fr; } }
+    .cta-row { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:1rem; }
+    #preview, #watchMsg { display:none; margin-top:10px; font-size:.9rem; }
+  </style>
+</head>
+<body class="dark-surface">
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+
+  <div id="header"></div>
+  <script defer src="https://www.krishposa.com/assets/js/header.js?v=final1"></script>
+
+  <main>
+    <section class="page-hero">
+      <div class="container">
+        <h1>Refinance Monitor <span class="label-ai">AI</span></h1>
+        <p class="small">Compare your current mortgage to estimated market rates. See break-even math and whether refinancing may be worth a conversation — not a loan offer.</p>
+      </div>
+    </section>
+
+    <section class="content">
+      <div class="container">
+        <div class="tool-card">
+          <form id="refi-form" novalidate>
+            <p class="helper">Your profile is saved on this device. Optional email alerts when rates make refinancing look favorable.</p>
+
+            <h3 style="margin:1rem 0 .5rem">Current loan</h3>
+            <div class="grid-3">
+              <div class="field">
+                <label for="homeValue">Home Value</label>
+                <input id="homeValue" name="homeValue" type="number" min="50000" step="1000" placeholder="450000" required>
+              </div>
+              <div class="field">
+                <label for="loanBalance">Current Loan Balance</label>
+                <input id="loanBalance" name="loanBalance" type="number" min="20000" step="1000" placeholder="320000" required>
+              </div>
+              <div class="field">
+                <label for="currentRate">Current Rate (%)</label>
+                <input id="currentRate" name="currentRate" inputmode="decimal" placeholder="7.25" required>
+              </div>
+            </div>
+            <div class="grid-3">
+              <div class="field">
+                <label for="yearsRemaining">Years Remaining on Loan</label>
+                <input id="yearsRemaining" name="yearsRemaining" type="number" min="1" max="40" step="1" placeholder="27" required>
+              </div>
+              <div class="field">
+                <label for="refiCosts">Est. Refi Closing Costs</label>
+                <input id="refiCosts" name="refiCosts" type="number" min="0" step="100" placeholder="6000">
+              </div>
+              <div class="field">
+                <label for="stayYears">Plan to Keep Home (years)</label>
+                <input id="stayYears" name="stayYears" type="number" min="1" max="40" step="1" value="5" required>
+              </div>
+            </div>
+
+            <h3 style="margin:1rem 0 .5rem">New loan profile (for market rate estimate)</h3>
+            <div class="grid-3">
+              <div class="field">
+                <label for="state">State</label>
+                <input id="state" name="state" placeholder="GA" value="GA" required>
+              </div>
+              <div class="field">
+                <label for="occupancy">Occupancy</label>
+                <select id="occupancy" name="occupancy" required>
+                  <option>Primary Residence</option>
+                  <option>Second Home</option>
+                  <option>Investment</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="propertyType">Property Type</label>
+                <select id="propertyType" name="propertyType" required>
+                  <option>Single Family</option>
+                  <option>Townhome</option>
+                  <option>Condo</option>
+                  <option>Multi-Unit (2–4)</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid-3">
+              <div class="field">
+                <label for="fico">Credit Score</label>
+                <select id="fico" name="fico" required>
+                  <option value="780+">780+</option>
+                  <option value="760-779">760-779</option>
+                  <option value="740-759" selected>740-759</option>
+                  <option value="720-739">720-739</option>
+                  <option value="700-719">700-719</option>
+                  <option value="680-699">680-699</option>
+                  <option value="660-679">660-679</option>
+                  <option value="640-659">640-659</option>
+                  <option value="620-639">620-639</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="dti">Estimated DTI (%)</label>
+                <input id="dti" name="dti" type="number" min="1" max="65" value="36" required>
+              </div>
+              <div class="field">
+                <label for="term">New Loan Term</label>
+                <select id="term" name="term" required>
+                  <option selected>30 Year Fixed</option>
+                  <option>20 Year Fixed</option>
+                  <option>15 Year Fixed</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="veteran">VA eligible?</label>
+                <select id="veteran" name="veteran">
+                  <option>No</option>
+                  <option>Yes</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="purpose">Purpose</label>
+                <select id="purpose" name="purpose">
+                  <option selected>Rate/Term Refinance</option>
+                  <option>Cash-out Refinance</option>
+                </select>
+              </div>
+            </div>
+
+            <h3 style="margin:1rem 0 .5rem">Alerts (optional)</h3>
+            <div class="field">
+              <label for="email">Email for rate alerts</label>
+              <input id="email" name="email" type="email" placeholder="you@example.com" autocomplete="email">
+            </div>
+
+            <div class="field" style="margin-top:.75rem">
+              <label><input type="checkbox" id="consent" required> I agree this tool is educational only and not a credit decision or loan offer.</label>
+            </div>
+
+            <div class="cta-row">
+              <button class="btn btn-blue" type="button" id="checkBtn">Check Now</button>
+              <button class="btn-outline" type="button" id="watchBtn">Email Me When It Makes Sense</button>
+              <button class="btn-outline" type="button" id="saveBtn">Save Profile</button>
+            </div>
+            <div class="error-box" id="err"></div>
+            <p id="preview"></p>
+            <p id="watchMsg"></p>
+          </form>
+
+          <div class="result-wrap tool-card" id="result">
+            <div id="verdictBadge" class="verdict-badge verdict-hold">—</div>
+            <p id="resultSummary" style="font-size:1.05rem;margin:0 0 .5rem"></p>
+            <p class="muted" id="checkedAt"></p>
+            <div class="metric-grid" id="metricGrid"></div>
+            <ul id="bulletList" style="margin:.75rem 0;padding-left:1.25rem"></ul>
+            <div id="explanation"></div>
+            <p class="disclosure">
+              Not a commitment to lend. Rates are estimates based on profile inputs and baseline pricing — actual rate/APR depend on full underwriting. Equal Housing Lender.
+            </p>
+            <p class="muted" style="margin-top:10px">
+              <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book a Refi Review</a>
+              <a class="btn-outline" href="calculators.html">More Calculators</a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="sticky-cta" role="region" aria-label="Quick actions">
+      <a class="btn" href="tel:+16784818252">Call</a>
+      <a class="btn" href="sms:+16784818252">Text</a>
+      <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book</a>
+    </div>
+  </main>
+
+  <div id="footer"></div>
+  <script src="https://www.krishposa.com/assets/js/footer.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/loan-api-config.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/refi-eval.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/refi-monitor.js"></script>
+</body>
+</html>

@@ -63,15 +63,58 @@ html, body { overflow-x: hidden; }
   backdrop-filter:saturate(180%) blur(10px);
   border-bottom:1px solid rgba(255,255,255,.06);
 }
-.topbar{ display:flex; align-items:center; justify-content:space-between; padding:14px 0; }
-.brand{ display:flex; align-items:center; gap:12px; min-width:0; }
+.topbar{
+  display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between;
+  gap:10px 16px; padding:14px 0;
+}
+.brand-col{
+  display:flex; flex-direction:row; align-items:center; gap:10px;
+  flex:1 1 auto; min-width:0; max-width:min(100%, 420px);
+}
 .logo{
   display:grid; place-items:center; width:42px; height:42px; border-radius:10px;
   background:linear-gradient(135deg,var(--accent),var(--brand));
   color:#001016; text-decoration:none; font-weight:700;
 }
-.brand-text h1{ font-size:1.1rem; margin:0; }
-.brand-text p{ margin:0; color:var(--muted); font-size:.9rem; }
+.logo.logo-img-wrap{
+  display:block; flex:0 0 auto; width:auto; height:auto;
+  padding:4px 6px; background:#fff; border-radius:8px;
+  line-height:0;
+}
+.logo-img{
+  display:block; height:34px; width:auto; max-width:128px; object-fit:contain;
+}
+.brand-text{ min-width:0; flex:1 1 auto; line-height:1.2; }
+.brand-text h1{ font-size:.95rem; margin:0; line-height:1.15; }
+.brand-text p{
+  margin:0; color:var(--muted); font-size:.72rem;
+  line-height:1.25;
+}
+.brand-text .brand-company{ margin-top:1px; }
+.brand-text .brand-sub{ font-size:.7rem; margin-top:1px; opacity:.9; }
+.site-header .nav{ flex:0 0 auto; margin-left:auto; }
+@media (max-width: 1023.98px){
+  .brand-col{ max-width:calc(100% - 52px); }
+  .logo-img{ height:30px; max-width:108px; }
+}
+@media (min-width: 1024px){
+  .topbar{
+    display:grid;
+    grid-template-columns:minmax(300px, 420px) minmax(0, 1fr);
+    grid-template-rows:auto;
+    align-items:center;
+    column-gap:20px;
+  }
+  .brand-col{
+    grid-column:1; grid-row:1;
+    max-width:none; flex:none;
+  }
+  .site-header .nav{
+    grid-column:2; grid-row:1;
+    margin-left:0; min-width:0; width:100%;
+    align-self:center; justify-self:stretch;
+  }
+}
 
 /* NAV */
 .nav{ min-width:0; }
@@ -116,21 +159,68 @@ html, body { overflow-x: hidden; }
    HERO + SECTIONS
 ============================= */
 .hero{
-  padding:64px 0;
+  padding:clamp(48px, 8vh, 72px) 0;
   background:
-    radial-gradient(1200px 400px at 10% 10%, rgba(56,189,248,.12), transparent 60%),
-    radial-gradient(1000px 400px at 90% 0%, rgba(96,165,250,.12), transparent 60%);
+    radial-gradient(1200px 400px at 10% 10%, rgba(56,189,248,.16), transparent 60%),
+    radial-gradient(1000px 400px at 90% 0%, rgba(34,197,94,.1), transparent 55%),
+    linear-gradient(180deg, rgba(11,95,255,.06), transparent 70%);
 }
 .hero-inner{ display:grid; grid-template-columns:1.2fr .8fr; gap:28px; align-items:center; }
-.hero-copy h1,.hero-copy h2{ font-size:clamp(24px, 4.5vw, 40px); line-height:1.2; }
-.hero-photo-card{
-  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-  border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px;
+.hero-eyebrow{
+  display:inline-block; margin:0 0 10px; padding:5px 12px;
+  font-size:.78rem; font-weight:600; letter-spacing:.03em; text-transform:uppercase;
+  color:#7dd3fc; background:rgba(11,95,255,.15); border:1px solid rgba(56,189,248,.25);
+  border-radius:999px;
 }
-.hero-photo-card img{ width:100%; height:auto; border-radius:10px; }
+.hero-copy h1,.hero-copy h2{ font-size:clamp(24px, 4.5vw, 40px); line-height:1.15; margin:0 0 12px; }
+.hero-copy > p{ font-size:1.05rem; color:#cbd5e1; max-width:52ch; }
+.hero-photo-card{
+  background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.1); border-radius:16px; padding:16px;
+  box-shadow:0 20px 40px rgba(0,0,0,.25);
+}
+.hero-photo-card img{
+  width:100%; height:auto; border-radius:12px;
+  box-shadow:0 8px 24px rgba(0,0,0,.2);
+}
+.trust{
+  display:flex; flex-wrap:wrap; gap:8px; list-style:none; padding:0; margin:14px 0 0;
+}
+.trust li{
+  font-size:.78rem; color:#94a3b8; padding:6px 10px;
+  background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
+  border-radius:8px;
+}
+.home-stats{ padding:0 0 28px; margin-top:-8px; }
+.stats-row{
+  display:grid; grid-template-columns:repeat(3, 1fr); gap:12px;
+}
+.stat-card{
+  text-align:center; padding:16px 12px;
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.08); border-radius:12px;
+}
+.stat-card strong{ display:block; font-size:1.1rem; color:var(--accent); margin-bottom:4px; }
+.stat-card span{ font-size:.82rem; color:var(--muted); }
 
 .benefits{ padding:40px 0; }
+.card-feature{ transition:transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
+.card-feature:hover{
+  transform:translateY(-3px);
+  border-color:rgba(56,189,248,.35);
+  box-shadow:0 12px 28px rgba(0,0,0,.2);
+}
+.card-icon{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:40px; height:40px; margin-bottom:10px; border-radius:10px;
+  background:rgba(11,95,255,.18); font-size:1.2rem;
+}
 .programs{ padding:36px 0; }
+.loans-advisor-hint{
+  margin-top:8px; padding-top:4px;
+  text-align:center;
+}
+.loans-advisor-hint .small{ margin:0; }
 .cta-banner{ padding:36px 0; }
 .cta-banner-inner{
   display:flex; align-items:center; justify-content:space-between;
@@ -163,7 +253,12 @@ html, body { overflow-x: hidden; }
 
 .about-wrap{ display:grid; grid-template-columns:220px 1fr; gap:20px; align-items:start; }
 .headshot{ width:100%; height:auto; border-radius:10px; border:1px solid rgba(255,255,255,.1); }
-.home-intro{ padding:20px 0; }
+.home-intro{ padding:28px 0 20px; }
+.home-intro p{ font-size:1.02rem; line-height:1.65; color:#cbd5e1; }
+.home-cta-banner .cta-banner-inner{
+  background:linear-gradient(135deg, rgba(11,95,255,.22), rgba(34,197,94,.12));
+  border:1px solid rgba(56,189,248,.25); border-radius:16px; padding:24px 28px;
+}
 .cta-row{ margin-top:8px; font-weight:600; }
 
 /* Tip box (Resources, Loans cross-link) */
@@ -216,20 +311,41 @@ html, body { overflow-x: hidden; }
 .site-footer{ border-top:1px solid rgba(255,255,255,.08); padding:24px 0; margin-top:40px; }
 .footer-grid{ display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:20px; }
 .social-icons{ display:flex; gap:10px; align-items:center; }
+.copyright{ margin:16px 0 0; text-align:center; color:var(--muted); font-size:.88rem; }
+.powered-by{
+  display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px;
+  margin-top:12px; padding-top:12px;
+  border-top:1px solid rgba(255,255,255,.06);
+  color:var(--muted); font-size:.82rem;
+}
+.powered-by-logo{
+  display:block; height:36px; width:auto; border-radius:6px;
+  background:#fff; padding:2px 4px;
+}
+.powered-by-name{ font-weight:600; color:rgba(232,238,247,.85); }
 
 /* =============================
    STICKY MOBILE CTA
 ============================= */
 .sticky-cta{
   position:sticky; bottom:0; z-index:20;
-  display:flex; gap:8px; justify-content:space-between;
+  display:flex; gap:10px; justify-content:center; align-items:center;
   padding:10px var(--pad);
   backdrop-filter:saturate(1.2) blur(6px);
-  background:rgba(17,24,39,.75);
+  background:rgba(17,24,39,.92);
   border-top:1px solid rgba(255,255,255,.08);
 }
+.sticky-cta .btn{
+  flex:0 1 140px; min-width:0 !important; max-width:160px;
+  display:inline-flex; align-items:center; justify-content:center;
+  text-align:center; padding:10px 14px;
+}
 @media (min-width:901px){
-  .sticky-cta{ position:static; backdrop-filter:none; background:transparent; border:0; padding:0; }
+  .sticky-cta{
+    position:static; backdrop-filter:none; background:transparent; border:0;
+    padding:20px var(--pad) 36px; justify-content:center;
+  }
+  .sticky-cta .btn{ flex:0 0 auto; min-width:120px !important; max-width:none; }
 }
 
 /* =============================
@@ -242,6 +358,7 @@ html, body { overflow-x: hidden; }
   .hero-inner{ grid-template-columns:1fr; gap:clamp(14px, 4vw, 28px); }
 
   .grid-3{ grid-template-columns:1fr; gap:12px; }
+  .stats-row{ grid-template-columns:1fr; }
   .grid-2{ grid-template-columns:1fr; gap:12px; }
 
   .cta-banner-inner{ flex-direction:column; gap:10px; align-items:flex-start; }
@@ -274,7 +391,7 @@ html, body { overflow-x: hidden; }
 }
 
 /* Safety: allow flex children to shrink, avoid overflow */
-.topbar, .brand, .nav, .nav .menu { min-width:0; }
+.topbar, .brand-col, .nav, .nav .menu { min-width:0; }
 
 /* Home hero CTAs wrap on narrow screens */
 .hero .cta{ display:flex; flex-wrap:wrap; gap:10px; }

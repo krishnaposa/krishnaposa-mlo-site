@@ -128,67 +128,6 @@ def _opt_table_html(rows: Optional[List[Dict]], max_rows: int = 40) -> str:
     return "".join(html)
 
 
-def _wheel_table_html(rows: Optional[List[Dict]], max_rows: int = 20) -> str:
-    if not rows:
-        return "<i>No wheel candidates</i>"
-
-    def _fmt_money(x):
-        try:
-            return f"${float(x):.2f}"
-        except Exception:
-            return "—"
-
-    def _fmt_pct(x):
-        try:
-            return f"{float(x)*100:.1f}%"
-        except Exception:
-            return "—"
-
-    def _fmt_num(x):
-        try:
-            return f"{float(x):.1f}"
-        except Exception:
-            return "—"
-
-    head = rows[:max_rows]
-    html = [
-        "<table border='0' cellspacing='0' cellpadding='4'>",
-        "<thead><tr>",
-        "<th align='left'>Ticker</th>",
-        "<th align='left'>Expiry</th>",
-        "<th align='right'>DTE</th>",
-        "<th align='right'>Spot</th>",
-        "<th align='right'>Put K</th>",
-        "<th align='right'>Credit</th>",
-        "<th align='right'>ROC</th>",
-        "<th align='right'>Ann.</th>",
-        "<th align='right'>B/E</th>",
-        "<th align='right'>Buffer</th>",
-        "<th align='right'>OI</th>",
-        "<th align='right'>Spread</th>",
-        "<th align='right'>Score</th>",
-        "</tr></thead><tbody>",
-    ]
-    for r in head:
-        html.append(
-            f"<tr><td>{r.get('ticker','')}</td>"
-            f"<td>{r.get('expiry','')}</td>"
-            f"<td align='right'>{r.get('dte','')}</td>"
-            f"<td align='right'>{_fmt_money(r.get('spot'))}</td>"
-            f"<td align='right'>{_fmt_money(r.get('strike'))}</td>"
-            f"<td align='right'>{_fmt_money(r.get('credit'))}</td>"
-            f"<td align='right'>{_fmt_pct(r.get('roc'))}</td>"
-            f"<td align='right'>{_fmt_pct(r.get('ann_return'))}</td>"
-            f"<td align='right'>{_fmt_money(r.get('breakeven'))}</td>"
-            f"<td align='right'>{_fmt_pct(r.get('buffer'))}</td>"
-            f"<td align='right'>{_fmt_num(r.get('oi'))}</td>"
-            f"<td align='right'>{_fmt_pct(r.get('spread'))}</td>"
-            f"<td align='right'>{_fmt_num(r.get('score'))}</td></tr>"
-        )
-    html.append("</tbody></table>")
-    return "".join(html)
-
-
 def _trend_table_html(rows: Optional[List[Dict]], max_rows: int = 30) -> str:
     if not rows:
         return "<i>No trend rows</i>"
@@ -257,16 +196,178 @@ def _tickers_from_rows(rows: Optional[List[Dict]], *, entry_only: bool = False) 
     return list(dict.fromkeys(out))
 
 
-def _tickers_with_exit_flag(rows: Optional[List[Dict]], exit_flag: str) -> List[str]:
-    if not rows or not exit_flag:
-        return []
-    out: List[str] = []
-    for r in rows:
-        ticker = str(r.get("ticker", "")).upper().strip()
-        exit_watch = str(r.get("exit_watch", "")).strip()
-        if ticker and exit_flag in exit_watch:
-            out.append(ticker)
-    return list(dict.fromkeys(out))
+def _list_text(items: List[str], max_items: int = 100) -> str:
+    if not items:
+        return "  (none)"
+    return "  " + ", ".join(map(str, items[:max_items]))
+
+
+def _pct_text(x) -> str:
+    try:
+        return f"{float(x) * 100:.0f}%"
+    except Exception:
+        return "—"
+
+
+def _sim_table_text(rows: Optional[List[Dict]], max_rows: int = 60) -> str:
+    if not rows:
+        return "  (none)"
+    lines = [f"  {'Ticker':<8} {'MC P(up)':>10} {'HMM Bull':>10} {'ML P(up)':>10}"]
+    for r in rows[:max_rows]:
+        lines.append(
+            f"  {str(r.get('ticker', '')):<8} {_pct_text(r.get('mc30')):>10} "
+            f"{_pct_text(r.get('hmm_bull')):>10} {_pct_text(r.get('ml_prob')):>10}"
+        )
+    return "\n".join(lines)
+
+
+def _perf_table_text(rows: Optional[List[Dict]], max_rows: int = 50) -> str:
+    if not rows:
+        return "  (none)"
+
+    def _fmt(x):
+        try:
+            return f"{float(x):.1f}%"
+        except Exception:
+            return "—"
+
+    lines = [f"  {'Ticker':<8} {'5-Day':>10} {'1-Month':>10} {'6-Month':>10}"]
+    for r in rows[:max_rows]:
+        lines.append(
+            f"  {str(r.get('ticker', '')):<8} {_fmt(r.get('perf_5d')):>10} "
+            f"{_fmt(r.get('perf_1m')):>10} {_fmt(r.get('perf_6m')):>10}"
+        )
+    return "\n".join(lines)
+
+
+def format_monitor_report_text(
+    *,
+    stamp: str,
+    universe_tickers: List[str],
+    picks_tickers: List[str],
+    alltime_high_value_list: Optional[List[str]] = None,
+    alltime_high_trend_rows: Optional[List[Dict]] = None,
+    trend_entry_rows: Optional[List[Dict]] = None,
+    holdings_list_tickers: Optional[List[str]] = None,
+    holdings_trailing_result: Optional[Dict] = None,
+    sim_rows: Optional[List[Dict]] = None,
+    wheel_rows: Optional[List[Dict]] = None,
+    perf_rows: Optional[List[Dict]] = None,
+    momentum_result: Optional[Dict] = None,
+    momentum_sim_rows: Optional[List[Dict]] = None,
+    momentum_perf_rows: Optional[List[Dict]] = None,
+    holdings_exit_alert_tickers: Optional[List[str]] = None,
+    momentum_exited_tickers: Optional[List[str]] = None,
+    pcs_opportunities_result: Optional[Dict] = None,
+    pcs_lifecycle_result: Optional[Dict] = None,
+    subj_prefix: str = "Daily Stock Picks",
+) -> str:
+    """Plain-text report matching the daily email sections."""
+    from .momentum_portfolio import format_holdings_trailing_text, format_momentum_text
+    from .pcs_lifecycle import format_pcs_lifecycle_text
+    from .pcs_opportunities import format_pcs_opportunities_text
+
+    strong_buy_entries = _tickers_from_rows(alltime_high_trend_rows, entry_only=True)
+    trend_entries = _tickers_from_rows(trend_entry_rows, entry_only=True)
+    wheel_tickers = _tickers_from_rows(wheel_rows)
+
+    lines: List[str] = [
+        "",
+        "=" * 72,
+        f"{subj_prefix} — {stamp}",
+        "=" * 72,
+    ]
+    alerts: List[str] = []
+    he = holdings_exit_alert_tickers or []
+    if he:
+        alerts.append(f"Holdings exits: {', '.join(str(t) for t in he[:10])}")
+    if momentum_exited_tickers:
+        alerts.append(f"Momentum exits: {', '.join(str(t) for t in momentum_exited_tickers[:10])}")
+    if alerts:
+        lines.append("ALERTS: " + " · ".join(alerts))
+        lines.append("")
+
+    sections = [
+        ("Universe Stocks", _list_text(universe_tickers)),
+        ("Stock Picks (buy_flag + top leaders)", _list_text(picks_tickers)),
+        (
+            "Finviz: Strong Buy Large Caps at All-Time High",
+            _list_text(alltime_high_value_list or []),
+        ),
+        (
+            "Strong Buy Large Cap Stock List (trend entry OK)",
+            _list_text(strong_buy_entries),
+        ),
+        ("Trend Entry Stock List (trend entry OK)", _list_text(trend_entries)),
+    ]
+    for title, body in sections:
+        lines.extend([f"\n## {title}", body])
+
+    lines.append("\n## Holdings — price watch & trailing stop")
+    lines.append("Current holdings_list symbols:")
+    _hl = list(holdings_list_tickers) if holdings_list_tickers else []
+    lines.append(_list_text(_hl) if _hl else "  (none)")
+    if holdings_trailing_result is not None:
+        lines.append(format_holdings_trailing_text(holdings_trailing_result))
+    else:
+        lines.append("  (holdings trailing not run)")
+
+    lines.append("\n## PCS ideas for next session (pie_analyze_swing)")
+    if pcs_opportunities_result is not None:
+        opp_rows = pcs_opportunities_result.get("rows") or []
+        scanned = int(pcs_opportunities_result.get("scanned") or 0)
+        buys = int(pcs_opportunities_result.get("buys") or 0)
+        lines.append(format_pcs_opportunities_text(opp_rows, scanned=scanned, buys=buys))
+    else:
+        lines.append("  (PCS opportunities not run)")
+
+    lines.append("\n## Open positions — lifecycle (positions.json)")
+    if pcs_lifecycle_result is not None:
+        lines.append(format_pcs_lifecycle_text(
+            pcs_lifecycle_result.get("swing_rows") or [],
+            pcs_lifecycle_result.get("pcs_rows") or [],
+        ))
+    else:
+        lines.append("  (PCS lifecycle not run)")
+
+    lines.append("\n## Momentum portfolio (trailing stop)")
+    if momentum_result is not None:
+        mom_txt = format_momentum_text(momentum_result)
+        lines.append(mom_txt if mom_txt.strip() else "  (empty)")
+    else:
+        lines.append("  Momentum portfolio not run (disabled or error).")
+
+    lines.append("\n## Momentum — Simulators (current book)")
+    if momentum_sim_rows is None:
+        lines.append("  (momentum not run)")
+    else:
+        lines.append(_sim_table_text(momentum_sim_rows))
+
+    lines.append("\n## Momentum — Performance (current book)")
+    if momentum_perf_rows is None:
+        lines.append("  (momentum not run)")
+    else:
+        lines.append(_perf_table_text(momentum_perf_rows))
+
+    lines.extend(
+        [
+            "\n## Wheel Stocks",
+            _list_text(wheel_tickers),
+            "\n## Simulators (picks)",
+            _sim_table_text(sim_rows),
+            "\n## Performance — Price change (picks)",
+            _perf_table_text(perf_rows),
+            "",
+            "EAT = Earnings Avoid Threshold (~2 weeks before earnings for new trades).",
+            "=" * 72,
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def print_monitor_report_text(**kwargs) -> None:
+    print(format_monitor_report_text(**kwargs), flush=True)
 
 
 def send_email_report_with_sims(*,
@@ -279,11 +380,21 @@ def send_email_report_with_sims(*,
     alltime_high_trend_rows: Optional[List[Dict]] = None,
     trend_entry_list: Optional[List[str]] = None,
     trend_entry_rows: Optional[List[Dict]] = None,
-    holdings_exit_rows: Optional[List[Dict]] = None,
+    holdings_list_tickers: Optional[List[str]] = None,  # current symbols from holdings_list.json (display only)
+    holdings_trailing_section_html: Optional[str] = None,  # holdings_list: weak symbols + trailing stop
+    pcs_opportunities_section_html: Optional[str] = None,  # pie funnel PCS ideas for next session
+    pcs_opportunity_tickers: Optional[List[str]] = None,  # PCS idea tickers (subject line)
+    pcs_lifecycle_section_html: Optional[str] = None,  # swing + PCS held-position lifecycle
+    pcs_actionable_tickers: Optional[List[str]] = None,  # positions needing action (subject line)
     sim_rows: Optional[List[Dict]] = None,    # ticker, mc30, hmm_bull, ml_prob
     opt_rows: Optional[List[Dict]] = None,    # ticker, expiry, dte, k1, k2, debit, oi1, oi2, combo_spread
     wheel_rows: Optional[List[Dict]] = None,  # cash-secured put wheel candidates
     perf_rows: Optional[List[Dict]] = None,   # ticker, perf_5d, perf_1m, perf_6m
+    momentum_section_html: Optional[str] = None,  # monitoring.momentum_portfolio HTML fragment
+    momentum_sim_rows: Optional[List[Dict]] = None,  # MC/HMM/ML for current momentum book only
+    momentum_perf_rows: Optional[List[Dict]] = None,
+    holdings_exit_alert_tickers: Optional[List[str]] = None,  # trailing exit tickers (subject line; list not auto-edited unless configured)
+    momentum_exited_tickers: Optional[List[str]] = None,  # set when momentum ran; None if feature off
     subj_prefix: str = "Daily Stock Picks"
 ):
     if os.getenv("SEND_EMAIL", "0") != "1":
@@ -300,13 +411,35 @@ def send_email_report_with_sims(*,
     # s_leaps = ", ".join(ai_leaps_list[:2])
     # subj_tail = f"Spreads: {s_spreads}" + (f" | LEAPS: {s_leaps}" if s_leaps else "")
     subject = f"{subj_prefix} — {stamp}".strip()
+    alert_parts: List[str] = []
+    he = holdings_exit_alert_tickers or []
+    if he:
+        hx = ", ".join(str(t) for t in he[:10])
+        if len(he) > 10:
+            hx += " …"
+        alert_parts.append(f"Holdings exits: {hx}")
+    if momentum_exited_tickers is not None and momentum_exited_tickers:
+        mx = ", ".join(str(t) for t in momentum_exited_tickers[:10])
+        if len(momentum_exited_tickers) > 10:
+            mx += " …"
+        alert_parts.append(f"Momentum exits: {mx}")
+    po = pcs_opportunity_tickers or []
+    if po:
+        ox = ", ".join(str(t) for t in po[:8])
+        if len(po) > 8:
+            ox += " …"
+        alert_parts.append(f"PCS ideas: {ox}")
+    pa = pcs_actionable_tickers or []
+    if pa:
+        px = ", ".join(str(t) for t in pa[:10])
+        if len(pa) > 10:
+            px += " …"
+        alert_parts.append(f"Position actions: {px}")
+    if alert_parts:
+        subject = f"{subject} — " + " · ".join(alert_parts)
 
     strong_buy_entries = _tickers_from_rows(alltime_high_trend_rows, entry_only=True)
     trend_entries = _tickers_from_rows(trend_entry_rows, entry_only=True)
-    holdings_exits = _tickers_from_rows(holdings_exit_rows)
-    down_today_week_exits = _tickers_with_exit_flag(
-        holdings_exit_rows, "EXIT: down today + down week"
-    )
     wheel_tickers = _tickers_from_rows(wheel_rows)
 
     html_universe = _list_html(universe_tickers)
@@ -314,11 +447,49 @@ def send_email_report_with_sims(*,
     html_alltime_high_value = _list_html(alltime_high_value_list or [])
     html_strong_buy_entries = _list_html(strong_buy_entries)
     html_trend_entries = _list_html(trend_entries)
-    html_holdings_exits = _list_html(holdings_exits)
-    html_down_today_week_exits = _list_html(down_today_week_exits)
+    _hl = list(holdings_list_tickers) if holdings_list_tickers else []
+    html_holdings_symbols = (
+        _list_html(_hl) if _hl else "<i>No symbols in holdings_list.json</i>"
+    )
+    html_holdings_trailing = (
+        holdings_trailing_section_html
+        if (holdings_trailing_section_html or "").strip()
+        else "<i>Holdings trailing section not available.</i>"
+    )
+    html_pcs_opportunities_block = (
+        "<h3>PCS ideas for next session (pie_analyze_swing)</h3>"
+        f"<div>{pcs_opportunities_section_html or '<i>PCS section not run.</i>'}</div>"
+    )
+
+    html_pcs_lifecycle_block = (
+        "<h3>Open positions — lifecycle review (positions.json)</h3>"
+        f"<div>{pcs_lifecycle_section_html or '<i>PCS lifecycle not run.</i>'}</div>"
+    )
     html_wheel_tickers = _list_html(wheel_tickers)
     html_sims = _sim_table_html(sim_rows)
     html_perf = _perf_table_html(perf_rows)
+    if momentum_section_html:
+        html_momentum_block = (
+            "<h3>Momentum portfolio (trailing stop)</h3>"
+            f"<div>{momentum_section_html}</div>"
+        )
+    else:
+        html_momentum_block = ""
+
+    if momentum_sim_rows is None:
+        html_momentum_sims = "<i>Momentum portfolio not run (disabled or error).</i>"
+    elif not momentum_sim_rows:
+        html_momentum_sims = "<i>No open momentum positions — no simulator rows.</i>"
+    else:
+        html_momentum_sims = _sim_table_html(momentum_sim_rows)
+
+    if momentum_perf_rows is None:
+        html_momentum_perf = "<i>Momentum portfolio not run (disabled or error).</i>"
+    elif not momentum_perf_rows:
+        html_momentum_perf = "<i>No open momentum positions — no performance rows.</i>"
+    else:
+        html_momentum_perf = _perf_table_html(momentum_perf_rows)
+
     # Disabled for now: LEAPS/debit-spread AI sections are not rendered.
     # html_spreads = _list_html(ai_spreads_list)
     # html_leaps = _list_html(ai_leaps_list)
@@ -350,12 +521,23 @@ def send_email_report_with_sims(*,
       <div><i>Passed trend entry criteria</i></div>
       <div>{html_trend_entries}</div>
 
-      <h3>Holdings Exit List</h3>
-      <div>{html_holdings_exits}</div>
+      <h3>Holdings — weak symbols &amp; trailing stop (holdings_list.json)</h3>
+      <div><b>Current holdings_list symbols</b></div>
+      <div>{html_holdings_symbols}</div>
+      <div><i>Price watch: symbols with down today, down ~1 week, or below 20-DMA (any); table shows all three metrics. Trailing stop off high_seen. holdings_list.json is only auto-edited if HOLDINGS_LIST_REMOVE_ON_EXIT=1.</i></div>
+      <div>{html_holdings_trailing}</div>
 
-      <h3>Holdings: Exit Down Today + Down Week</h3>
-      <div><i>Triggered when daily return &lt; 0 and 5-day return &lt; 0</i></div>
-      <div>{html_down_today_week_exits}</div>
+      {html_pcs_opportunities_block}
+
+      {html_pcs_lifecycle_block}
+
+      {html_momentum_block}
+
+      <h3>Momentum — Simulators (current book)</h3>
+      {html_momentum_sims}
+
+      <h3>Momentum — Performance (current book)</h3>
+      {html_momentum_perf}
 
       <h3>Wheel Stocks</h3>
       <div>{html_wheel_tickers}</div>

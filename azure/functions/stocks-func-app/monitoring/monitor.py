@@ -57,7 +57,7 @@ def _shrink_df(df: pd.DataFrame) -> pd.DataFrame:
     return d
 
 
-def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
+def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, print_report: bool = False):
     if today is None:
         today = datetime.date.today()
 
@@ -95,7 +95,41 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         for t in (alltime_high_value_list + trend_entry_list + wheel_finviz_list)
         if str(t).strip()
     }
-    merged_tickers = sorted(set(local_list) | set(universe_tickers) | set(holdings_list) | wheel_seed_tickers)
+    # Include current momentum book so Simulators / Performance / wheel rows can join on `out`.
+    # (Otherwise only names that also appear in local list / universe / Finviz show up.)
+    # Momentum Finviz (MOMENTUM_FINVIZ_URL) is separate from wheel / trend / ATH Finviz sources above.
+    momentum_portfolio_syms: set[str] = set()
+    if os.getenv("MOMENTUM_PORTFOLIO_ENABLED", "1") == "1":
+        try:
+            from momentum_portfolio_utils import load_momentum_portfolio
+
+            _mom = load_momentum_portfolio()
+            momentum_portfolio_syms = {str(k).upper().strip() for k in _mom if str(k).strip()}
+            if momentum_portfolio_syms:
+                logger.info(
+                    "[momentum] %d portfolio tickers merged into monitor universe",
+                    len(momentum_portfolio_syms),
+                )
+        except Exception as e:
+            logger.warning("[momentum] could not load portfolio for universe merge: %s", e)
+
+    if os.getenv("QUANT_MONITOR_HOLDINGS_ONLY", "0") == "1":
+        merged_tickers = sorted(set(holdings_list))
+        if merged_tickers:
+            logger.info(
+                "[monitor] holdings-only mode: %d symbol(s) from holdings_list",
+                len(merged_tickers),
+            )
+        else:
+            logger.warning("[monitor] holdings-only mode but holdings_list is empty")
+    else:
+        merged_tickers = sorted(
+            set(local_list)
+            | set(universe_tickers)
+            | set(holdings_list)
+            | wheel_seed_tickers
+            | momentum_portfolio_syms
+        )
     end = today + datetime.timedelta(days=1)
     start = today - datetime.timedelta(days=420)
     frames = fetch_prices_batched(merged_tickers, start, end)
@@ -381,16 +415,13 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
 
     alltime_high_trend_rows = _build_trend_rows(alltime_high_value_list)
     trend_entry_rows = _build_trend_rows(trend_entry_list)
-    holdings_exit_rows = _build_trend_rows(holdings_list, only_exit_alerts=True)
     strong_buy_entry_ok = [r["ticker"] for r in alltime_high_trend_rows if r.get("entry_status") == "Entry OK"]
     trend_entry_ok = [r["ticker"] for r in trend_entry_rows if r.get("entry_status") == "Entry OK"]
-    holdings_exit_tickers = [r["ticker"] for r in holdings_exit_rows]
     if WHEEL_DEBUG:
         logger.info(f"[stocks] raw strong-buy/all-time-high list ({len(alltime_high_value_list)}): {alltime_high_value_list}")
         logger.info(f"[stocks] strong-buy/all-time-high Entry OK ({len(strong_buy_entry_ok)}): {strong_buy_entry_ok}")
         logger.info(f"[stocks] raw trend-entry list ({len(trend_entry_list)}): {trend_entry_list}")
         logger.info(f"[stocks] trend-entry Entry OK ({len(trend_entry_ok)}): {trend_entry_ok}")
-        logger.info(f"[stocks] holdings exit list ({len(holdings_exit_tickers)}): {holdings_exit_tickers}")
 
     wheel_rows = []
     if WHEEL_ENABLED:
@@ -569,6 +600,135 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         })
 
     stamp = today.strftime("%Y-%m-%d")
+
+    holdings_trailing_section_html = None
+    holdings_trailing_exited: list[str] | None = None
+    holdings_trailing_result: dict | None = None
+    try:
+        from .momentum_portfolio import (
+            format_holdings_trailing_email_section,
+            run_holdings_trailing_daily,
+        )
+
+        holdings_trailing_result = run_holdings_trailing_daily()
+        holdings_trailing_section_html = format_holdings_trailing_email_section(holdings_trailing_result)
+        holdings_trailing_exited = list(holdings_trailing_result.get("exited") or [])
+    except Exception as e:
+        logger.warning("[holdings trailing] daily update failed: %s", e)
+        holdings_trailing_section_html = f"<p><i>Holdings trailing exit error: {e}</i></p>"
+        holdings_trailing_exited = []
+
+    momentum_section_html = None
+    momentum_exited_tickers: list[str] | None = None
+    momentum_sim_rows: list | None = None
+    momentum_perf_rows: list | None = None
+    momentum_result: dict | None = None
+    if os.getenv("MOMENTUM_PORTFOLIO_ENABLED", "1") == "1":
+        try:
+            from .momentum_portfolio import format_momentum_email_section, run_momentum_daily
+
+            momentum_result = run_momentum_daily()
+            momentum_section_html = format_momentum_email_section(momentum_result)
+            momentum_exited_tickers = list(momentum_result.get("exited") or [])
+            mom_syms = [
+                str(r.get("ticker", "")).upper().strip()
+                for r in (momentum_result.get("holdings_rows") or [])
+                if str(r.get("ticker", "")).strip()
+            ]
+            if mom_syms:
+                mu = {s.upper() for s in mom_syms}
+                mom_df = out[out["ticker"].astype(str).str.upper().isin(mu)]
+                momentum_sim_rows = [
+                    {
+                        "ticker": str(r["ticker"]),
+                        "mc30": r["mc_p_up_30d"],
+                        "hmm_bull": r["hmm_prob_bull"],
+                        "ml_prob": r["ml_prob_up_30d"],
+                    }
+                    for _, r in mom_df.iterrows()
+                ]
+                momentum_perf_rows = [
+                    {
+                        "ticker": str(r["ticker"]),
+                        "perf_5d": float(r.get("ret_5d", 0)) * 100,
+                        "perf_1m": float(r.get("ret_21d", 0)) * 100,
+                        "perf_6m": float(r.get("ret_120", 0)) * 100,
+                    }
+                    for _, r in mom_df.iterrows()
+                ]
+            else:
+                momentum_sim_rows = []
+                momentum_perf_rows = []
+        except Exception as e:
+            logger.warning("[momentum] daily update failed: %s", e)
+            momentum_section_html = f"<p><i>Momentum portfolio error: {e}</i></p>"
+            momentum_exited_tickers = []
+
+    # ---- PCS entry ideas (pie_analyze_swing funnel) ----
+    pcs_opportunities_section_html = None
+    pcs_opportunity_tickers: list[str] | None = None
+    pcs_opportunities_result: dict | None = None
+    if os.getenv("PCS_OPPORTUNITIES_ENABLED", "1") == "1":
+        try:
+            from .pcs_opportunities import run_pcs_opportunities
+
+            pcs_opportunities_result = run_pcs_opportunities()
+            pcs_opportunities_section_html = pcs_opportunities_result.get("html")
+            pcs_opportunity_tickers = list(pcs_opportunities_result.get("tickers") or [])
+        except Exception as e:
+            logger.warning("[pcs_opportunities] scan failed: %s", e)
+            pcs_opportunities_section_html = f"<p><i>PCS opportunities error: {e}</i></p>"
+            pcs_opportunity_tickers = []
+            pcs_opportunities_result = {"rows": [], "error": str(e)}
+    else:
+        pcs_opportunities_section_html = "<p><i>PCS opportunities disabled (PCS_OPPORTUNITIES_ENABLED=0).</i></p>"
+
+    # ---- PCS / swing position lifecycle (held positions) ----
+    pcs_lifecycle_section_html = None
+    pcs_lifecycle_actionable: list[str] | None = None
+    pcs_lifecycle_result: dict | None = None
+    if os.getenv("PCS_LIFECYCLE_ENABLED", "1") == "1":
+        try:
+            from .pcs_lifecycle import run_pcs_lifecycle
+
+            pcs_lifecycle_result = run_pcs_lifecycle()
+            pcs_lifecycle_section_html = pcs_lifecycle_result.get("html")
+            pcs_lifecycle_actionable = list(pcs_lifecycle_result.get("actionable") or [])
+        except Exception as e:
+            logger.warning("[pcs_lifecycle] review failed: %s", e)
+            pcs_lifecycle_section_html = f"<p><i>PCS lifecycle error: {e}</i></p>"
+            pcs_lifecycle_actionable = []
+            pcs_lifecycle_result = {"swing_rows": [], "pcs_rows": [], "error": str(e)}
+    else:
+        pcs_lifecycle_section_html = "<p><i>PCS lifecycle disabled (PCS_LIFECYCLE_ENABLED=0).</i></p>"
+
+    report_kwargs = dict(
+        stamp=stamp,
+        universe_tickers=universe_tickers,
+        picks_tickers=picks_tickers,
+        alltime_high_value_list=alltime_high_value_list,
+        alltime_high_trend_rows=alltime_high_trend_rows,
+        trend_entry_rows=trend_entry_rows,
+        holdings_list_tickers=holdings_list,
+        holdings_trailing_result=holdings_trailing_result,
+        sim_rows=sim_rows,
+        wheel_rows=wheel_rows,
+        perf_rows=perf_rows,
+        momentum_result=momentum_result,
+        momentum_sim_rows=momentum_sim_rows,
+        momentum_perf_rows=momentum_perf_rows,
+        holdings_exit_alert_tickers=holdings_trailing_exited,
+        momentum_exited_tickers=momentum_exited_tickers,
+        pcs_opportunities_result=pcs_opportunities_result,
+        pcs_lifecycle_result=pcs_lifecycle_result,
+        subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),
+    )
+
+    if print_report:
+        from .emailer import print_monitor_report_text
+
+        print_monitor_report_text(**report_kwargs)
+
     send_email_report_with_sims(
         stamp=stamp,
         universe_tickers=universe_tickers,
@@ -579,11 +739,21 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT):
         alltime_high_trend_rows=alltime_high_trend_rows,
         trend_entry_list=trend_entry_list,
         trend_entry_rows=trend_entry_rows,
-        holdings_exit_rows=holdings_exit_rows,
+        holdings_list_tickers=holdings_list,
+        holdings_trailing_section_html=holdings_trailing_section_html,
+        pcs_opportunities_section_html=pcs_opportunities_section_html,
+        pcs_opportunity_tickers=pcs_opportunity_tickers,
+        pcs_lifecycle_section_html=pcs_lifecycle_section_html,
+        pcs_actionable_tickers=pcs_lifecycle_actionable,
         sim_rows=sim_rows,
         opt_rows=[],       # placeholder — still valid
         wheel_rows=wheel_rows,
         perf_rows=perf_rows,  # new table
+        momentum_section_html=momentum_section_html,
+        momentum_sim_rows=momentum_sim_rows,
+        momentum_perf_rows=momentum_perf_rows,
+        holdings_exit_alert_tickers=holdings_trailing_exited,
+        momentum_exited_tickers=momentum_exited_tickers,
         subj_prefix=os.getenv("EMAIL_SUBJECT_PREFIX", "Daily Stock Picks"),
     )
 

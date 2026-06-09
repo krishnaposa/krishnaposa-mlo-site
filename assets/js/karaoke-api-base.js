@@ -21,7 +21,19 @@ window.karaokeResolveApiBase = async function karaokeResolveApiBase() {
       });
       if (r.ok) {
         const j = await r.json();
-        if (j && j.public_base) return String(j.public_base).replace(/\/$/, "");
+        if (j && j.public_base) {
+          let pb = String(j.public_base).replace(/\/$/, "");
+          try {
+            const u = new URL(pb);
+            // HTTPS page + server still advertising http / loopback → mixed content; use same origin as the page.
+            if (location.protocol === "https:" && u.protocol !== "https:") {
+              return origin.replace(/\/$/, "");
+            }
+          } catch (_) {
+            /* ignore bad public_base */
+          }
+          return pb;
+        }
       }
     } catch (_) {
       /* fall through */

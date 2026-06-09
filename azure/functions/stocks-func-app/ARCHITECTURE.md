@@ -768,6 +768,8 @@ If deployment should build remotely:
 func azure functionapp publish $functionApp --build remote
 ```
 
+func azure functionapp publish stocks-func-app --build remote
+
 ### 5. Restart and Verify
 
 ```powershell

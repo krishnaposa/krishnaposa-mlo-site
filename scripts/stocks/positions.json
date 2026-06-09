@@ -1,0 +1,12 @@
+{
+  "spreads": [
+    {
+      "symbol": "MXL",
+      "short_put": 80.0,
+      "long_put": 70.0,
+      "expiration": "2026-07-17",
+      "credit": 4.55,
+      "entry_date": "2026-06-02"
+    }
+  ]
+}

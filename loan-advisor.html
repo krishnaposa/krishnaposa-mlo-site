@@ -59,6 +59,7 @@
   <!-- Styles -->
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/styles.css">
   <link rel="stylesheet" href="https://www.krishposa.com/assets/css/header-nav.css?v=final1">
+  <link rel="stylesheet" href="https://www.krishposa.com/assets/css/dark-surface.css">
 
   <!-- JS -->
   <script defer src="https://www.krishposa.com/assets/js/script.js"></script>
@@ -68,15 +69,22 @@
   {
     "@context":"https://schema.org",
     "@type":"ProfessionalService",
-    "name":"Krish Posa | Mortgage Loan Officer",
+    "name":"Innovative Mortgage Services, Inc.",
+    "identifier":"NMLS #250769",
     "url":"https://www.krishposa.com/",
-    "image":"https://www.krishposa.com/assets/img/headshot.jpg",
+    "image":"https://www.krishposa.com/assets/img/innovative_mortgage.png",
     "telephone":"+1-678-481-8252",
     "areaServed":"US-GA",
     "address":{
       "@type":"PostalAddress",
       "addressRegion":"GA",
       "addressCountry":"US"
+    },
+    "employee":{
+      "@type":"Person",
+      "name":"Krish Posa",
+      "jobTitle":"Mortgage Loan Officer",
+      "identifier":"NMLS #2533287"
     },
     "sameAs":[
       "https://www.krishposa.com/",
@@ -109,7 +117,12 @@
       "@type":"Person",
       "name":"Krish Posa",
       "jobTitle":"Mortgage Loan Officer",
-      "identifier":"NMLS #2533287"
+      "identifier":"NMLS #2533287",
+      "worksFor":{
+        "@type":"Organization",
+        "name":"Innovative Mortgage Services, Inc.",
+        "identifier":"NMLS #250769"
+      }
     },
     "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}
   }
@@ -132,27 +145,11 @@
   </script>
 
   <style>
-    /* Page-specific light styles that play nice with your global CSS */
-    .tool-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px; box-shadow:0 10px 14px rgba(0,0,0,.03); }
-    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-    .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
-    .field label { display:block; font-weight:600; margin:6px 0; }
-    .field input, .field select { width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; }
-    .helper { color:#475569; font-size:.9rem; }
-    .error-box { display:none; background:#fff5f5; border:1px solid #fecaca; color:#991b1b; padding:10px; border-radius:8px; margin-top:10px; }
-    .result-wrap { display:none; margin-top:18px; }
-    .result-wrap h2 { margin-top:0; }
-    .muted { color:#475569; font-size:.9rem; }
-    .disclosure { font-size:.85rem; color:#475569; margin-top:14px; }
-    .label-ai { display:inline-block; padding:.1rem .4rem; font-size:.8rem; background:#0b5fff; color:#fff; border-radius:6px; vertical-align:middle; }
     .page-hero .small { margin: 0.25rem 0 0; }
-    /* Improve tap targets for sticky CTA */
     .sticky-cta .btn { min-width: 84px; text-align: center; }
   </style>
-
-
 </head>
-<body>
+<body class="dark-surface">
   <!-- Google Tag Manager (noscript) -->
   <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJZPQKBM"
   height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
@@ -316,6 +313,7 @@
 
   <div id="footer"></div>
   <script src="https://www.krishposa.com/assets/js/footer.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/loan-api-config.js"></script>
   <script defer src="https://www.krishposa.com/assets/js/loan-advisor.js"></script>
 </body>
 </html>

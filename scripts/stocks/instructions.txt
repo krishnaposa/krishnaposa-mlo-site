@@ -1,0 +1,190 @@
+# scripts/stocks — CLI tools (run from this folder)
+
+# All scripts use JSON under this folder by default. No MONITOR_STORAGE required.
+
+# Optional: STOCKS_USE_AZURE_STORAGE=1 (or quant-monitor --use-azure) to use Azure blob instead.
+
+
+
+## momentum-analyzer.py — momentum portfolio (Finviz seed + trailing stop)
+
+python momentum-analyzer.py --seed-from-finviz
+
+python momentum-analyzer.py --seed-from-finviz --merge
+
+python momentum-analyzer.py --tickers-file my_tickers.txt
+
+python momentum-analyzer.py --tickers-file picks.txt --merge
+
+python momentum-analyzer.py
+
+
+
+Files: momentum-analyzer.json
+
+
+
+## holdings-analyzer.py — holdings list trailing stop (local JSON)
+
+python holdings-analyzer.py --set-from-file my_tickers.txt
+
+python holdings-analyzer.py --set-from-file picks.txt --merge
+
+python holdings-analyzer.py --set-from-file my_tickers.txt --push-azure
+
+python holdings-analyzer.py --push-azure
+
+python holdings-analyzer.py
+
+python holdings-analyzer.py --remove-on-exit
+
+# holdings-list.json: Yahoo 5d trailing stop (this script only; not full quant scores)
+
+# --push-azure: uploads holdings-list.json to Azure (MONITOR_STORAGE or AzureWebJobsStorage)
+cd scripts\stocks
+python holdings-analyzer.py --set-from-file portfolio.csv --merge
+python holdings-analyzer.py --set-from-file portfolio.csv --push-azure   # if using Azure
+
+
+Files: holdings-list.json, holdings-trailing-state.json
+
+
+
+## finviz-screener.py — print / save Finviz screen
+
+python finviz-screener.py
+
+python finviz-screener.py --url "https://finviz.com/screener.ashx?v=111&f=..."
+
+python finviz-screener.py --out picks.txt
+
+python finviz-screener.py --save-json holdings-list.json
+
+
+
+## local-list-analyzer.py — watch universe for quant monitor
+
+python local-list-analyzer.py --set-from-file watchlist.txt
+
+python local-list-analyzer.py --show
+
+python local-list-analyzer.py --export watchlist.txt
+
+
+
+Files: local-list.json
+
+
+
+## quant-monitor.py — daily quant scores (full report to terminal; no CSV by default)
+
+python quant-monitor.py
+
+python quant-monitor.py --tickers-file my_tickers.txt
+
+python quant-monitor.py --tickers AAPL MSFT
+
+python quant-monitor.py --brief
+python quant-monitor.py --write-csv
+
+python quant-monitor.py --holdings-only
+python quant-monitor.py --tickers-file holdings-list.json
+
+
+
+Merges (default): local-list.json, holdings-list.json, momentum-analyzer.json, Finviz sources (if enabled).
+
+--holdings-only: Yahoo price fetch + quant scores only for holdings-list.json (still runs holdings trailing section).
+
+
+
+## pie_analyzer.py / pie_sector.py — momentum rotation vs QQQ
+
+python pie_analyzer.py
+python pie_sector.py
+
+# Default ticker file: my_tickers.txt (same format as other scripts)
+python pie_analyzer.py --tickers-file my_tickers.txt
+python pie_sector.py
+
+# Spike guard: overextended BUY -> demoted to WATCH (Spiked=Y). Tune:
+python pie_analyzer.py --max-ext-pct 20 --max-rsi 80 --max-run5 25
+
+# pie_sector: tickers from my_tickers.txt, sectors from pie_sector_map.txt
+python pie_sector.py --sector-map pie_sector_map.txt
+
+# pie_sector_map.txt format: AI_SEMI=ALAB, MRVL, COHR  (built from holdings-list.json; unmapped → OTHER)
+# Regenerate after holdings change: python _gen_pie_sector_map.py
+
+
+
+## pie_analyze_swing.py — swing + put-credit-spread funnel
+
+# Scanner lives in pie_analyzer.py (run_scan / select_buy_candidates).
+# This funnels BUY candidates into swing entry plan + PCS plan.
+
+python pie_analyze_swing.py
+python pie_analyze_swing.py --min-grade A --risk-per-trade 0.01 --target-dte 35 --otm-pct 0.06
+python pie_analyze_swing.py --no-pcs
+
+# Fundamentals on BUY candidates (slow; PASS/WARN/FAIL). --require-fundamentals drops FAILs:
+python pie_analyze_swing.py --fundamentals
+python pie_analyze_swing.py --fundamentals --require-fundamentals
+
+# Analyze ALL my_tickers (skip BUY filter). Scan still runs for price/20DMA.
+python pie_analyze_swing.py --all --no-pcs
+python pie_analyze_swing.py --all --tickers-file my_tickers.txt
+
+# PCS strikes by %-OTM from live yfinance option chain (no Greeks); POP ~ credit/width proxy.
+
+# Lifecycle review of held positions (positions.json: swings + spreads):
+python pie_analyze_swing.py --review
+python pie_analyze_swing.py --review --positions positions.json
+python pie_analyze_swing.py --review --alerts-only
+python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100 --pcs-roll-dte 14 --pcs-manage-dte 21
+
+# PCS scan filters (build_pcs_plan): min_open_interest=100, max_spread_pct=15, min_credit_width=0.20
+# Azure daily email (stocks-func-app monitor_signals):
+#   Price watch table: down today OR down ~1 week OR below 20-DMA (shows Today%, Week%, <20DMA for each)
+#   PCS ideas for next session: monitoring/pcs_opportunities.py (pie_analyze_swing funnel)
+#     PCS_OPPORTUNITIES_ENABLED=1 (default), tickers from blob signals/my_tickers.txt else local_list+holdings_list
+#     Local adhoc: PIE_TICKERS_FILE=scripts/stocks/my_tickers.txt (see run_email_adhoc.sh)
+#     Table columns match pie_analyze_swing: Ticker, Expiry, DTE, Short, Long, Width, Credit, MaxRisk, POP~, IV%
+#     PIE_MIN_GRADE=B  PIE_TARGET_DTE=35  PIE_OTM_PCT=0.06  PIE_SPREAD_WIDTH_PCT=0.03  PIE_MAX_PCS_CANDIDATES=12
+#   Open positions lifecycle: monitoring/pcs_lifecycle.py reads signals/positions.json (PCS_LIFECYCLE_ENABLED=1)
+#   Local adhoc: PCS_POSITIONS_FILE=scripts/stocks/positions.json (see run_email_adhoc.sh)
+#   Holdings / momentum: trailing stop only (no relative-strength exits)
+
+# positions.json shape:
+#   {"swings": [{"symbol","entry_price","entry_date","shares","stop_price"}],
+#    "spreads": [{"symbol","short_put","long_put","expiration","credit","entry_date"}]}
+
+
+
+## Shared
+
+- Ticker files: same format as my_tickers.txt (txt or csv; see stocks_common.read_symbols_from_file)
+
+- Optional universe cache: universe.json (same shape as Azure universe blob)
+
+- Azure blob: STOCKS_USE_AZURE_STORAGE=1 or quant-monitor.py --use-azure
+
+
+cd "c:\pers\krishnaposa-mlo-site\azure\functions\stocks-func-app"
+func azure functionapp publish stocks-func-app --build remote
+
+
+# Blob upload: --auth-mode login needs Storage Blob Data Contributor on the account.
+# If login fails, use MONITOR_STORAGE connection string (same key as stocks-func-app app setting):
+#   $env:MONITOR_STORAGE = "<connection-string-from-portal-or-function_app_env.json>"
+#   az storage blob upload --connection-string $env:MONITOR_STORAGE --container-name signals --name positions.json --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\positions.json" --overwrite
+#   az storage blob upload --connection-string $env:MONITOR_STORAGE --container-name signals --name my_tickers.txt --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\my_tickers.txt" --overwrite
+
+
+az functionapp config appsettings set -g <rg> -n stocks-func-app --settings PCS_LIFECYCLE_ENABLED=1 PCS_OPPORTUNITIES_ENABLED=1 PCS_PROFIT_TARGET=50 PCS_STOP_LOSS=-100 PCS_ROLL_DTE=14 PCS_MANAGE_DTE=21 PIE_MIN_GRADE=B
+
+ export MONITOR_STORAGE="DefaultEndpointsProtocol=https;AccountName=stockmonitorsg;AccountKey=EuLxqWwCZ372e3t91CXTf0WLnvt08ZEWZZyxPLPURGhQilq38WiWi6mXED1yWAdclMP7v5jwRwm2+AStwoHE9w==;EndpointSuffix=core.windows.net" 
+az storage blob upload --connection-string $MONITOR_STORAGE --container-name signals --name my_tickers.txt --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\my_tickers.txt" --overwrite
+
+
+az storage blob upload --connection-string $MONITOR_STORAGE --container-name signals --name positions.json --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\positions.json" --overwrite

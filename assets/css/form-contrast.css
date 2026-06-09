@@ -83,7 +83,7 @@
 #payForm label,
 #refiForm label,
 #extraForm label {
-  color: white;        /* visible on light background */
+  color: var(--form-label);
   font-weight: 600;
   display: block;
   margin-bottom: .25rem;
@@ -93,18 +93,19 @@
 #payForm input, #payForm select, #payForm textarea,
 #refiForm input, #refiForm select, #refiForm textarea,
 #extraForm input, #extraForm select, #extraForm textarea {
-  color: #111;
-  background-color: #fff;
-  border: 1px solid #e2e8f0;   /* light gray */
-  border-radius: 6px;
-  padding: .45rem .6rem;
+  width: 100%;
+  color: var(--form-text);
+  background-color: var(--form-bg);
+  border: 1px solid var(--form-border);
+  border-radius: 8px;
+  padding: .5rem .65rem;
 }
 
 #affForm ::placeholder,
 #payForm ::placeholder,
 #refiForm ::placeholder,
 #extraForm ::placeholder {
-  color: #94a3b8;
+  color: var(--form-placeholder);
   opacity: 1;
 }
 
@@ -112,24 +113,23 @@
 #payForm .tiny, #payForm .small, #payForm .help-tip,
 #refiForm .tiny, #refiForm .small, #refiForm .help-tip,
 #extraForm .tiny, #extraForm .small, #extraForm .help-tip {
-  color: #64748b;   /* soft slate for helper text */
+  color: var(--form-help);
 }
 
 #affForm input:focus, #affForm select:focus, #affForm textarea:focus,
 #payForm input:focus, #payForm select:focus, #payForm textarea:focus,
 #refiForm input:focus, #refiForm select:focus, #refiForm textarea:focus,
 #extraForm input:focus, #extraForm select:focus, #extraForm textarea:focus {
-  outline: 2px solid rgba(59,130,246,.35);   /* blue focus ring */
+  outline: 2px solid var(--form-focus);
   outline-offset: 2px;
-  border-color: rgba(59,130,246,.55);
+  border-color: var(--form-focus-border);
 }
 
-/* Keep the little "i" badge readable on light cards too */
 #affForm .help, #payForm .help, #refiForm .help, #extraForm .help {
-  color: #475569;
-  border-color: rgba(71,85,105,.5);
+  color: #d1d7e3;
+  border-color: rgba(209,215,227,.6);
 }
 #affForm .help:hover, #payForm .help:hover,
 #refiForm .help:hover, #extraForm .help:hover {
-  background: rgba(71,85,105,.08);
+  background: rgba(209,215,227,.15);
 }

@@ -1,0 +1,5 @@
+{
+  "name": "loan-advisor-worker",
+  "private": true,
+  "type": "module"
+}

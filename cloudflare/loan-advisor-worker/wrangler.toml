@@ -1,9 +1,24 @@
+# DEPRECATED — use azure/functions/loan-advisor-fn instead.
+# See DEPRECATED.txt in this folder.
+
 name = "loan-advisor"
 main = "src/loan-advisor.js"
 compatibility_date = "2025-08-27"
 
-# Optional: bind environment variables (secrets set via CLI)
+# Public vars (secrets via wrangler secret put)
 [vars]
-# Nothing public here; keep secrets out of git
+# REFI_MLO_EMAIL = "you@example.com"  # optional fallback notify
 
-# If you later add KV/D1/etc., declare bindings here.
+# KV for saved refinance watch profiles (create in CF dashboard, then uncomment):
+# [[kv_namespaces]]
+# binding = "REFI_KV"
+# id = "YOUR_KV_NAMESPACE_ID"
+
+# Weekly refinance check — Mon & Thu 14:00 UTC (~9–10am ET)
+[triggers]
+crons = ["0 14 * * 1,4"]
+
+# Secrets (set via CLI, not in git):
+# wrangler secret put AI_API_KEY
+# wrangler secret put RESEND_API_KEY
+# Optional: REFI_EMAIL_FROM, REFI_MLO_EMAIL as vars above
