@@ -216,6 +216,11 @@ html, body { overflow-x: hidden; }
   background:rgba(11,95,255,.18); font-size:1.2rem;
 }
 .programs{ padding:36px 0; }
+.loans-advisor-hint{
+  margin-top:8px; padding-top:4px;
+  text-align:center;
+}
+.loans-advisor-hint .small{ margin:0; }
 .cta-banner{ padding:36px 0; }
 .cta-banner-inner{
   display:flex; align-items:center; justify-content:space-between;
