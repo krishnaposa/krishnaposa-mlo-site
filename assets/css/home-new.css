@@ -109,26 +109,33 @@
 .homev2-dropzone .small{ color:#94a3b8; }
 .homev2-dropzone .tiny{ color:#64748b; font-size:.75rem; }
 
-/* About — 50/50 split */
-.homev2-meet-split{
-  display:grid; grid-template-columns:minmax(240px, 360px) 1fr;
-  gap:clamp(24px, 4vw, 40px); align-items:start;
+/* Meet Krish — compact card */
+.homev2-meet-card{
+  display:flex; gap:20px; align-items:flex-start;
+  background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:20px;
 }
-.homev2-meet-photo{
-  width:100%; max-width:360px; border-radius:14px;
-  object-fit:cover; aspect-ratio:1;
-  border:3px solid rgba(56,189,248,.3);
-  box-shadow:0 12px 32px rgba(0,0,0,.25);
+.homev2-avatar{
+  width:96px; height:96px; flex:0 0 auto;
+  border-radius:50%; object-fit:cover;
+  border:3px solid rgba(56,189,248,.35);
+  box-shadow:0 8px 20px rgba(0,0,0,.2);
 }
+.homev2-meet-copy{ min-width:0; flex:1 1 auto; }
 .homev2-meet-copy h2{ margin-top:0; }
 .homev2-meet-copy p{ color:#cbd5e1; line-height:1.65; margin:0 0 12px; }
+.homev2-meet-copy ul{
+  margin:12px 0 0; padding-left:1.1rem; color:#94a3b8;
+}
+.homev2-meet-copy li{ margin:6px 0; }
 .homev2-video-placeholder{
-  margin-top:14px; border-radius:12px; padding:14px;
+  margin-top:16px; max-width:520px;
+  border-radius:12px; padding:18px;
   background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
   border:1px solid rgba(255,255,255,.1);
-  color:#94a3b8; font-size:.85rem;
+  color:#94a3b8; font-size:.88rem;
 }
-.homev2-video-placeholder p{ margin:0 0 6px; }
+.homev2-video-placeholder p{ margin:0 0 8px; }
 
 /* Programs — 3×2 */
 .homev2-programs{
@@ -153,20 +160,6 @@
   background:rgba(11,95,255,.12);
   color:#fff;
   outline:none;
-}
-
-/* Reviews */
-.homev2-reviews-section{ background:rgba(15,23,42,.35); }
-.homev2-reviews-widget{
-  border:1px solid rgba(255,255,255,.08);
-  border-radius:14px; padding:clamp(24px, 4vw, 36px);
-  background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
-}
-.homev2-reviews-fallback{ text-align:center; max-width:480px; margin:0 auto; }
-.homev2-reviews-stars{ font-size:1.5rem; color:#fbbf24; letter-spacing:.15em; margin:0 0 8px; }
-.homev2-reviews-fallback p{ color:#94a3b8; margin:0 0 16px; }
-.homev2-reviews-fallback code{
-  font-size:.75rem; background:rgba(0,0,0,.25); padding:2px 5px; border-radius:4px;
 }
 
 .program-panel{
@@ -217,9 +210,9 @@
 @media (max-width:960px){
   .homev2-trust-grid{ grid-template-columns:repeat(2, 1fr); }
   .homev2-compare-grid{ grid-template-columns:1fr; }
-  .homev2-meet-split{ grid-template-columns:1fr; }
-  .homev2-meet-photo{ max-width:280px; margin:0 auto; display:block; }
-  .homev2-meet-copy{ text-align:left; }
+  .homev2-meet-card{ flex-direction:column; align-items:center; text-align:center; }
+  .homev2-meet-copy ul{ text-align:left; }
+  .homev2-avatar{ width:88px; height:88px; }
   .homev2-programs{ grid-template-columns:repeat(2, 1fr); }
 }
 @media (max-width:520px){

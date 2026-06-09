@@ -1,7 +1,7 @@
 /* Homepage secure drop zone → le-upload.html */
 (function () {
   const MAX_BYTES = 6 * 1024 * 1024;
-  const TARGET = 'le-upload.html';
+  const TARGET = 'le-upload.html?mode=vs-ours';
 
   function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
@@ -21,6 +21,7 @@
     const dataUrl = await fileToDataUrl(file);
     sessionStorage.setItem('lePending', JSON.stringify({
       side: side || 'A',
+      mode: 'vs-ours',
       name: file.name,
       type: file.type || 'application/octet-stream',
       dataUrl,

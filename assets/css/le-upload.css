@@ -92,6 +92,30 @@
   margin-top: .5rem;
 }
 
+.le-mode-banner {
+  margin-bottom: 1rem;
+  font-size: .9rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+.le-mode-banner a { color: #38bdf8; }
+
+.le-upload-zone--ours {
+  border-style: solid;
+  border-color: rgba(34, 197, 94, .45);
+  background: rgba(34, 197, 94, .06);
+  cursor: default;
+  opacity: .95;
+}
+.le-upload-zone--ours:hover {
+  border-color: rgba(34, 197, 94, .45);
+  background: rgba(34, 197, 94, .06);
+}
+
+body[data-le-mode="vs-ours"] .le-upload-lender-card:last-of-type {
+  border-color: rgba(34, 197, 94, .25);
+}
+
 /* Wider layout for two lender columns */
 .le-upload-wide {
   max-width: 1320px;

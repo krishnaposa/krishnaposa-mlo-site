@@ -32,6 +32,7 @@
   <script defer src="assets/js/script.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="assets/js/loan-api-config.js"></script>
+  <script defer src="assets/js/refi-eval.js"></script>
   <script defer src="assets/js/le-compare-core.js"></script>
 </head>
 <body>
@@ -45,7 +46,7 @@
       <div class="container hero-inner">
         <div class="hero-copy">
           <h1>Upload & Compare Loan Estimates</h1>
-          <p>Drop two Loan Estimate PDFs or photos. We read the key numbers, let you fix anything that looks off, then show monthly payment, cash to close, and 5-year cost. Educational only — not a loan offer.</p>
+          <p id="leHeroLead">Drop two Loan Estimate PDFs or photos. We read the key numbers, let you fix anything that looks off, then show monthly payment, cash to close, and 5-year cost. Educational only — not a loan offer.</p>
           <div class="cta">
             <a class="btn btn-blue" href="calculator-le-compare.html">Manual entry instead</a>
             <a class="btn-outline btn-green" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book a review call</a>
@@ -59,9 +60,10 @@
     </section>
 
     <section class="container">
+      <div class="card le-mode-banner" id="leModeBanner" hidden></div>
       <div class="card">
         <div class="le-upload-steps">
-          <div class="le-upload-step"><strong>1. Upload</strong><span class="small">PDF or photo for each lender</span></div>
+          <div class="le-upload-step"><strong>1. Upload</strong><span class="small" id="step1Text">PDF or photo for each lender</span></div>
           <div class="le-upload-step"><strong>2. Review</strong><span class="small">Edit any OCR fields</span></div>
           <div class="le-upload-step"><strong>3. Compare</strong><span class="small">See payment, cash, 5-yr cost</span></div>
         </div>
@@ -87,7 +89,7 @@
 
       <div class="grid-3 le-upload-lender-grid" id="le-compare-section">
         <div class="card le-upload-lender-card">
-          <h2 style="margin:0 0 .25rem">Lender A — extracted fields</h2>
+          <h2 style="margin:0 0 .25rem" id="titleA">Lender A — extracted fields</h2>
           <p class="small le-upload-status" id="a_status"></p>
           <p class="tiny muted" id="a_notes"></p>
           <form id="formA">
@@ -115,7 +117,7 @@
         </div>
 
         <div class="card le-upload-lender-card">
-          <h2 style="margin:0 0 .25rem">Lender B — extracted fields</h2>
+          <h2 style="margin:0 0 .25rem" id="titleB">Lender B — extracted fields</h2>
           <p class="small le-upload-status" id="b_status"></p>
           <p class="tiny muted" id="b_notes"></p>
           <form id="formB">
@@ -171,24 +173,24 @@
           <div class="card">
             <strong>Monthly Payment</strong>
             <div class="grid-3">
-              <div><p class="small muted">Lender A</p><p id="resA_monthly">$—</p></div>
-              <div><p class="small muted">Lender B</p><p id="resB_monthly">$—</p></div>
+              <div><p class="small muted" data-label-a>Lender A</p><p id="resA_monthly">$—</p></div>
+              <div><p class="small muted" data-label-b>Lender B</p><p id="resB_monthly">$—</p></div>
               <div><p class="small muted">Diff</p><p id="resDiff_monthly">—</p></div>
             </div>
           </div>
           <div class="card">
             <strong>Cash to Close</strong>
             <div class="grid-3">
-              <div><p class="small muted">Lender A</p><p id="resA_cash">$—</p></div>
-              <div><p class="small muted">Lender B</p><p id="resB_cash">$—</p></div>
+              <div><p class="small muted" data-label-a>Lender A</p><p id="resA_cash">$—</p></div>
+              <div><p class="small muted" data-label-b>Lender B</p><p id="resB_cash">$—</p></div>
               <div><p class="small muted">Diff</p><p id="resDiff_cash">—</p></div>
             </div>
           </div>
           <div class="card">
             <strong>5-Year Cost</strong>
             <div class="grid-3">
-              <div><p class="small muted">Lender A</p><p id="resA_5yr">$—</p></div>
-              <div><p class="small muted">Lender B</p><p id="resB_5yr">$—</p></div>
+              <div><p class="small muted" data-label-a>Lender A</p><p id="resA_5yr">$—</p></div>
+              <div><p class="small muted" data-label-b>Lender B</p><p id="resB_5yr">$—</p></div>
               <div><p class="small muted">Diff</p><p id="resDiff_5yr">—</p></div>
             </div>
           </div>
@@ -198,8 +200,8 @@
           <div class="card">
             <strong>Points Break-Even</strong>
             <div class="grid-3">
-              <div><p class="small muted">Lender A</p><p id="resA_breakeven">—</p></div>
-              <div><p class="small muted">Lender B</p><p id="resB_breakeven">—</p></div>
+              <div><p class="small muted" data-label-a>Lender A</p><p id="resA_breakeven">—</p></div>
+              <div><p class="small muted" data-label-b>Lender B</p><p id="resB_breakeven">—</p></div>
               <div><p class="small muted">Who wins?</p><p id="res_breakeven_winner">—</p></div>
             </div>
           </div>
