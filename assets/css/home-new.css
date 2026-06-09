@@ -18,9 +18,7 @@
     radial-gradient(800px 300px at 85% 10%, rgba(11,95,255,.2), transparent 55%),
     linear-gradient(180deg, rgba(11,95,255,.08), transparent);
 }
-.homev2-hero-inner{
-  display:grid; grid-template-columns:1.15fr .85fr; gap:32px; align-items:center;
-}
+.homev2-hero-inner{ max-width:720px; }
 .homev2-hero h1{
   font-size:clamp(1.65rem, 4vw, 2.45rem); line-height:1.12; margin:0 0 14px;
 }
@@ -82,41 +80,82 @@
 .homev2-compare-visual .doc-icon{ font-size:3rem; margin-bottom:8px; opacity:.9; }
 .homev2-compare-visual p{ margin:0; color:#94a3b8; font-size:.9rem; }
 
-.homev2-meet{
-  display:grid; grid-template-columns:1fr 1fr; gap:28px; align-items:start;
+.homev2-meet-card{
+  display:flex; gap:20px; align-items:flex-start;
+  background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:20px;
 }
+.homev2-avatar{
+  width:96px; height:96px; flex:0 0 auto;
+  border-radius:50%; object-fit:cover;
+  border:3px solid rgba(56,189,248,.35);
+  box-shadow:0 8px 20px rgba(0,0,0,.2);
+}
+.homev2-meet-copy{ min-width:0; flex:1 1 auto; }
+.homev2-meet-copy h2{ margin-top:0; }
 .homev2-meet-copy p{ color:#cbd5e1; line-height:1.65; margin:0 0 12px; }
 .homev2-meet-copy ul{
   margin:12px 0 0; padding-left:1.1rem; color:#94a3b8;
 }
 .homev2-meet-copy li{ margin:6px 0; }
-.homev2-media{
-  display:grid; gap:12px;
-}
-.homev2-media img{ border-radius:12px; box-shadow:0 12px 28px rgba(0,0,0,.25); }
 .homev2-video-placeholder{
-  aspect-ratio:16/9; border-radius:12px;
+  margin-top:16px; max-width:520px;
+  border-radius:12px; padding:18px;
   background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
   border:1px solid rgba(255,255,255,.1);
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:8px; color:#94a3b8; font-size:.88rem; text-align:center; padding:16px;
+  color:#94a3b8; font-size:.88rem;
 }
+.homev2-video-placeholder p{ margin:0 0 8px; }
 
 .homev2-programs{
   display:grid; grid-template-columns:repeat(4, 1fr); gap:12px;
 }
 .homev2-program{
-  display:block; padding:16px; border-radius:12px;
+  display:block; width:100%; padding:16px; border-radius:12px;
   background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
   color:#e2e8f0; font-weight:600; font-size:.92rem; text-align:center;
+  cursor:pointer; font-family:inherit;
   transition:transform .15s ease, border-color .15s ease, background .15s ease;
 }
-.homev2-program:hover{
+.homev2-program:hover,
+.homev2-program:focus-visible{
   transform:translateY(-2px);
   border-color:rgba(56,189,248,.4);
   background:rgba(11,95,255,.12);
   color:#fff;
+  outline:none;
 }
+
+.program-panel{
+  position:fixed; inset:0; z-index:100;
+  display:flex; align-items:center; justify-content:center;
+  padding:20px;
+}
+.program-panel[hidden]{ display:none; }
+.program-panel-backdrop{
+  position:absolute; inset:0;
+  background:rgba(0,0,0,.6); backdrop-filter:blur(4px);
+}
+.program-panel-box{
+  position:relative; z-index:1;
+  max-width:480px; width:100%;
+  background:#111827; border:1px solid rgba(56,189,248,.25);
+  border-radius:14px; padding:24px 22px 20px;
+  box-shadow:0 24px 48px rgba(0,0,0,.4);
+}
+.program-panel-box h3{
+  margin:0 28px 10px 0; font-size:1.2rem; color:#f1f5f9; line-height:1.25;
+}
+.program-panel-box p{ margin:0; color:#cbd5e1; line-height:1.6; font-size:.95rem; }
+.program-panel-actions{
+  display:flex; flex-wrap:wrap; gap:10px; margin-top:18px;
+}
+.program-panel-close{
+  position:absolute; top:10px; right:12px;
+  border:0; background:transparent; color:#94a3b8;
+  font-size:1.5rem; line-height:1; cursor:pointer; padding:4px 8px;
+}
+.program-panel-close:hover{ color:#fff; }
 
 .homev2-final-cta{
   text-align:center; padding:clamp(40px, 6vh, 64px) 0;
@@ -127,9 +166,10 @@
 .homev2-final-cta .homev2-cta{ justify-content:center; }
 
 @media (max-width:960px){
-  .homev2-hero-inner,
-  .homev2-compare-grid,
-  .homev2-meet{ grid-template-columns:1fr; }
+  .homev2-compare-grid{ grid-template-columns:1fr; }
+  .homev2-meet-card{ flex-direction:column; align-items:center; text-align:center; }
+  .homev2-meet-copy ul{ text-align:left; }
+  .homev2-avatar{ width:88px; height:88px; }
   .homev2-cards{ grid-template-columns:1fr; }
   .homev2-programs{ grid-template-columns:repeat(2, 1fr); }
   .homev2-checklist{ grid-template-columns:1fr; }
