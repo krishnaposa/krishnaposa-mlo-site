@@ -1,7 +1,7 @@
 /* Homepage secure drop zone → le-upload.html */
 (function () {
   const MAX_BYTES = 6 * 1024 * 1024;
-  const TARGET = 'le-upload.html?mode=vs-ours';
+  const TARGET = 'le-upload.html?mode=vs-ours&from=home';
 
   function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {

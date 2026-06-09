@@ -17,6 +17,7 @@ FUNCTIONS_WORKER_RUNTIME=node in local.settings.json is LOCAL ONLY (for func CLI
 Endpoints (route prefix /api):
   POST /api/loanAdvisor
   POST /api/leOcr          — Loan Estimate OCR (PDF text or image → structured fields)
+  POST /api/leReviewSubmit — Save single LE for Krish review + email borrower & NOTIFY_TO
   POST /api/refiCheck
   POST /api/refiWatch
   Timer refiCron — Mon & Thu 14:00 UTC

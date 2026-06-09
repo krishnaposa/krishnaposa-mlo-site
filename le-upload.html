@@ -12,8 +12,8 @@
   <meta name="theme-color" content="#0b5fff">
   <meta name="robots" content="index,follow">
 
-  <title>Upload & Compare Loan Estimates | Krish Posa, MLO</title>
-  <meta name="description" content="Upload two Loan Estimate PDFs or photos. OCR extracts the numbers, then compare monthly payment, cash to close, and 5-year cost side by side.">
+  <title>Loan Estimate Upload | Second Opinion or Compare Two | Krish Posa</title>
+  <meta name="description" content="Upload one Loan Estimate for a free second opinion, or upload two LEs to compare payment, cash to close, and 5-year cost side by side.">
   <link rel="canonical" href="https://www.krishposa.com/le-upload.html">
 
   <meta property="og:type" content="website">
@@ -32,7 +32,6 @@
   <script defer src="assets/js/script.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="assets/js/loan-api-config.js"></script>
-  <script defer src="assets/js/refi-eval.js"></script>
   <script defer src="assets/js/le-compare-core.js"></script>
 </head>
 <body>
@@ -45,8 +44,8 @@
     <section class="hero le-upload-hero">
       <div class="container hero-inner">
         <div class="hero-copy">
-          <h1>Upload & Compare Loan Estimates</h1>
-          <p id="leHeroLead">Drop two Loan Estimate PDFs or photos. We read the key numbers, let you fix anything that looks off, then show monthly payment, cash to close, and 5-year cost. Educational only — not a loan offer.</p>
+          <h1 id="leHeroTitle">Loan Estimate Tools</h1>
+          <p id="leHeroLead">Choose whether you have one quote to review or two quotes to compare. Educational only — not a loan offer.</p>
           <div class="cta">
             <a class="btn btn-blue" href="calculator-le-compare.html">Manual entry instead</a>
             <a class="btn-outline btn-green" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book a review call</a>
@@ -59,20 +58,38 @@
       </div>
     </section>
 
-    <section class="container">
-      <div class="card le-mode-banner" id="leModeBanner" hidden></div>
-      <div class="card">
-        <div class="le-upload-steps">
-          <div class="le-upload-step"><strong>1. Upload</strong><span class="small" id="step1Text">PDF or photo for each lender</span></div>
-          <div class="le-upload-step"><strong>2. Review</strong><span class="small">Edit any OCR fields</span></div>
-          <div class="le-upload-step"><strong>3. Compare</strong><span class="small">See payment, cash, 5-yr cost</span></div>
-        </div>
-        <p class="le-upload-privacy">Files are sent securely for OCR and are not stored on this site. Verify all numbers against your official Loan Estimate.</p>
+    <section class="container" id="leModePickerSection">
+      <h2 class="le-mode-picker-heading">What do you have?</h2>
+      <div class="le-mode-picker" role="tablist" aria-label="Choose upload type">
+        <button type="button" class="le-mode-card" id="pickVsOurs" data-mode="vs-ours" role="tab" aria-selected="false">
+          <span class="le-mode-badge le-mode-badge--one">1 Loan Estimate</span>
+          <strong class="le-mode-card-title">Get a second opinion</strong>
+          <span class="small">You have one quote from another lender. Upload it — Krish reviews the numbers and prepares a competitive Loan Estimate for you.</span>
+          <span class="le-mode-card-cta">Upload my LE →</span>
+        </button>
+        <button type="button" class="le-mode-card" id="pickCompareTwo" data-mode="compare-two" role="tab" aria-selected="false">
+          <span class="le-mode-badge le-mode-badge--two">2 Loan Estimates</span>
+          <strong class="le-mode-card-title">Compare two lenders</strong>
+          <span class="small">You have quotes from two lenders. Upload both and see monthly payment, cash to close, and 5-year cost side by side instantly.</span>
+          <span class="le-mode-card-cta">Compare two LEs →</span>
+        </button>
       </div>
     </section>
 
-    <section class="container le-upload-wide" id="le-upload-section" style="margin-top:1rem">
-      <div class="le-upload-zones" style="margin-bottom:1rem">
+    <section class="container le-workflow" id="leWorkflow" hidden>
+      <div class="card le-mode-active-label" id="leModeActiveLabel"></div>
+      <div class="card">
+        <div class="le-upload-steps">
+          <div class="le-upload-step"><strong>1. Upload</strong><span class="small" id="step1Text">PDF or photo for each lender</span></div>
+          <div class="le-upload-step"><strong>2. Review</strong><span class="small" id="step2Text">Edit any OCR fields</span></div>
+          <div class="le-upload-step"><strong>3. Compare</strong><span class="small" id="step3Text">See payment, cash, 5-yr cost</span></div>
+        </div>
+        <p class="le-upload-privacy" id="lePrivacyNote">Files are sent securely for OCR. Verify all numbers against your official Loan Estimate.</p>
+      </div>
+    </section>
+
+    <section class="container le-upload-wide le-workflow" id="le-upload-section" style="margin-top:1rem" hidden>
+      <div class="le-upload-zones" id="leUploadZones" style="margin-bottom:1rem">
         <div class="le-upload-zone" id="zoneA" tabindex="0" role="button" aria-label="Upload Lender A Loan Estimate">
           <span class="le-upload-zone-icon" aria-hidden="true">📄</span>
           <strong>Lender A</strong>
@@ -116,7 +133,7 @@
           </form>
         </div>
 
-        <div class="card le-upload-lender-card">
+        <div class="card le-upload-lender-card" id="lenderBCard">
           <h2 style="margin:0 0 .25rem" id="titleB">Lender B — extracted fields</h2>
           <p class="small le-upload-status" id="b_status"></p>
           <p class="tiny muted" id="b_notes"></p>
@@ -144,16 +161,16 @@
           </form>
         </div>
 
-        <aside class="card le-upload-aside">
+        <aside class="card le-upload-aside" id="compareAside">
           <h2 style="margin:0 0 .25rem">Tips</h2>
           <ul class="small le-upload-aside-tips">
             <li>Clear photos or native PDFs work best.</li>
             <li>Always double-check OCR numbers against your LE.</li>
             <li>Shop title, insurance, and lender fees to lower cash to close.</li>
           </ul>
-          <div class="cta le-upload-aside-actions">
+          <div class="cta le-upload-aside-actions" id="compareActions">
             <button class="btn btn-blue" id="compareBtn" type="button">Compare Estimates</button>
-            <button class="btn-outline" id="resetBtn" type="button">Reset</button>
+            <button class="btn-outline js-le-reset" type="button">Reset</button>
           </div>
           <div class="card le-upload-review-cta">
             <strong>Need a second opinion?</strong>
@@ -161,10 +178,47 @@
             <a class="btn btn-green le-upload-review-btn" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Schedule review</a>
           </div>
         </aside>
+
+        <div class="card le-review-panel" id="leReviewPanel" hidden>
+          <h2 style="margin:0 0 .25rem">Submit for a competitive quote</h2>
+          <p class="small">We don’t have your Innovative Mortgage LE ready yet — that’s normal. Save your uploaded estimate and Krish will review it and follow up with a better quote.</p>
+          <form id="leReviewForm" class="le-review-form" onsubmit="return false">
+            <div class="field"><label for="leReviewName">Your name</label><input id="leReviewName" required autocomplete="name"></div>
+            <div class="field"><label for="leReviewEmail">Email</label><input id="leReviewEmail" type="email" required autocomplete="email"></div>
+            <div class="field"><label for="leReviewPhone">Phone (optional)</label><input id="leReviewPhone" type="tel" autocomplete="tel"></div>
+            <div class="field"><label for="leReviewNotes">Notes (optional)</label><input id="leReviewNotes" placeholder="Timeline, property address, questions"></div>
+            <div class="cta le-upload-aside-actions">
+              <button class="btn btn-green" id="leReviewSubmitBtn" type="button">Submit for review</button>
+              <button class="btn-outline js-le-reset" type="button">Start over</button>
+            </div>
+            <p class="small" id="leReviewMsg" role="status"></p>
+          </form>
+        </div>
+
+        <aside class="card le-upload-aside" id="reviewAside" hidden>
+          <h2 style="margin:0 0 .25rem">What happens next</h2>
+          <ul class="small le-upload-aside-tips">
+            <li>Your LE fields are saved securely for review.</li>
+            <li>Krish prepares a competitive Loan Estimate.</li>
+            <li>You get a follow-up email — usually within one business day.</li>
+          </ul>
+          <a class="btn btn-blue le-upload-review-btn" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Book a call now</a>
+        </aside>
       </div>
     </section>
 
-    <section class="container" id="le-compare-results" hidden>
+    <section class="container le-workflow" id="leReviewSuccess" hidden>
+      <div class="card le-review-success">
+        <h2>Loan Estimate saved</h2>
+        <p id="leReviewSuccessMsg"></p>
+        <div class="cta" style="margin-top:1rem;flex-wrap:wrap;gap:.5rem">
+          <a class="btn btn-blue" href="https://calendar.app.google/22s8fcMQLge9g63d6" target="_blank" rel="noopener">Schedule a call</a>
+          <a class="btn-outline" href="index-new.html">Back to home</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="container le-workflow" id="le-compare-results" hidden>
       <div class="card">
         <h2 style="margin:0 0 .25rem">Comparison Results</h2>
         <div id="compare_summary" class="small" style="margin-bottom:.75rem"></div>
