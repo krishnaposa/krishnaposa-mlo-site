@@ -28,6 +28,13 @@
 }
 #le-compare-section input::placeholder { color: var(--muted); }
 
+.le-cash-math-hint {
+  margin: .35rem 0 0;
+}
+.le-cash-math-hint--warn {
+  color: #b45309;
+}
+
 /* Buttons: larger tap targets on mobile */
 #le-compare-section .cta .btn,
 #le-compare-section .cta .btn-outline,
