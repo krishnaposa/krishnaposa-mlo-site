@@ -18,6 +18,18 @@
 
   const { evaluateRefi, fmtMoney, fmtRate } = window.RefiEval;
 
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function scrollToResult() {
+    result?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   function dollars(n) {
     return Number(n).toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   }
@@ -111,14 +123,31 @@
     `;
 
     document.getElementById('bulletList').innerHTML =
-      out.bullets.map(b => `<li>${b}</li>`).join('');
+      out.bullets.map(b => `<li>${escapeHtml(b)}</li>`).join('');
 
     const expl = out.explanation || out.summary;
-    document.getElementById('explanation').innerHTML = `<p>${expl.replace(/\n/g, '</p><p>')}</p>`;
+    const explParts = String(expl || '').split(/\n\s*\n/).filter(Boolean);
+    document.getElementById('explanation').innerHTML = explParts.length
+      ? explParts.map((p) => `<p>${escapeHtml(p.trim())}</p>`).join('')
+      : `<p>${escapeHtml(expl || '')}</p>`;
+
+    const aiNote = document.getElementById('aiSourceNote');
+    if (aiNote) {
+      if (fromApi && out.aiSource === 'fallback') {
+        aiNote.textContent = 'Note: AI explanation unavailable — showing rule-based summary. Book a call for personalized guidance.';
+        aiNote.hidden = false;
+      } else if (fromApi && (out.aiSource === 'azure' || out.aiSource === 'openai')) {
+        aiNote.textContent = 'AI-assisted explanation (educational only — not a loan offer).';
+        aiNote.hidden = false;
+      } else {
+        aiNote.textContent = '';
+        aiNote.hidden = true;
+      }
+    }
 
     document.getElementById('checkedAt').textContent = out.checkedAt
       ? 'Checked ' + new Date(out.checkedAt).toLocaleString()
-      : (fromApi ? '' : 'Instant preview (save profile and Check Now for full analysis)');
+      : (fromApi ? '' : 'Instant preview — click Check Now for server analysis with optional AI explanation.');
 
     result.style.display = 'block';
     preview.style.display = 'none';
@@ -169,17 +198,20 @@
       if (!res.ok) throw new Error(out.error || 'Check failed. Try again.');
 
       renderResult(out, true);
+      scrollToResult();
 
       window.dataLayer = window.dataLayer || [];
       window.dataLayer.push({
         event: 'refi_monitor_check',
         verdict: out.verdict,
         rate_drop: out.metrics?.rateDrop,
-        monthly_savings: out.metrics?.monthlySavings
+        monthly_savings: out.metrics?.monthlySavings,
+        aiSource: out.aiSource
       });
     } catch (ex) {
       err.textContent = ex.message;
       err.style.display = 'block';
+      err.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } finally {
       checkBtn.disabled = false;
       checkBtn.textContent = 'Check Now';

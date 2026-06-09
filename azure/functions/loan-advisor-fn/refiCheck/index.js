@@ -18,6 +18,7 @@ module.exports = async function (context, req) {
     return sendJson(context, 200, {
       ...result,
       explanation,
+      aiSource: ai.source,
       checkedAt: new Date().toISOString(),
       baselineRates: BASE_BY_TERM
     });
