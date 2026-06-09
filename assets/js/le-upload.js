@@ -5,7 +5,9 @@
 
   const FIELD_IDS = [
     'amount', 'rate', 'term', 'points', 'lender_fees', 'credits',
-    'shop_total', 'other_3p', 'prepaids', 'taxes_ins', 'pmi', 'down', 'cash_to_close'
+    'shop_total', 'other_3p', 'prepaids', 'taxes_ins', 'pmi', 'down',
+    'adjustments_other', 'seller_credits', 'deposit',
+    'closing_costs_financed', 'funds_for_borrower', 'section_j', 'cash_to_close'
   ];
 
   const SECTION_LABELS = [
@@ -280,24 +282,78 @@
     const sectionE = grab([/E\. Taxes and Other Government Fees\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]);
     const sectionF = grab([/F\. Prepaids\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]);
     const sectionG = grab([/G\. Initial Escrow Payment at Closing\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]);
+    const sectionJ = grab([
+      /J\. TOTAL CLOSING COSTS\s*\$?\s*([\d,]+(?:\.\d{2})?)/i,
+      /TOTAL CLOSING COSTS\s*\$?\s*([\d,]+(?:\.\d{2})?)/i
+    ]);
     const taxesIns = totalMonthly && monthlyPI ? Math.max(0, totalMonthly - monthlyPI) : 0;
+    const adjMatch = t.match(/Adjustments and Other Credits\s*(-?\$?\s*[\d,]+(?:\.\d{2})?)/i);
+    let adjustmentsOther = 0;
+    if (adjMatch) {
+      const raw = adjMatch[1] || '';
+      const neg = /^\s*-/.test(raw) || /-\s*\$/.test(adjMatch[0]);
+      const val = parseFloat(raw.replace(/[,$\s-]/g, ''));
+      adjustmentsOther = isFinite(val) ? (neg ? -val : val) : 0;
+    }
     return {
       lender_name: null,
       amount,
       rate,
       term: /15[\s-]*Year|15\s*yr/i.test(t) ? 15 : 30,
       points: 0,
+      section_a: sectionA,
+      section_b: sectionB,
+      section_c: sectionC,
+      section_e: sectionE,
+      section_f: sectionF,
+      section_g: sectionG,
+      section_j: sectionJ,
       lender_fees: sectionA,
-      credits: 0,
+      credits: grab([/Lender Credits\s*-?\$?\s*([\d,]+(?:\.\d{2})?)/i]),
       shop_total: sectionC,
       other_3p: sectionB + sectionE,
       prepaids: sectionF + sectionG,
       taxes_ins: taxesIns,
       pmi: 0,
-      down: grab([/Down Payment\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]),
+      down: grab([
+        /Down Payment\/Funds from Borrower\s*\$?\s*([\d,]+(?:\.\d{2})?)/i,
+        /Down Payment\s*\$?\s*([\d,]+(?:\.\d{2})?)/i
+      ]),
+      adjustments_other: adjustmentsOther,
+      seller_credits: grab([/Seller Credits\s*-?\$?\s*([\d,]+(?:\.\d{2})?)/i]),
+      deposit: grab([/Deposit\s*-?\$?\s*([\d,]+(?:\.\d{2})?)/i]),
+      cash_to_close: grab([/Estimated Cash to Close\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]),
       confidence: amount && rate ? 'low' : 'low',
       notes: 'Parsed locally from PDF text. Please verify all fields.'
     };
+  }
+
+  function updateCashMathHint(prefix) {
+    const hint = $(prefix + '_cash_math_hint');
+    if (!hint || !window.LECompare) return;
+    const side = window.LECompare.computeSide(prefix);
+    const d = side.cashToCloseDetail;
+    if (!d || d.computed <= 0) {
+      hint.hidden = true;
+      hint.textContent = '';
+      return;
+    }
+    const fmt = window.LECompare.fmtMoney;
+    if (d.stated <= 0) {
+      hint.textContent = `Estimated cash: down + closing (${fmt(d.closingCosts)}) + adjustments − seller credits/deposit = ${fmt(d.computed)}`;
+      hint.classList.remove('le-cash-math-hint--warn');
+      hint.hidden = false;
+      return;
+    }
+    if (d.matches) {
+      hint.textContent = `Cash math checks: down + closing (${fmt(d.closingCosts)}) + adjustments − seller credits/deposit = ${fmt(d.computed)}`;
+      hint.classList.remove('le-cash-math-hint--warn');
+      hint.hidden = false;
+    } else {
+      hint.textContent = `Cash math mismatch: LE shows ${fmt(d.stated)} but calculated ${fmt(d.computed)} — verify adjustments, deposit, and section J`;
+      hint.classList.add('le-cash-math-hint--warn');
+      hint.hidden = false;
+    }
   }
 
   function fieldsUsable(fields) {
@@ -378,6 +434,7 @@
         wrap.hidden = true;
       }
     }
+    updateCashMathHint(prefix);
   }
 
   function renderResults(res) {
@@ -606,6 +663,9 @@
     consumePendingFromHome();
     $('compareBtn')?.addEventListener('click', runCompare);
     $('leReviewSubmitBtn')?.addEventListener('click', submitForReview);
+    ['a', 'b'].forEach((prefix) => {
+      $('form' + prefix.toUpperCase())?.addEventListener('input', () => updateCashMathHint(prefix));
+    });
     document.querySelectorAll('.js-le-reset').forEach((btn) => btn.addEventListener('click', () => {
       ['formA', 'formB'].forEach((id) => $(id)?.reset());
       ['A', 'B'].forEach((s) => {

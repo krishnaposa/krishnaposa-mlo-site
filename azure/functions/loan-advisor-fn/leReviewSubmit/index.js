@@ -23,6 +23,11 @@ const FIELD_LABELS = {
   taxes_ins: 'Taxes + HOI / mo',
   pmi: 'PMI / mo',
   down: 'Down payment',
+  adjustments_other: 'Adjustments & other (cash table)',
+  seller_credits: 'Seller credits',
+  deposit: 'Deposit / EMD',
+  closing_costs_financed: 'Closing costs financed',
+  funds_for_borrower: 'Funds for borrower',
   cash_to_close: 'Est. cash to close'
 };
 

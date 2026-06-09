@@ -22,6 +22,11 @@ const LE_SCHEMA = `{
   "taxes_ins": number,
   "pmi": number,
   "down": number,
+  "adjustments_other": number,
+  "seller_credits": number,
+  "deposit": number,
+  "closing_costs_financed": number,
+  "funds_for_borrower": number,
   "cash_to_close": number,
   "monthly_pi": number,
   "monthly_total": number,
@@ -46,6 +51,11 @@ CRITICAL — use SECTION TOTALS from page 2 headers, NOT individual line items:
 - credits = "Lender Credits" as positive number (e.g. 209 for -$209)
 - cash_to_close = "Estimated Cash to Close" from Calculating Cash to Close table
 - down = "Down Payment/Funds from Borrower" from that table
+- adjustments_other = "Adjustments and Other Credits" row AS PRINTED (positive adds to buyer cash; negative reduces)
+- seller_credits = "Seller Credits" as positive number (reduces cash to close)
+- deposit = "Deposit" / earnest money as positive number (reduces cash to close)
+- closing_costs_financed = "Closing Costs Financed (Paid from Your Loan Amount)" as positive number
+- funds_for_borrower = "Funds for Borrower" as positive number (reduces cash to close)
 - amount = loan amount from page 1
 - rate = initial interest rate percent
 - monthly_pi = Principal & Interest monthly
@@ -130,6 +140,11 @@ function normalizeFields(raw) {
     taxes_ins: rollups.taxes_ins,
     pmi: num(raw.pmi),
     down: num(raw.down),
+    adjustments_other: num(raw.adjustments_other),
+    seller_credits: Math.abs(num(raw.seller_credits)),
+    deposit: Math.abs(num(raw.deposit)),
+    closing_costs_financed: Math.abs(num(raw.closing_costs_financed)),
+    funds_for_borrower: Math.abs(num(raw.funds_for_borrower)),
     cash_to_close: num(raw.cash_to_close),
     monthly_pi: rollups.monthly_pi,
     monthly_total: rollups.monthly_total,
@@ -146,6 +161,18 @@ function grabSection(t, letter, label) {
   for (const re of patterns) {
     const m = t.match(re);
     if (m) return parseFloat(m[1].replace(/[,$]/g, ''));
+  }
+  return 0;
+}
+
+function grabSigned(t, patterns) {
+  for (const re of patterns) {
+    const m = t.match(re);
+    if (!m) continue;
+    const raw = m[1] || '';
+    const neg = /^\s*-/.test(raw) || /-\s*\$/.test(m[0]);
+    const val = parseFloat(raw.replace(/[,$\s-]/g, ''));
+    return isFinite(val) ? (neg ? -val : val) : 0;
   }
   return 0;
 }
@@ -197,6 +224,21 @@ function parseLoanEstimateText(text) {
     down: grab([
       /Down Payment\/Funds from Borrower\s*\$?\s*([\d,]+(?:\.\d{2})?)/i,
       /Down Payment\s*\$?\s*([\d,]+(?:\.\d{2})?)/i
+    ]),
+    adjustments_other: grabSigned(t, [
+      /Adjustments and Other Credits\s*(-?\$?\s*[\d,]+(?:\.\d{2})?)/i
+    ]),
+    seller_credits: grab([
+      /Seller Credits\s*-?\$?\s*([\d,]+(?:\.\d{2})?)/i
+    ]),
+    deposit: grab([
+      /Deposit\s*-?\$?\s*([\d,]+(?:\.\d{2})?)/i
+    ]),
+    closing_costs_financed: grab([
+      /Closing Costs Financed[^$\n]*\$?\s*([\d,]+(?:\.\d{2})?)/i
+    ]),
+    funds_for_borrower: grab([
+      /Funds for Borrower\s*-?\$?\s*([\d,]+(?:\.\d{2})?)/i
     ]),
     monthly_pi: grab([/Principal & Interest\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]),
     monthly_total: grab([/Estimated Total Monthly Payment\s*\$?\s*([\d,]+(?:\.\d{2})?)/i]),
@@ -277,6 +319,11 @@ function emptyManualFields(note) {
     taxes_ins: 0,
     pmi: 0,
     down: 0,
+    adjustments_other: 0,
+    seller_credits: 0,
+    deposit: 0,
+    closing_costs_financed: 0,
+    funds_for_borrower: 0,
     cash_to_close: 0,
     monthly_pi: 0,
     monthly_total: 0,

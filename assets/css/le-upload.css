@@ -23,6 +23,13 @@
   .le-section-grid { grid-template-columns: 1fr; }
 }
 
+.le-cash-math-hint {
+  margin: .35rem 0 0;
+}
+.le-cash-math-hint--warn {
+  color: #b45309;
+}
+
 .le-upload-hero .hero-copy p { max-width: 42rem; }
 
 /* Mode picker — 1 LE vs 2 LE */

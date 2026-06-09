@@ -69,6 +69,15 @@ function amortSummary(loan, rateAnnual, termYears, months = 60) {
   return { monthlyPI: pay, interest60: interestSum };
 }
 
+function closingCosts(fields) {
+  const sectionJ = num(fields.section_j);
+  if (sectionJ > 0) return sectionJ;
+  const L = num(fields.amount);
+  const pointsCost = L * pct(fields.points);
+  return pointsCost + num(fields.lender_fees) + num(fields.shop_total) +
+    num(fields.other_3p) + num(fields.prepaids) - num(fields.credits);
+}
+
 function computeSide(fields) {
   const L = num(fields.amount);
   const rate = pct(fields.rate);
@@ -81,12 +90,15 @@ function computeSide(fields) {
   const prepaids = num(fields.prepaids);
   const taxesInsMo = num(fields.taxes_ins);
   const pmiMo = num(fields.pmi);
-  const down = num(fields.down);
+  const stated = num(fields.cash_to_close);
+  const computed = num(fields.down) + closingCosts(fields) + num(fields.adjustments_other) -
+    num(fields.seller_credits) - num(fields.deposit) - num(fields.closing_costs_financed) -
+    num(fields.funds_for_borrower);
   const am = amortSummary(L, rate, years, 60);
   return {
     L, rate, years,
     monthlyPmt: am.monthlyPI + taxesInsMo + pmiMo,
-    cashToClose: pointsCost + lenderFees + shop + other3p + prepaids - credits + down,
+    cashToClose: stated > 0 ? stated : computed,
     fiveYearCost: am.interest60 + pmiMo * 60 + pointsCost + lenderFees + shop + other3p - credits,
     monthlyPI: am.monthlyPI
   };

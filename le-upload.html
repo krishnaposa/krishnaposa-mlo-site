@@ -131,6 +131,15 @@
               <div class="field"><label for="a_down">Down Payment ($)</label><input id="a_down" inputmode="decimal"></div>
               <div class="field"><label for="a_cash_to_close">Est. Cash to Close ($)</label><input id="a_cash_to_close" inputmode="decimal" placeholder="from LE page 2"></div>
             </div>
+            <div class="grid-3">
+              <div class="field"><label for="a_adjustments_other" title="Positive adds to buyer cash">Adjustments &amp; Other ($)</label><input id="a_adjustments_other" inputmode="decimal" placeholder="page 2 table"></div>
+              <div class="field"><label for="a_seller_credits">Seller Credits ($)</label><input id="a_seller_credits" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="a_deposit">Deposit / EMD ($)</label><input id="a_deposit" inputmode="decimal" placeholder="0"></div>
+            </div>
+            <p class="tiny muted le-cash-math-hint" id="a_cash_math_hint" hidden></p>
+            <input type="hidden" id="a_section_j">
+            <input type="hidden" id="a_closing_costs_financed">
+            <input type="hidden" id="a_funds_for_borrower">
             <details class="le-section-breakdown" id="a_sections_wrap" hidden>
               <summary>Closing Cost section totals (page 2)</summary>
               <div class="le-section-grid" id="a_sections"></div>
@@ -164,6 +173,15 @@
               <div class="field"><label for="b_down">Down Payment ($)</label><input id="b_down" inputmode="decimal"></div>
               <div class="field"><label for="b_cash_to_close">Est. Cash to Close ($)</label><input id="b_cash_to_close" inputmode="decimal"></div>
             </div>
+            <div class="grid-3">
+              <div class="field"><label for="b_adjustments_other" title="Positive adds to buyer cash">Adjustments &amp; Other ($)</label><input id="b_adjustments_other" inputmode="decimal"></div>
+              <div class="field"><label for="b_seller_credits">Seller Credits ($)</label><input id="b_seller_credits" inputmode="decimal"></div>
+              <div class="field"><label for="b_deposit">Deposit / EMD ($)</label><input id="b_deposit" inputmode="decimal"></div>
+            </div>
+            <p class="tiny muted le-cash-math-hint" id="b_cash_math_hint" hidden></p>
+            <input type="hidden" id="b_section_j">
+            <input type="hidden" id="b_closing_costs_financed">
+            <input type="hidden" id="b_funds_for_borrower">
             <details class="le-section-breakdown" id="b_sections_wrap" hidden>
               <summary>Closing Cost section totals (page 2)</summary>
               <div class="le-section-grid" id="b_sections"></div>
