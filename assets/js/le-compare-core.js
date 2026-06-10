@@ -8,6 +8,15 @@
 
   const pct = (v) => num(v) / 100;
 
+  /** points field is dollars when points_are_dollars / data-unit=dollars; else percent of loan */
+  function pointsCostFromValues(v) {
+    const L = num(v.amount);
+    const p = num(v.points);
+    if (!p) return 0;
+    if (v.points_are_dollars) return p;
+    return p <= 5 ? L * pct(p) : p;
+  }
+
   function pmt(rate, nper, pv) {
     if (rate === 0) return -(pv / nper);
     const rf = Math.pow(1 + rate, nper);
@@ -38,8 +47,7 @@
     const sectionJ = num(v.section_j);
     if (sectionJ > 0) return sectionJ;
 
-    const L = num(v.amount);
-    const pointsCost = L * pct(v.points);
+    const pointsCost = pointsCostFromValues(v);
     const lenderFees = num(v.lender_fees);
     const shop = num(v.shop_total);
     const other3p = num(v.other_3p);
@@ -75,7 +83,7 @@
     const rate = pct(v.rate);
     const years = Math.max(1, Math.round(num(v.term) || 30));
 
-    const pointsCost = L * pct(v.points);
+    const pointsCost = pointsCostFromValues(v);
     const lenderFees = num(v.lender_fees);
     const credits = num(v.credits);
     const shop = num(v.shop_total);
@@ -107,6 +115,7 @@
       rate: $(prefix + '_rate')?.value,
       term: $(prefix + '_term')?.value,
       points: $(prefix + '_points')?.value,
+      points_are_dollars: $(prefix + '_points')?.dataset?.unit === 'dollars',
       lender_fees: $(prefix + '_lender_fees')?.value,
       credits: $(prefix + '_credits')?.value,
       shop_total: $(prefix + '_shop_total')?.value,
@@ -164,6 +173,7 @@
     computeSideFromValues,
     computeCashToClose,
     closingCostsFromValues,
+    pointsCostFromValues,
     fmtMoney,
     compareSides,
     breakeven

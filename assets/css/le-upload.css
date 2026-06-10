@@ -27,6 +27,45 @@
 .le-section-grid span {
   color: #f1f5f9;
 }
+
+.le-shop-breakdown {
+  margin-top: .5rem;
+  font-size: .88rem;
+}
+.le-shop-breakdown summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+.le-shop-grid {
+  display: grid;
+  gap: .4rem;
+  margin-top: .5rem;
+  padding: .5rem .65rem;
+  background: rgba(15, 23, 42, .65);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, .1);
+}
+.le-shop-line {
+  display: grid;
+  grid-template-columns: 1fr minmax(88px, 110px);
+  gap: .5rem;
+  align-items: center;
+  color: #f1f5f9;
+  font-size: .85rem;
+}
+.le-shop-line span {
+  color: #94a3b8;
+}
+.le-shop-line input {
+  width: 100%;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 6px;
+  padding: .4rem .5rem;
+  box-sizing: border-box;
+}
 @media (max-width: 520px) {
   .le-section-grid { grid-template-columns: 1fr; }
 }

@@ -403,12 +403,71 @@
     return data;
   }
 
+  function prepareUploadFields(fields) {
+    const amount = Number(fields.amount) || 0;
+    const sectionA = Number(fields.section_a) || 0;
+    let pointsDollars = Number(fields.points_dollars) || 0;
+    if (!pointsDollars && Number(fields.points) > 0 && amount > 0) {
+      const pts = Number(fields.points);
+      pointsDollars = pts <= 5 ? (amount * pts) / 100 : pts;
+    }
+    let lenderFees = Number(fields.lender_fees) || sectionA;
+    if (sectionA > 0 && pointsDollars > 0 && sectionA >= pointsDollars) {
+      lenderFees = sectionA - pointsDollars;
+    }
+    const shopItems = Array.isArray(fields.shop_items)
+      ? fields.shop_items.filter((i) => i && i.name && Number(i.amount) > 0)
+      : [];
+    const shopSum = shopItems.reduce((s, i) => s + Number(i.amount), 0);
+    return {
+      ...fields,
+      points: pointsDollars > 0 ? Math.round(pointsDollars) : (fields.points || ''),
+      lender_fees: lenderFees > 0 ? Math.round(lenderFees) : fields.lender_fees,
+      shop_total: shopSum > 0 ? Math.round(shopSum) : fields.shop_total,
+      shop_items: shopItems
+    };
+  }
+
+  function syncShopTotal(prefix) {
+    const grid = $(prefix + '_shop_items');
+    const totalEl = $(prefix + '_shop_total');
+    if (!grid || !totalEl) return;
+    let sum = 0;
+    grid.querySelectorAll('input[data-shop-amount]').forEach((inp) => {
+      sum += Number(String(inp.value).replace(/[,$]/g, '')) || 0;
+    });
+    if (sum > 0) totalEl.value = Math.round(sum);
+    updateCashMathHint(prefix);
+  }
+
+  function renderShopItems(prefix, items) {
+    const wrap = $(prefix + '_shop_wrap');
+    const grid = $(prefix + '_shop_items');
+    if (!wrap || !grid) return;
+    if (!items || !items.length) {
+      grid.innerHTML = '';
+      wrap.hidden = true;
+      return;
+    }
+    grid.innerHTML = items.map((item, idx) => {
+      const label = String(item.name || 'Item').replace(/</g, '&lt;');
+      const amt = Math.round(Number(item.amount) || 0);
+      return `<label class="le-shop-line"><span>${label}</span><input type="text" inputmode="decimal" data-shop-amount data-shop-idx="${idx}" value="${amt}"></label>`;
+    }).join('');
+    wrap.hidden = false;
+    grid.querySelectorAll('input[data-shop-amount]').forEach((inp) => {
+      inp.addEventListener('input', () => syncShopTotal(prefix));
+    });
+  }
+
   function fillForm(prefix, fields) {
+    const prepared = prepareUploadFields(fields);
     FIELD_IDS.forEach((key) => {
       const el = $(prefix + '_' + key);
-      if (!el || fields[key] === undefined) return;
-      el.value = fields[key];
+      if (!el || prepared[key] === undefined) return;
+      el.value = prepared[key];
     });
+    renderShopItems(prefix, prepared.shop_items);
     const status = $(prefix + '_status');
     if (status) {
       const conf = fields.confidence || 'medium';
@@ -424,8 +483,8 @@
     const grid = $(prefix + '_sections');
     if (wrap && grid) {
       const rows = SECTION_LABELS
-        .filter(([k]) => fields[k] != null && Number(fields[k]) > 0)
-        .map(([k, label]) => `<span><strong>${label}</strong> $${Number(fields[k]).toLocaleString()}</span>`);
+        .filter(([k]) => prepared[k] != null && Number(prepared[k]) > 0)
+        .map(([k, label]) => `<span><strong>${label}</strong> $${Number(prepared[k]).toLocaleString()}</span>`);
       if (rows.length) {
         grid.innerHTML = rows.join('');
         wrap.hidden = false;

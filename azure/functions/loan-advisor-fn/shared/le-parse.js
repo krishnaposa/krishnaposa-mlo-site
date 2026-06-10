@@ -4,6 +4,8 @@ const LE_SCHEMA = `{
   "rate": number,
   "term": number,
   "points": number,
+  "points_dollars": number,
+  "shop_items": [{"name": "string", "amount": number}],
   "section_a": number,
   "section_b": number,
   "section_c": number,
@@ -58,6 +60,9 @@ CRITICAL — use SECTION TOTALS from page 2 headers, NOT individual line items:
 - funds_for_borrower = "Funds for Borrower" as positive number (reduces cash to close)
 - amount = loan amount from page 1
 - rate = initial interest rate percent
+- points = discount points as PERCENT of loan amount (e.g. 0.5 for 0.5%) if shown on page 1
+- points_dollars = discount points in DOLLARS from Section A "Points" line or page 1 (e.g. 4500)
+- shop_items = Section C line items you can shop: array of {name, amount} for each fee (Title, Settlement, Appraisal, Survey, Pest, etc.)
 - monthly_pi = Principal & Interest monthly
 - monthly_total = Estimated Total Monthly Payment
 - taxes_ins = monthly taxes+insurance+MI (monthly_total minus monthly_pi if needed)
@@ -114,14 +119,45 @@ function applySectionRollups(raw) {
   };
 }
 
+function normalizeShopItems(raw) {
+  const items = Array.isArray(raw.shop_items) ? raw.shop_items : [];
+  return items
+    .map((item) => ({
+      name: String(item?.name || '').trim(),
+      amount: num(item?.amount)
+    }))
+    .filter((item) => item.name && item.amount > 0);
+}
+
+function resolvePointsDollars(raw, amount) {
+  const explicit = num(raw.points_dollars);
+  if (explicit > 0) return explicit;
+  const pctPts = num(raw.points);
+  if (pctPts > 0 && amount > 0 && pctPts <= 5) return (amount * pctPts) / 100;
+  if (pctPts > 5) return pctPts;
+  return 0;
+}
+
 function normalizeFields(raw) {
   const rollups = applySectionRollups(raw);
+  const amount = num(raw.amount);
+  const sectionA = num(raw.section_a);
+  const pointsDollars = resolvePointsDollars(raw, amount);
+  const shopItems = normalizeShopItems(raw);
+  let lenderFees = rollups.lender_fees;
+  if (sectionA > 0 && pointsDollars > 0 && sectionA >= pointsDollars) {
+    lenderFees = sectionA - pointsDollars;
+  }
+  const shopTotal = rollups.shop_total || shopItems.reduce((s, i) => s + i.amount, 0);
+
   return {
     lender_name: raw.lender_name || null,
-    amount: num(raw.amount),
+    amount,
     rate: num(raw.rate),
     term: Math.max(1, Math.round(num(raw.term) || 30)),
     points: num(raw.points),
+    points_dollars: pointsDollars,
+    shop_items: shopItems,
     section_a: num(raw.section_a),
     section_b: num(raw.section_b),
     section_c: num(raw.section_c),
@@ -132,9 +168,9 @@ function normalizeFields(raw) {
     section_h: num(raw.section_h),
     section_i: num(raw.section_i),
     section_j: num(raw.section_j),
-    lender_fees: rollups.lender_fees,
+    lender_fees: lenderFees,
     credits: rollups.credits,
-    shop_total: rollups.shop_total,
+    shop_total: shopTotal,
     other_3p: rollups.other_3p,
     prepaids: rollups.prepaids,
     taxes_ins: rollups.taxes_ins,
@@ -211,6 +247,11 @@ function parseLoanEstimateText(text) {
     rate: grab([/Interest Rate\s*([\d.]+)\s*%/i, /Initial Interest Rate\s*([\d.]+)\s*%/i]),
     term: /15[\s-]*Year|15\s*yr/i.test(t) ? 15 : 30,
     points: 0,
+    points_dollars: grab([
+      /Points\s*\$?\s*([\d,]+(?:\.\d{2})?)/i,
+      /Discount Points\s*\$?\s*([\d,]+(?:\.\d{2})?)/i
+    ]),
+    shop_items: [],
     section_a: sectionA,
     section_b: sectionB,
     section_c: sectionC,
@@ -247,7 +288,7 @@ function parseLoanEstimateText(text) {
   });
 }
 
-async function callAzureOpenAi(messages, maxTokens = 2200) {
+async function callAzureOpenAi(messages, maxTokens = 2800) {
   const azEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const azKey = process.env.AZURE_OPENAI_API_KEY || process.env.AZURE_OPENAI_KEY;
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o';
