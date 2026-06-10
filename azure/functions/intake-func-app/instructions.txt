@@ -1,0 +1,18 @@
+intake-func-app — pre-approval intake (buyer-funnel-azure.html)
+
+Endpoint: POST /api/intakeSubmit
+
+Deploy (from this folder):
+  cd azure/functions/intake-func-app
+  npm install
+  func azure functionapp publish intake-func-app --javascript
+
+Required app settings (Azure portal → intake-func-app → Configuration):
+  AzureWebJobsStorage          (or AZURE_STORAGE_CONNECTION_STRING)
+  ACS_CONNECTION_STRING
+  MAIL_FROM
+  NOTIFY_TO
+  ALLOW_ORIGIN                 https://www.krishposa.com
+  TABLE_NAME                   intakeResponses   (optional, default intakeResponses)
+
+CORS: allow https://www.krishposa.com and https://krishposa.com
