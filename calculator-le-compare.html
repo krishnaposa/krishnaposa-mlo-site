@@ -167,14 +167,19 @@
               <div class="field"><label for="a_lock">Lock Days</label><input id="a_lock" inputmode="numeric" placeholder="30"></div>
             </div>
             <div class="grid-3">
-              <div class="field"><label for="a_points">Discount Points (%)</label><input id="a_points" inputmode="decimal" placeholder="0 or 1.0"></div>
-              <div class="field"><label for="a_lender_fees">Lender Fees ($)</label><input id="a_lender_fees" inputmode="decimal" placeholder="1295"></div>
-              <div class="field"><label for="a_credits">Lender Credits ($)</label><input id="a_credits" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="a_points">Discount Points ($)</label><input id="a_points" data-unit="dollars" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="a_points_pct">Discount Points (%)</label><input id="a_points_pct" inputmode="decimal" placeholder="0"></div>
+              <div class="field" aria-hidden="true"></div>
             </div>
             <div class="grid-3">
-              <div class="field"><label for="a_shop_total">Shoppable 3rd-Party ($)</label><input id="a_shop_total" inputmode="decimal" placeholder="Title, settlement, etc."></div>
+              <div class="field"><label for="a_lender_fees">Lender Fees ($)</label><input id="a_lender_fees" inputmode="decimal" placeholder="1295" title="Section A minus points"></div>
+              <div class="field"><label for="a_credits">Lender Credits ($)</label><input id="a_credits" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="a_shop_total">Shoppable Total ($)</label><input id="a_shop_total" inputmode="decimal" placeholder="Section C total"></div>
+            </div>
+            <div class="grid-3">
               <div class="field"><label for="a_other_3p">Other 3rd-Party ($)</label><input id="a_other_3p" inputmode="decimal" placeholder="Appraisal, credit, flood"></div>
               <div class="field"><label for="a_prepaids">Prepaids + Initial Escrows ($)</label><input id="a_prepaids" inputmode="decimal" placeholder="Taxes, insurance escrows"></div>
+              <div class="field" aria-hidden="true"></div>
             </div>
             <div class="grid-3">
               <div class="field"><label for="a_taxes_ins">Taxes + HOI per mo ($)</label><input id="a_taxes_ins" inputmode="decimal" placeholder="450"></div>
@@ -193,6 +198,10 @@
             </div>
             <input type="hidden" id="a_funds_for_borrower">
             <p class="tiny muted le-cash-math-hint" id="a_cash_math_hint" hidden></p>
+            <details class="le-section-breakdown" id="a_sections_wrap">
+              <summary>Closing Cost Details — itemized (page 2)</summary>
+              <div class="le-sections-detail" id="a_sections_detail"></div>
+            </details>
           </form>
         </div>
 
@@ -208,14 +217,19 @@
               <div class="field"><label for="b_lock">Lock Days</label><input id="b_lock" inputmode="numeric" placeholder="45"></div>
             </div>
             <div class="grid-3">
-              <div class="field"><label for="b_points">Discount Points (%)</label><input id="b_points" inputmode="decimal" placeholder="0.5"></div>
-              <div class="field"><label for="b_lender_fees">Lender Fees ($)</label><input id="b_lender_fees" inputmode="decimal" placeholder="995"></div>
-              <div class="field"><label for="b_credits">Lender Credits ($)</label><input id="b_credits" inputmode="decimal" placeholder="500"></div>
+              <div class="field"><label for="b_points">Discount Points ($)</label><input id="b_points" data-unit="dollars" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="b_points_pct">Discount Points (%)</label><input id="b_points_pct" inputmode="decimal" placeholder="0.5"></div>
+              <div class="field" aria-hidden="true"></div>
             </div>
             <div class="grid-3">
-              <div class="field"><label for="b_shop_total">Shoppable 3rd-Party ($)</label><input id="b_shop_total" inputmode="decimal" placeholder="Title, settlement, etc."></div>
+              <div class="field"><label for="b_lender_fees">Lender Fees ($)</label><input id="b_lender_fees" inputmode="decimal" placeholder="995" title="Section A minus points"></div>
+              <div class="field"><label for="b_credits">Lender Credits ($)</label><input id="b_credits" inputmode="decimal" placeholder="500"></div>
+              <div class="field"><label for="b_shop_total">Shoppable Total ($)</label><input id="b_shop_total" inputmode="decimal" placeholder="Section C total"></div>
+            </div>
+            <div class="grid-3">
               <div class="field"><label for="b_other_3p">Other 3rd-Party ($)</label><input id="b_other_3p" inputmode="decimal" placeholder="Appraisal, credit, flood"></div>
               <div class="field"><label for="b_prepaids">Prepaids + Initial Escrows ($)</label><input id="b_prepaids" inputmode="decimal" placeholder="Taxes, insurance escrows"></div>
+              <div class="field" aria-hidden="true"></div>
             </div>
             <div class="grid-3">
               <div class="field"><label for="b_taxes_ins">Taxes + HOI per mo ($)</label><input id="b_taxes_ins" inputmode="decimal" placeholder="450"></div>
@@ -234,6 +248,10 @@
             </div>
             <input type="hidden" id="b_funds_for_borrower">
             <p class="tiny muted le-cash-math-hint" id="b_cash_math_hint" hidden></p>
+            <details class="le-section-breakdown" id="b_sections_wrap">
+              <summary>Closing Cost Details — itemized (page 2)</summary>
+              <div class="le-sections-detail" id="b_sections_detail"></div>
+            </details>
           </form>
         </div>
 
@@ -360,7 +378,8 @@
   <script src="https://www.krishposa.com/assets/js/footer.js"></script>
 
   <!-- Calculator Logic -->
-  <script defer src="https://www.krishposa.com/assets/js/le-compare-core.js"></script>
-  <script defer src="https://www.krishposa.com/assets/js/le-compare.js"></script>
+  <script defer src="https://www.krishposa.com/assets/js/le-compare-core.js?v=2"></script>
+  <script defer src="https://www.krishposa.com/assets/js/le-section-breakdown.js?v=1"></script>
+  <script defer src="https://www.krishposa.com/assets/js/le-compare.js?v=2"></script>
 </body>
 </html>

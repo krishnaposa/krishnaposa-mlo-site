@@ -1,5 +1,7 @@
 const $ = (id) => document.getElementById(id);
 
+let sectionApi;
+
 function updateCashMathHint(prefix) {
   const hint = $(prefix + '_cash_math_hint');
   if (!hint || !window.LECompare) return;
@@ -74,13 +76,22 @@ function resetAll() {
       hint.textContent = '';
       hint.classList.remove('le-cash-math-hint--warn');
     }
+    sectionApi?.clearSectionBreakdown(prefix);
+    sectionApi?.initManualSections(prefix);
   });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  sectionApi = window.LESectionBreakdown?.createApi($, { onRollupChange: updateCashMathHint });
+
   $('compareBtn').addEventListener('click', compare);
   $('resetBtn').addEventListener('click', resetAll);
+
   ['a', 'b'].forEach((prefix) => {
-    $('form' + prefix.toUpperCase())?.addEventListener('input', () => updateCashMathHint(prefix));
+    sectionApi?.initManualSections(prefix);
+    $('form' + prefix.toUpperCase())?.addEventListener('input', (e) => {
+      if (sectionApi) sectionApi.handleFormInput(prefix, e.target);
+      else updateCashMathHint(prefix);
+    });
   });
 });
