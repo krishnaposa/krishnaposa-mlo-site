@@ -1,12 +1,82 @@
 {
+  "_meta": {
+    "updated": "2026-06-10",
+    "source": "Schwab positions screenshot",
+    "credit_note": "credit is estimated from spread width / marks — update entry fills when known"
+  },
+  "swings": [],
   "spreads": [
     {
-      "symbol": "MXL",
-      "short_put": 80.0,
-      "long_put": 70.0,
+      "symbol": "ARM",
+      "short_put": 250.0,
+      "long_put": 240.0,
       "expiration": "2026-07-17",
       "credit": 4.55,
-      "entry_date": "2026-06-02"
+      "entry_date": "2026-06-10",
+      "contracts": 2
+    },
+    {
+      "symbol": "ASML",
+      "short_put": 1620.0,
+      "long_put": 1560.0,
+      "expiration": "2026-07-17",
+      "credit": 24.0,
+      "entry_date": "2026-06-10",
+      "contracts": 2
+    },
+    {
+      "symbol": "IONQ",
+      "short_put": 45.0,
+      "long_put": 42.0,
+      "expiration": "2026-09-18",
+      "credit": 1.2,
+      "entry_date": "2026-06-10",
+      "contracts": 10
+    },
+    {
+      "symbol": "MRVL",
+      "short_put": 240.0,
+      "long_put": 230.0,
+      "expiration": "2026-07-17",
+      "credit": 4.0,
+      "entry_date": "2026-06-10",
+      "contracts": 2
+    },
+    {
+      "symbol": "MU",
+      "short_put": 840.0,
+      "long_put": 810.0,
+      "expiration": "2026-07-17",
+      "credit": 12.0,
+      "entry_date": "2026-06-10",
+      "contracts": 2
+    },
+    {
+      "symbol": "MXL",
+      "short_put": 65.0,
+      "long_put": 55.0,
+      "expiration": "2026-09-18",
+      "credit": 4.0,
+      "entry_date": "2026-06-10",
+      "contracts": 4
+    },
+    {
+      "symbol": "NBIS",
+      "short_put": 200.0,
+      "long_put": 190.0,
+      "expiration": "2026-07-17",
+      "credit": 4.2,
+      "entry_date": "2026-06-10",
+      "contracts": 2
+    },
+    {
+      "symbol": "SNDK",
+      "short_put": 1500.0,
+      "long_put": 1450.0,
+      "expiration": "2026-07-17",
+      "credit": 20.59,
+      "entry_date": "2026-06-10",
+      "contracts": 2
     }
   ]
 }
