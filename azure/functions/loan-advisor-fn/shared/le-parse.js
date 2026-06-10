@@ -5,7 +5,16 @@ const LE_SCHEMA = `{
   "term": number,
   "points": number,
   "points_dollars": number,
-  "shop_items": [{"name": "string", "amount": number}],
+  "points_pct": number,
+  "section_items": {
+    "a": [{"name": "string", "amount": number}],
+    "b": [{"name": "string", "amount": number}],
+    "c": [{"name": "string", "amount": number}],
+    "e": [{"name": "string", "amount": number}],
+    "f": [{"name": "string", "amount": number}],
+    "g": [{"name": "string", "amount": number}],
+    "h": [{"name": "string", "amount": number}]
+  },
   "section_a": number,
   "section_b": number,
   "section_c": number,
@@ -62,7 +71,16 @@ CRITICAL — use SECTION TOTALS from page 2 headers, NOT individual line items:
 - rate = initial interest rate percent
 - points = discount points as PERCENT of loan amount (e.g. 0.5 for 0.5%) if shown on page 1
 - points_dollars = discount points in DOLLARS from Section A "Points" line or page 1 (e.g. 4500)
-- shop_items = Section C line items you can shop: array of {name, amount} for each fee (Title, Settlement, Appraisal, Survey, Pest, etc.)
+- points_pct = same as points percent when known; else derive from points_dollars / amount * 100
+- section_items = line items for each Closing Cost section on page 2:
+  a = Section A Origination (Processing, Underwriting, Points, etc.)
+  b = Section B Cannot Shop (Appraisal, Credit, Flood, etc.)
+  c = Section C Can Shop (Title, Settlement, Survey, Pest, etc.)
+  e = Section E Govt fees (Recording, Transfer taxes, etc.)
+  f = Section F Prepaids (HOI, prepaid interest, etc.)
+  g = Section G Escrow at closing
+  h = Section H Other
+  Each array: {name, amount} for every visible line item in that section.
 - monthly_pi = Principal & Interest monthly
 - monthly_total = Estimated Total Monthly Payment
 - taxes_ins = monthly taxes+insurance+MI (monthly_total minus monthly_pi if needed)
@@ -119,9 +137,10 @@ function applySectionRollups(raw) {
   };
 }
 
-function normalizeShopItems(raw) {
-  const items = Array.isArray(raw.shop_items) ? raw.shop_items : [];
-  return items
+const SECTION_ITEM_KEYS = ['a', 'b', 'c', 'e', 'f', 'g', 'h'];
+
+function normalizeLineItems(list) {
+  return (Array.isArray(list) ? list : [])
     .map((item) => ({
       name: String(item?.name || '').trim(),
       amount: num(item?.amount)
@@ -129,12 +148,34 @@ function normalizeShopItems(raw) {
     .filter((item) => item.name && item.amount > 0);
 }
 
+function normalizeSectionItems(raw) {
+  const out = {};
+  const src = raw.section_items && typeof raw.section_items === 'object' ? raw.section_items : {};
+  for (const k of SECTION_ITEM_KEYS) {
+    out[k] = normalizeLineItems(src[k]);
+  }
+  const legacyShop = normalizeLineItems(raw.shop_items);
+  if (legacyShop.length && !out.c.length) out.c = legacyShop;
+  return out;
+}
+
+function sumSectionItems(sectionItems, key) {
+  return (sectionItems[key] || []).reduce((s, i) => s + i.amount, 0);
+}
+
 function resolvePointsDollars(raw, amount) {
   const explicit = num(raw.points_dollars);
   if (explicit > 0) return explicit;
-  const pctPts = num(raw.points);
+  const pctPts = num(raw.points_pct) || num(raw.points);
   if (pctPts > 0 && amount > 0 && pctPts <= 5) return (amount * pctPts) / 100;
   if (pctPts > 5) return pctPts;
+  return 0;
+}
+
+function resolvePointsPercent(raw, amount, pointsDollars) {
+  const explicit = num(raw.points_pct) || (num(raw.points) > 0 && num(raw.points) <= 5 ? num(raw.points) : 0);
+  if (explicit > 0) return Math.round(explicit * 1000) / 1000;
+  if (pointsDollars > 0 && amount > 0) return Math.round((pointsDollars / amount) * 100000) / 1000;
   return 0;
 }
 
@@ -143,21 +184,29 @@ function normalizeFields(raw) {
   const amount = num(raw.amount);
   const sectionA = num(raw.section_a);
   const pointsDollars = resolvePointsDollars(raw, amount);
-  const shopItems = normalizeShopItems(raw);
+  const pointsPct = resolvePointsPercent(raw, amount, pointsDollars);
+  const sectionItems = normalizeSectionItems(raw);
   let lenderFees = rollups.lender_fees;
-  if (sectionA > 0 && pointsDollars > 0 && sectionA >= pointsDollars) {
+  const sectionASum = sumSectionItems(sectionItems, 'a');
+  if (sectionASum > 0 && pointsDollars > 0) {
+    lenderFees = Math.max(0, sectionASum - pointsDollars);
+  } else if (sectionA > 0 && pointsDollars > 0 && sectionA >= pointsDollars) {
     lenderFees = sectionA - pointsDollars;
   }
-  const shopTotal = rollups.shop_total || shopItems.reduce((s, i) => s + i.amount, 0);
+  const shopTotal = rollups.shop_total || sumSectionItems(sectionItems, 'c');
+  const other3p = rollups.other_3p ||
+    sumSectionItems(sectionItems, 'b') + sumSectionItems(sectionItems, 'e') + sumSectionItems(sectionItems, 'h');
+  const prepaids = rollups.prepaids || sumSectionItems(sectionItems, 'f') + sumSectionItems(sectionItems, 'g');
 
   return {
     lender_name: raw.lender_name || null,
     amount,
     rate: num(raw.rate),
     term: Math.max(1, Math.round(num(raw.term) || 30)),
-    points: num(raw.points),
+    points: pointsPct || num(raw.points),
     points_dollars: pointsDollars,
-    shop_items: shopItems,
+    points_pct: pointsPct,
+    section_items: sectionItems,
     section_a: num(raw.section_a),
     section_b: num(raw.section_b),
     section_c: num(raw.section_c),
@@ -171,8 +220,8 @@ function normalizeFields(raw) {
     lender_fees: lenderFees,
     credits: rollups.credits,
     shop_total: shopTotal,
-    other_3p: rollups.other_3p,
-    prepaids: rollups.prepaids,
+    other_3p: other3p,
+    prepaids,
     taxes_ins: rollups.taxes_ins,
     pmi: num(raw.pmi),
     down: num(raw.down),
@@ -251,7 +300,7 @@ function parseLoanEstimateText(text) {
       /Points\s*\$?\s*([\d,]+(?:\.\d{2})?)/i,
       /Discount Points\s*\$?\s*([\d,]+(?:\.\d{2})?)/i
     ]),
-    shop_items: [],
+    section_items: { a: [], b: [], c: [], e: [], f: [], g: [], h: [] },
     section_a: sectionA,
     section_b: sectionB,
     section_c: sectionC,
@@ -288,7 +337,7 @@ function parseLoanEstimateText(text) {
   });
 }
 
-async function callAzureOpenAi(messages, maxTokens = 2800) {
+async function callAzureOpenAi(messages, maxTokens = 4000) {
   const azEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const azKey = process.env.AZURE_OPENAI_API_KEY || process.env.AZURE_OPENAI_KEY;
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o';

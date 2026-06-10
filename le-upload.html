@@ -26,7 +26,7 @@
   <link rel="stylesheet" href="assets/css/header-nav.css?v=final1">
   <link rel="stylesheet" href="assets/css/form-contrast.css">
   <link rel="stylesheet" href="assets/css/le-compare.css">
-  <link rel="stylesheet" href="assets/css/le-upload.css?v=3">
+  <link rel="stylesheet" href="assets/css/le-upload.css?v=4">
   <link rel="icon" href="assets/img/favicon.png" type="image/png">
 
   <script defer src="assets/js/script.js"></script>
@@ -114,17 +114,18 @@
             <div class="grid-3">
               <div class="field"><label for="a_rate">Rate (%)</label><input id="a_rate" inputmode="decimal" placeholder="6.75"></div>
               <div class="field"><label for="a_term">Term (years)</label><input id="a_term" inputmode="numeric" placeholder="30"></div>
-              <div class="field"><label for="a_points">Discount Points ($)</label><input id="a_points" data-unit="dollars" inputmode="decimal" placeholder="0" title="Converted from LE after upload"></div>
+              <div class="field" aria-hidden="true"></div>
             </div>
             <div class="grid-3">
-              <div class="field"><label for="a_lender_fees">Lender Fees ($)</label><input id="a_lender_fees" inputmode="decimal" placeholder="1295"></div>
-              <div class="field"><label for="a_credits">Lender Credits ($)</label><input id="a_credits" inputmode="decimal" placeholder="0"></div>
-              <div class="field"><label for="a_shop_total">Shoppable Total ($)</label><input id="a_shop_total" inputmode="decimal" title="Section C total — sum of items below"></div>
+              <div class="field"><label for="a_points">Discount Points ($)</label><input id="a_points" data-unit="dollars" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="a_points_pct">Discount Points (%)</label><input id="a_points_pct" inputmode="decimal" placeholder="0"></div>
+              <div class="field" aria-hidden="true"></div>
             </div>
-            <details class="le-shop-breakdown" id="a_shop_wrap" hidden>
-              <summary>Section C — shoppable services (itemized)</summary>
-              <div class="le-shop-grid" id="a_shop_items"></div>
-            </details>
+            <div class="grid-3">
+              <div class="field"><label for="a_lender_fees">Lender Fees ($)</label><input id="a_lender_fees" inputmode="decimal" placeholder="1295" title="Section A minus points"></div>
+              <div class="field"><label for="a_credits">Lender Credits ($)</label><input id="a_credits" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="a_shop_total">Shoppable Total ($)</label><input id="a_shop_total" inputmode="decimal" title="Section C total"></div>
+            </div>
             <div class="grid-3">
               <div class="field"><label for="a_other_3p">Other 3rd-Party ($)</label><input id="a_other_3p" inputmode="decimal"></div>
               <div class="field"><label for="a_prepaids">Prepaids + Escrows ($)</label><input id="a_prepaids" inputmode="decimal"></div>
@@ -145,8 +146,8 @@
             <input type="hidden" id="a_closing_costs_financed">
             <input type="hidden" id="a_funds_for_borrower">
             <details class="le-section-breakdown" id="a_sections_wrap" hidden>
-              <summary>Closing Cost section totals (page 2)</summary>
-              <div class="le-section-grid" id="a_sections"></div>
+              <summary>Closing Cost Details — itemized (page 2)</summary>
+              <div class="le-sections-detail" id="a_sections_detail"></div>
             </details>
           </form>
         </div>
@@ -160,17 +161,18 @@
             <div class="grid-3">
               <div class="field"><label for="b_rate">Rate (%)</label><input id="b_rate" inputmode="decimal" placeholder="6.625"></div>
               <div class="field"><label for="b_term">Term (years)</label><input id="b_term" inputmode="numeric" placeholder="30"></div>
+              <div class="field" aria-hidden="true"></div>
+            </div>
+            <div class="grid-3">
               <div class="field"><label for="b_points">Discount Points ($)</label><input id="b_points" data-unit="dollars" inputmode="decimal" placeholder="0"></div>
+              <div class="field"><label for="b_points_pct">Discount Points (%)</label><input id="b_points_pct" inputmode="decimal" placeholder="0"></div>
+              <div class="field" aria-hidden="true"></div>
             </div>
             <div class="grid-3">
               <div class="field"><label for="b_lender_fees">Lender Fees ($)</label><input id="b_lender_fees" inputmode="decimal"></div>
               <div class="field"><label for="b_credits">Lender Credits ($)</label><input id="b_credits" inputmode="decimal"></div>
               <div class="field"><label for="b_shop_total">Shoppable Total ($)</label><input id="b_shop_total" inputmode="decimal"></div>
             </div>
-            <details class="le-shop-breakdown" id="b_shop_wrap" hidden>
-              <summary>Section C — shoppable services (itemized)</summary>
-              <div class="le-shop-grid" id="b_shop_items"></div>
-            </details>
             <div class="grid-3">
               <div class="field"><label for="b_other_3p">Other 3rd-Party ($)</label><input id="b_other_3p" inputmode="decimal"></div>
               <div class="field"><label for="b_prepaids">Prepaids + Escrows ($)</label><input id="b_prepaids" inputmode="decimal"></div>
@@ -191,8 +193,8 @@
             <input type="hidden" id="b_closing_costs_financed">
             <input type="hidden" id="b_funds_for_borrower">
             <details class="le-section-breakdown" id="b_sections_wrap" hidden>
-              <summary>Closing Cost section totals (page 2)</summary>
-              <div class="le-section-grid" id="b_sections"></div>
+              <summary>Closing Cost Details — itemized (page 2)</summary>
+              <div class="le-sections-detail" id="b_sections_detail"></div>
             </details>
           </form>
         </div>
@@ -308,6 +310,6 @@
 
   <div id="footer"></div>
   <script src="assets/js/footer.js"></script>
-  <script defer src="assets/js/le-upload.js?v=2"></script>
+  <script defer src="assets/js/le-upload.js?v=3"></script>
 </body>
 </html>

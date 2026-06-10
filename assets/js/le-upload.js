@@ -10,15 +10,16 @@
     'closing_costs_financed', 'funds_for_borrower', 'section_j', 'cash_to_close'
   ];
 
-  const SECTION_LABELS = [
-    ['section_a', 'A · Origination'],
-    ['section_b', 'B · Cannot shop'],
-    ['section_c', 'C · Can shop'],
-    ['section_e', 'E · Govt fees'],
-    ['section_f', 'F · Prepaids'],
-    ['section_g', 'G · Escrow'],
-    ['section_h', 'H · Other'],
-    ['section_j', 'J · Total closing']
+  const SECTION_ITEM_KEYS = ['a', 'b', 'c', 'e', 'f', 'g', 'h'];
+
+  const SECTION_ITEM_CONFIG = [
+    ['a', 'A · Origination', 'section_a'],
+    ['b', 'B · Cannot shop', 'section_b'],
+    ['c', 'C · Can shop', 'section_c'],
+    ['e', 'E · Govt fees', 'section_e'],
+    ['f', 'F · Prepaids', 'section_f'],
+    ['g', 'G · Escrow', 'section_g'],
+    ['h', 'H · Other', 'section_h']
   ];
 
   const MODE = {
@@ -59,11 +60,63 @@
     });
   }
 
+  function parseMoneyInput(val) {
+    return Number(String(val || '').replace(/[,$]/g, '')) || 0;
+  }
+
   function getFieldsFromForm(prefix) {
     const out = {};
     FIELD_IDS.forEach((key) => {
       const el = $(prefix + '_' + key);
       if (el) out[key] = el.value;
+    });
+    const pctEl = $(prefix + '_points_pct');
+    if (pctEl) out.points_pct = pctEl.value;
+    out.section_items = getSectionItemsFromDom(prefix);
+    return out;
+  }
+
+  function normalizeClientSectionItems(fields) {
+    const out = {};
+    const src = fields.section_items && typeof fields.section_items === 'object' ? fields.section_items : {};
+    SECTION_ITEM_KEYS.forEach((k) => {
+      out[k] = (Array.isArray(src[k]) ? src[k] : [])
+        .map((item) => ({
+          name: String(item?.name || '').trim(),
+          amount: Math.round(parseMoneyInput(item?.amount))
+        }))
+        .filter((item) => item.name && item.amount > 0);
+    });
+    const legacy = Array.isArray(fields.shop_items) ? fields.shop_items : [];
+    if (legacy.length && !out.c.length) {
+      out.c = legacy
+        .map((item) => ({
+          name: String(item?.name || '').trim(),
+          amount: Math.round(parseMoneyInput(item?.amount))
+        }))
+        .filter((item) => item.name && item.amount > 0);
+    }
+    return out;
+  }
+
+  function sumSectionItems(sectionItems, key) {
+    return (sectionItems[key] || []).reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  }
+
+  function getSectionItemsFromDom(prefix) {
+    const root = $(prefix + '_sections_detail');
+    const out = {};
+    if (!root) return out;
+    SECTION_ITEM_KEYS.forEach((k) => {
+      const grid = root.querySelector(`[data-section-items="${k}"]`);
+      if (!grid) {
+        out[k] = [];
+        return;
+      }
+      out[k] = Array.from(grid.querySelectorAll('[data-line-amount]')).map((inp) => ({
+        name: inp.dataset.lineName || inp.closest('.le-line-item')?.querySelector('span')?.textContent?.trim() || 'Item',
+        amount: Math.round(parseMoneyInput(inp.value))
+      })).filter((item) => item.name && item.amount > 0);
     });
     return out;
   }
@@ -403,60 +456,150 @@
     return data;
   }
 
-  function prepareUploadFields(fields) {
+  function resolvePointsFromFields(fields) {
     const amount = Number(fields.amount) || 0;
-    const sectionA = Number(fields.section_a) || 0;
     let pointsDollars = Number(fields.points_dollars) || 0;
+    let pointsPct = Number(fields.points_pct) || 0;
+    if (!pointsDollars && pointsPct > 0 && amount > 0) {
+      pointsDollars = (amount * pointsPct) / 100;
+    }
+    if (!pointsPct && pointsDollars > 0 && amount > 0) {
+      pointsPct = Math.round((pointsDollars / amount) * 100000) / 1000;
+    }
     if (!pointsDollars && Number(fields.points) > 0 && amount > 0) {
       const pts = Number(fields.points);
-      pointsDollars = pts <= 5 ? (amount * pts) / 100 : pts;
+      if (pts <= 5) {
+        pointsPct = pts;
+        pointsDollars = (amount * pts) / 100;
+      } else {
+        pointsDollars = pts;
+        pointsPct = Math.round((pts / amount) * 100000) / 1000;
+      }
     }
-    let lenderFees = Number(fields.lender_fees) || sectionA;
-    if (sectionA > 0 && pointsDollars > 0 && sectionA >= pointsDollars) {
-      lenderFees = sectionA - pointsDollars;
-    }
-    const shopItems = Array.isArray(fields.shop_items)
-      ? fields.shop_items.filter((i) => i && i.name && Number(i.amount) > 0)
-      : [];
-    const shopSum = shopItems.reduce((s, i) => s + Number(i.amount), 0);
     return {
-      ...fields,
-      points: pointsDollars > 0 ? Math.round(pointsDollars) : (fields.points || ''),
-      lender_fees: lenderFees > 0 ? Math.round(lenderFees) : fields.lender_fees,
-      shop_total: shopSum > 0 ? Math.round(shopSum) : fields.shop_total,
-      shop_items: shopItems
+      pointsDollars: pointsDollars > 0 ? Math.round(pointsDollars) : 0,
+      pointsPct: pointsPct > 0 ? pointsPct : 0
     };
   }
 
-  function syncShopTotal(prefix) {
-    const grid = $(prefix + '_shop_items');
-    const totalEl = $(prefix + '_shop_total');
-    if (!grid || !totalEl) return;
-    let sum = 0;
-    grid.querySelectorAll('input[data-shop-amount]').forEach((inp) => {
-      sum += Number(String(inp.value).replace(/[,$]/g, '')) || 0;
-    });
-    if (sum > 0) totalEl.value = Math.round(sum);
+  function prepareUploadFields(fields) {
+    const amount = Number(fields.amount) || 0;
+    const sectionA = Number(fields.section_a) || 0;
+    const { pointsDollars, pointsPct } = resolvePointsFromFields(fields);
+    const sectionItems = normalizeClientSectionItems(fields);
+
+    const sectionASum = sumSectionItems(sectionItems, 'a');
+    const shopSum = sumSectionItems(sectionItems, 'c');
+    const other3pSum = sumSectionItems(sectionItems, 'b') + sumSectionItems(sectionItems, 'e') + sumSectionItems(sectionItems, 'h');
+    const prepaidsSum = sumSectionItems(sectionItems, 'f') + sumSectionItems(sectionItems, 'g');
+
+    let lenderFees = Number(fields.lender_fees) || sectionA;
+    const aBase = sectionASum > 0 ? sectionASum : sectionA;
+    if (aBase > 0 && pointsDollars > 0 && aBase >= pointsDollars) {
+      lenderFees = aBase - pointsDollars;
+    }
+
+    return {
+      ...fields,
+      points: pointsDollars > 0 ? pointsDollars : (fields.points || ''),
+      points_pct: pointsPct > 0 ? pointsPct : (fields.points_pct || ''),
+      points_dollars: pointsDollars,
+      lender_fees: lenderFees > 0 ? Math.round(lenderFees) : fields.lender_fees,
+      shop_total: shopSum > 0 ? Math.round(shopSum) : fields.shop_total,
+      other_3p: other3pSum > 0 ? Math.round(other3pSum) : fields.other_3p,
+      prepaids: prepaidsSum > 0 ? Math.round(prepaidsSum) : fields.prepaids,
+      section_items: sectionItems
+    };
+  }
+
+  function syncPointsFields(prefix, source) {
+    const amount = parseMoneyInput($(prefix + '_amount')?.value);
+    const dollarsEl = $(prefix + '_points');
+    const pctEl = $(prefix + '_points_pct');
+    if (!dollarsEl || !pctEl || amount <= 0) return;
+
+    if (source === 'dollars') {
+      const dollars = parseMoneyInput(dollarsEl.value);
+      if (dollars > 0) {
+        pctEl.value = String(Math.round((dollars / amount) * 100000) / 1000);
+      } else if (!dollarsEl.value) {
+        pctEl.value = '';
+      }
+    } else if (source === 'pct') {
+      const pct = parseMoneyInput(pctEl.value);
+      if (pct > 0) {
+        dollarsEl.value = String(Math.round((amount * pct) / 100));
+      } else if (!pctEl.value) {
+        dollarsEl.value = '';
+      }
+    }
+    syncSectionRollups(prefix);
+  }
+
+  function syncSectionRollups(prefix) {
+    const sectionItems = getSectionItemsFromDom(prefix);
+    const pointsDollars = parseMoneyInput($(prefix + '_points')?.value);
+    const sectionASum = sumSectionItems(sectionItems, 'a');
+    const shopSum = sumSectionItems(sectionItems, 'c');
+    const other3pSum = sumSectionItems(sectionItems, 'b') + sumSectionItems(sectionItems, 'e') + sumSectionItems(sectionItems, 'h');
+    const prepaidsSum = sumSectionItems(sectionItems, 'f') + sumSectionItems(sectionItems, 'g');
+
+    const shopEl = $(prefix + '_shop_total');
+    const otherEl = $(prefix + '_other_3p');
+    const prepaidsEl = $(prefix + '_prepaids');
+    const lenderEl = $(prefix + '_lender_fees');
+
+    if (shopSum > 0 && shopEl) shopEl.value = Math.round(shopSum);
+    if (other3pSum > 0 && otherEl) otherEl.value = Math.round(other3pSum);
+    if (prepaidsSum > 0 && prepaidsEl) prepaidsEl.value = Math.round(prepaidsSum);
+    if (sectionASum > 0 && lenderEl) {
+      lenderEl.value = Math.round(Math.max(0, sectionASum - pointsDollars));
+    }
+
+    const root = $(prefix + '_sections_detail');
+    if (root) {
+      SECTION_ITEM_CONFIG.forEach(([key, label]) => {
+        const sum = sumSectionItems(sectionItems, key);
+        const sumEl = root.querySelector(`[data-section-sum="${key}"]`);
+        if (sumEl) sumEl.textContent = sum > 0 ? '$' + sum.toLocaleString() : '';
+      });
+    }
     updateCashMathHint(prefix);
   }
 
-  function renderShopItems(prefix, items) {
-    const wrap = $(prefix + '_shop_wrap');
-    const grid = $(prefix + '_shop_items');
-    if (!wrap || !grid) return;
-    if (!items || !items.length) {
-      grid.innerHTML = '';
+  function renderLineItemRow(item, idx, sectionKey) {
+    const label = String(item.name || 'Item').replace(/</g, '&lt;');
+    const amt = Math.round(Number(item.amount) || 0);
+    return `<label class="le-line-item"><span>${label}</span><input type="text" inputmode="decimal" data-line-amount data-line-name="${label}" data-section="${sectionKey}" data-line-idx="${idx}" value="${amt}"></label>`;
+  }
+
+  function renderSectionBreakdown(prefix, sectionItems, prepared) {
+    const wrap = $(prefix + '_sections_wrap');
+    const root = $(prefix + '_sections_detail');
+    if (!wrap || !root) return;
+
+    const blocks = SECTION_ITEM_CONFIG.map(([key, label, totalKey]) => {
+      const items = sectionItems[key] || [];
+      const sectionTotal = Number(prepared[totalKey]) || 0;
+      if (!items.length && sectionTotal <= 0) return '';
+      const rows = items.length
+        ? items.map((item, idx) => renderLineItemRow(item, idx, key)).join('')
+        : `<p class="le-section-empty tiny">No line items — section total $${sectionTotal.toLocaleString()}</p>`;
+      const sum = items.length ? sumSectionItems(sectionItems, key) : sectionTotal;
+      const sumLabel = sum > 0 ? '$' + sum.toLocaleString() : '';
+      return `<details class="le-section-nested" data-section-block="${key}"><summary>${label}<span class="le-section-sum" data-section-sum="${key}">${sumLabel}</span></summary><div class="le-line-items-grid" data-section-items="${key}">${rows}</div></details>`;
+    }).filter(Boolean);
+
+    if (!blocks.length) {
+      root.innerHTML = '';
       wrap.hidden = true;
       return;
     }
-    grid.innerHTML = items.map((item, idx) => {
-      const label = String(item.name || 'Item').replace(/</g, '&lt;');
-      const amt = Math.round(Number(item.amount) || 0);
-      return `<label class="le-shop-line"><span>${label}</span><input type="text" inputmode="decimal" data-shop-amount data-shop-idx="${idx}" value="${amt}"></label>`;
-    }).join('');
+
+    root.innerHTML = blocks.join('');
     wrap.hidden = false;
-    grid.querySelectorAll('input[data-shop-amount]').forEach((inp) => {
-      inp.addEventListener('input', () => syncShopTotal(prefix));
+    root.querySelectorAll('input[data-line-amount]').forEach((inp) => {
+      inp.addEventListener('input', () => syncSectionRollups(prefix));
     });
   }
 
@@ -467,7 +610,9 @@
       if (!el || prepared[key] === undefined) return;
       el.value = prepared[key];
     });
-    renderShopItems(prefix, prepared.shop_items);
+    const pctEl = $(prefix + '_points_pct');
+    if (pctEl && prepared.points_pct) pctEl.value = prepared.points_pct;
+    renderSectionBreakdown(prefix, prepared.section_items, prepared);
     const status = $(prefix + '_status');
     if (status) {
       const conf = fields.confidence || 'medium';
@@ -478,21 +623,6 @@
     }
     const notes = $(prefix + '_notes');
     if (notes) notes.textContent = fields.notes || '';
-
-    const wrap = $(prefix + '_sections_wrap');
-    const grid = $(prefix + '_sections');
-    if (wrap && grid) {
-      const rows = SECTION_LABELS
-        .filter(([k]) => prepared[k] != null && Number(prepared[k]) > 0)
-        .map(([k, label]) => `<span><strong>${label}</strong> $${Number(prepared[k]).toLocaleString()}</span>`);
-      if (rows.length) {
-        grid.innerHTML = rows.join('');
-        wrap.hidden = false;
-      } else {
-        grid.innerHTML = '';
-        wrap.hidden = true;
-      }
-    }
     updateCashMathHint(prefix);
   }
 
@@ -723,17 +853,32 @@
     $('compareBtn')?.addEventListener('click', runCompare);
     $('leReviewSubmitBtn')?.addEventListener('click', submitForReview);
     ['a', 'b'].forEach((prefix) => {
-      $('form' + prefix.toUpperCase())?.addEventListener('input', () => updateCashMathHint(prefix));
+      $('form' + prefix.toUpperCase())?.addEventListener('input', (e) => {
+        const t = e.target;
+        if (t?.id === prefix + '_points') syncPointsFields(prefix, 'dollars');
+        else if (t?.id === prefix + '_points_pct') syncPointsFields(prefix, 'pct');
+        else if (t?.id === prefix + '_amount') {
+          if ($(prefix + '_points')?.value) syncPointsFields(prefix, 'dollars');
+          else if ($(prefix + '_points_pct')?.value) syncPointsFields(prefix, 'pct');
+          else updateCashMathHint(prefix);
+        } else updateCashMathHint(prefix);
+      });
     });
     document.querySelectorAll('.js-le-reset').forEach((btn) => btn.addEventListener('click', () => {
       ['formA', 'formB'].forEach((id) => $(id)?.reset());
-      ['A', 'B'].forEach((s) => {
-        const l = $('zone' + s + '_label');
+      ['a', 'b'].forEach((prefix) => {
+        const l = $('zone' + prefix.toUpperCase() + '_label');
         if (l) l.textContent = 'Drop PDF or image, or click to browse';
-        const st = $(s.toLowerCase() + '_status');
+        const st = $(prefix + '_status');
         if (st) st.textContent = '';
-        const n = $(s.toLowerCase() + '_notes');
+        const n = $(prefix + '_notes');
         if (n) n.textContent = '';
+        const detail = $(prefix + '_sections_detail');
+        if (detail) detail.innerHTML = '';
+        const wrap = $(prefix + '_sections_wrap');
+        if (wrap) wrap.hidden = true;
+        const hint = $(prefix + '_cash_math_hint');
+        if (hint) { hint.hidden = true; hint.textContent = ''; }
       });
       lastUploadMeta = { fileName: '', lenderName: '' };
       showWorkflow(!!currentMode);
