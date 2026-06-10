@@ -260,52 +260,106 @@
   // Initial draw
   drawAgents();
 
+  const ESTIMATE_LS_KEY = "lastEstimate";
+  const INTAKE_URL = "https://intake-func-app-d3cbf4achrcxdndt.eastus2-01.azurewebsites.net/api/intakeSubmit";
 
-// Replace with your function URL + ?code=<function-key>
-const INTAKE_URL = "https://intake-func-app-d3cbf4achrcxdndt.eastus2-01.azurewebsites.net/api/intakeSubmit";
-
-document.querySelector("#intakeForm")?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const btn = document.querySelector("#submitBtn");
-  const msg = document.querySelector("#submitMsg");
-  btn && (btn.disabled = true, btn.textContent = "Submitting…");
-  msg && (msg.textContent = "");
-
-  const payload = {
-    fullName:   document.querySelector("#fullName")?.value?.trim(),
-    email:      document.querySelector("#email")?.value?.trim(),
-    phone:      document.querySelector("#phone")?.value?.trim(),
-    timeline:   document.querySelector("#timeline")?.value,
-    occupancy:  document.querySelector("#occupancy")?.value,
-    source:     document.querySelector("#source")?.value,
-    estPrice:   document.querySelector("#estPrice")?.value?.trim(),
-    estDown:    document.querySelector("#estDown")?.value?.trim(),
-    employment: document.querySelector("#employment")?.value,
-    coBorrower: document.querySelector("#coBorrower")?.value,
-    notes:      document.querySelector("#notes")?.value?.trim(),
-
-  };
-
-  try {
-    const res = await fetch(INTAKE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      mode: "cors",
-      cache: "no-store",
-      credentials: "omit"
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
-    msg && (msg.textContent = "✅ Thanks! I’ll follow up shortly.");
-    e.currentTarget.reset();
-  } catch (err) {
-    console.error(err);
-    msg && (msg.textContent = "Sorry—there was a problem sending your info. Please try again or call/text.");
-  } finally {
-    btn && (btn.disabled = false, btn.textContent = "Submit Pre-Approval");
+  function loadSavedEstimate() {
+    try { return JSON.parse(localStorage.getItem(ESTIMATE_LS_KEY) || "{}"); } catch { return {}; }
   }
-});
+
+  function getQualifySnapshot() {
+    const saved = loadSavedEstimate();
+    const priceVal = num($("#price")?.value);
+    const price = priceVal || saved.price || 0;
+    const downInput = ($("#down")?.value || "").trim();
+    let down = saved.down || 0;
+    if (downInput) {
+      down = downInput.endsWith("%") ? price * num(downInput) : num(downInput);
+    }
+    const rateField = $("#rate")?.value;
+    const rate = rateField ? parseRatePct(rateField) : (saved.rate || null);
+
+    return {
+      zip: ($("#zip")?.value || "").trim() || saved.zip || "",
+      price: price || saved.price || "",
+      down: down || saved.down || "",
+      rate: rate != null ? rate : saved.rate || "",
+      fico: $("#fico")?.value || saved.fico || "",
+      program: $("#program")?.value || saved.program || "",
+      income: num($("#income")?.value) || saved.income || "",
+      debts: num($("#debts")?.value || 0) || saved.debts || 0,
+      monthlyPayment: saved.monthly || "",
+      pAndI: saved.pAndI || "",
+      taxesInsMi: saved.taxesInsMi || "",
+      dti: saved.dti || "",
+      calculatedAt: saved.calculatedAt || ""
+    };
+  }
+
+  function syncIntakeFromQualify() {
+    const snap = getQualifySnapshot();
+    if (snap.price && $("#estPrice") && !$("#estPrice").value) {
+      $("#estPrice").value = snap.price;
+    }
+    if (snap.down && $("#estDown") && !$("#estDown").value) {
+      $("#estDown").value = snap.down;
+    }
+  }
+
+  document.querySelector('a[href="#preapproval"]')?.addEventListener("click", syncIntakeFromQualify);
+
+  $("#intakeForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("#submitBtn");
+    const msg = $("#submitMsg");
+    btn && (btn.disabled = true, btn.textContent = "Submitting…");
+    msg && (msg.textContent = "");
+
+    const estimate = getQualifySnapshot();
+    const hasEstimate = estimate.price || estimate.income || estimate.monthlyPayment;
+
+    const payload = {
+      fullName: $("#fullName")?.value?.trim(),
+      email: $("#email")?.value?.trim(),
+      phone: $("#phone")?.value?.trim(),
+      timeline: $("#timeline")?.value,
+      occupancy: $("#occupancy")?.value,
+      source: $("#source")?.value,
+      estPrice: $("#estPrice")?.value?.trim(),
+      estDown: $("#estDown")?.value?.trim(),
+      employment: $("#employment")?.value,
+      coBorrower: $("#coBorrower")?.value,
+      notes: $("#notes")?.value?.trim(),
+      estimate: hasEstimate ? estimate : null
+    };
+
+    if (!payload.fullName || !payload.email) {
+      msg && (msg.textContent = "Please enter your name and email.");
+      btn && (btn.disabled = false, btn.textContent = "Submit Pre-Approval");
+      return;
+    }
+
+    try {
+      const res = await fetch(INTAKE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        mode: "cors",
+        cache: "no-store",
+        credentials: "omit"
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      msg && (msg.textContent = json.message || "✅ Thanks! Check your email for confirmation.");
+      e.currentTarget.reset();
+      window.dataLayer && window.dataLayer.push({ event: "intake_submitted", has_estimate: Boolean(hasEstimate) });
+    } catch (err) {
+      console.error(err);
+      msg && (msg.textContent = "Sorry—there was a problem sending your info. Please try again or call/text 678-481-8252.");
+    } finally {
+      btn && (btn.disabled = false, btn.textContent = "Submit Pre-Approval");
+    }
+  });
   // ==========================================================
   // ESTIMATE CALCULATOR (gracefully no-op if calc helpers missing)
   // ==========================================================
@@ -358,9 +412,25 @@ document.querySelector("#intakeForm")?.addEventListener("submit", async (e) => {
     $("#h_estMonthly") && ($("#h_estMonthly").value = Math.round(res.total));
     $("#h_estDTI")     && ($("#h_estDTI").value     = `${(dti * 100).toFixed(1)}%`);
 
-    localStorage.setItem("lastEstimate",
-      JSON.stringify({ price, down, rate: ratePct, program, monthly: Math.round(res.total), dti: (dti * 100).toFixed(1) })
+    localStorage.setItem(ESTIMATE_LS_KEY,
+      JSON.stringify({
+        price,
+        down,
+        rate: ratePct,
+        zip,
+        program,
+        fico: $("#fico")?.value || "",
+        income,
+        debts,
+        monthly: Math.round(res.total),
+        pAndI: Math.round(res.pAndI),
+        taxesInsMi: Math.round(res.taxes + res.ins + res.pmi),
+        dti: (dti * 100).toFixed(1),
+        calculatedAt: new Date().toISOString()
+      })
     );
+
+    syncIntakeFromQualify();
 
     window.dataLayer && window.dataLayer.push({ event: "estimate_calculated" });
   });
@@ -370,19 +440,24 @@ document.querySelector("#intakeForm")?.addEventListener("submit", async (e) => {
     $("#dtiLine")      && ($("#dtiLine").style.display = "none");
     $("#pmiLine")      && ($("#pmiLine").style.display = "none");
     $("#formMsg")      && ($("#formMsg").textContent = "");
-    localStorage.removeItem("lastEstimate");
+    localStorage.removeItem(ESTIMATE_LS_KEY);
   });
 
   // Prefill some fields from last estimate (nice-to-have)
   (function prefillFromSaved() {
     try {
-      const saved = JSON.parse(localStorage.getItem("lastEstimate") || "{}");
+      const saved = loadSavedEstimate();
       if (saved.price) {
         if ($("#price"))   $("#price").value   = saved.price;
         if (saved.down && $("#down")) $("#down").value = saved.down;
+        if (saved.zip && $("#zip")) $("#zip").value = saved.zip;
+        if (saved.fico && $("#fico")) $("#fico").value = saved.fico;
+        if (saved.income && $("#income")) $("#income").value = saved.income;
+        if (saved.debts && $("#debts")) $("#debts").value = saved.debts;
         if ($("#rate"))    $("#rate").value    = isFinite(saved.rate) ? saved.rate.toFixed?.(2) + "%" : "";
         if ($("#program")) $("#program").value = saved.program || "conventional";
       }
+      syncIntakeFromQualify();
     } catch {}
   })();
 
