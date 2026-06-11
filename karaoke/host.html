@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Karaoke Host</title>
   <link rel="stylesheet" href="/assets/css/styles.css">
-  <link rel="stylesheet" href="/assets/css/karaoke.css?v=11">
+  <link rel="stylesheet" href="/assets/css/karaoke.css?v=12">
 </head>
 <body>
 <main class="container">
@@ -77,6 +77,27 @@
     <audio id="bandEl" preload="auto" playsinline></audio>
   </section>
 
+  <section class="card host-section-playlist">
+    <details class="host-accordion" id="hostPlaylistAccordion" open>
+      <summary class="host-accordion-summary">
+        <span class="host-accordion-title">Playlist</span>
+      </summary>
+      <div class="host-accordion-body">
+        <p class="help" style="margin-top:0">
+          Line up songs for the night. Add from the picker above, drag to reorder, then <strong>Play playlist</strong>.
+          Each track plays in order with its own lyrics.
+        </p>
+        <div class="row" style="margin-top:.5rem">
+          <button id="playlistAdd" class="btn btn-outline" type="button">Add selected song</button>
+          <button id="playlistPlay" class="btn btn-blue" type="button">Play playlist</button>
+          <button id="playlistClear" class="btn btn-outline" type="button">Clear playlist</button>
+        </div>
+        <ul id="playlistList" class="host-playlist" aria-label="Playlist"></ul>
+        <p id="playlistStatus" class="help" style="margin-bottom:0"></p>
+      </div>
+    </details>
+  </section>
+
   <section class="card host-section-lyrics">
     <details class="host-accordion" id="hostLyricsAccordion">
       <summary class="host-accordion-summary">
@@ -127,7 +148,7 @@
 </main>
 <script>window.KARAOKE = window.KARAOKE || {};</script>
 <script src="/assets/js/karaoke-api-base.js?v=2"></script>
-<script src="/assets/js/karaoke-core.js?v=7"></script>
-<script src="/assets/js/karaoke-host.js?v=8"></script>
+<script src="/assets/js/karaoke-core.js?v=8"></script>
+<script src="/assets/js/karaoke-host.js?v=9"></script>
 </body>
 </html>

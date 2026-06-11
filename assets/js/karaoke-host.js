@@ -32,6 +32,11 @@
     const publishBtn = document.getElementById("publishNow");
     const hostLyricsPlain = document.getElementById("hostLyricsPlain");
     const hostLyricsSynced = document.getElementById("hostLyricsSynced");
+    const playlistListEl = document.getElementById("playlistList");
+    const playlistAddBtn = document.getElementById("playlistAdd");
+    const playlistPlayBtn = document.getElementById("playlistPlay");
+    const playlistClearBtn = document.getElementById("playlistClear");
+    const playlistStatusEl = document.getElementById("playlistStatus");
 
     const isPhone = typeof K.isCoarseMobile === "function" && K.isCoarseMobile();
     if (isPhone) {
@@ -51,6 +56,21 @@
     let timer = null;
     let hostLrcCleanup = null;
     let hostLrcParsed = [];
+    let playlist = [];
+    let playlistIndex = -1;
+    let playlistPlaying = false;
+    let playlistAdvancing = false;
+    let dragFromIdx = -1;
+
+    function escHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = String(s || "");
+      return d.innerHTML;
+    }
+
+    function setPlaylistStatus(t) {
+      if (playlistStatusEl) playlistStatusEl.textContent = t || "";
+    }
 
     function stopHostLyricsSync() {
       if (typeof hostLrcCleanup === "function") {
@@ -222,6 +242,197 @@
       if (statusEl) statusEl.textContent = t || "";
     }
 
+    function renderPlaylist() {
+      if (!playlistListEl) return;
+      playlistListEl.innerHTML = "";
+      playlist.forEach((item, idx) => {
+        const li = document.createElement("li");
+        li.className = "host-playlist-item";
+        li.draggable = true;
+        li.dataset.idx = String(idx);
+        if (playlistPlaying && idx === playlistIndex) {
+          li.classList.add("is-playing");
+        }
+        li.innerHTML =
+          '<span class="host-playlist-grip" aria-hidden="true">⋮⋮</span>' +
+          '<span class="host-playlist-num">' + (idx + 1) + "</span>" +
+          '<span class="host-playlist-label">' + escHtml(buildSongDisplayLabel(item)) + "</span>" +
+          '<button type="button" class="host-playlist-remove" data-idx="' + idx + '" aria-label="Remove from playlist">×</button>';
+
+        li.addEventListener("dragstart", function (e) {
+          dragFromIdx = idx;
+          li.classList.add("dragging");
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", String(idx));
+          }
+        });
+        li.addEventListener("dragend", function () {
+          dragFromIdx = -1;
+          li.classList.remove("dragging");
+          playlistListEl.querySelectorAll(".host-playlist-item").forEach(function (el) {
+            el.classList.remove("drag-over");
+          });
+        });
+        li.addEventListener("dragover", function (e) {
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+          li.classList.add("drag-over");
+        });
+        li.addEventListener("dragleave", function () {
+          li.classList.remove("drag-over");
+        });
+        li.addEventListener("drop", function (e) {
+          e.preventDefault();
+          li.classList.remove("drag-over");
+          const from = dragFromIdx;
+          const to = idx;
+          if (from < 0 || from === to) return;
+          const moved = playlist.splice(from, 1)[0];
+          playlist.splice(to, 0, moved);
+          if (playlistPlaying && playlistIndex === from) {
+            playlistIndex = to;
+          } else if (playlistPlaying && playlistIndex > from && playlistIndex <= to) {
+            playlistIndex -= 1;
+          } else if (playlistPlaying && playlistIndex < from && playlistIndex >= to) {
+            playlistIndex += 1;
+          }
+          renderPlaylist();
+          setPlaylistStatus("Reordered — " + playlist.length + " song(s).");
+        });
+
+        const removeBtn = li.querySelector(".host-playlist-remove");
+        removeBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          removeFromPlaylist(idx);
+        });
+
+        li.addEventListener("dblclick", function () {
+          loadSongByItem(playlist[idx], { syncPick: true }).catch(function (err) {
+            setStatus(String(err));
+          });
+        });
+
+        playlistListEl.appendChild(li);
+      });
+    }
+
+    function removeFromPlaylist(idx) {
+      if (idx < 0 || idx >= playlist.length) return;
+      const wasPlaying = playlistPlaying && playlistIndex === idx;
+      playlist.splice(idx, 1);
+      if (!playlist.length) {
+        playlistPlaying = false;
+        playlistIndex = -1;
+        setPlaylistStatus("Playlist cleared.");
+      } else if (playlistPlaying) {
+        if (playlistIndex > idx) playlistIndex -= 1;
+        else if (wasPlaying) {
+          playlistIndex = Math.min(playlistIndex, playlist.length - 1);
+          if (playlistPlaying) {
+            playPlaylistFrom(playlistIndex).catch(function (e) {
+              setStatus(String(e));
+            });
+          }
+        }
+        setPlaylistStatus(playlist.length + " song(s) in queue.");
+      } else {
+        setPlaylistStatus(playlist.length + " song(s) in queue.");
+      }
+      renderPlaylist();
+    }
+
+    function addToPlaylist() {
+      const id = songPickEl && songPickEl.value;
+      if (!id) {
+        setPlaylistStatus("Select a song above first.");
+        return;
+      }
+      const item = items.find(function (x) {
+        return x.job_id === id;
+      });
+      if (!item) {
+        setPlaylistStatus("Song not found — refresh the list.");
+        return;
+      }
+      if (
+        playlist.some(function (x) {
+          return x.job_id === id;
+        })
+      ) {
+        setPlaylistStatus("Already in playlist.");
+        return;
+      }
+      playlist.push(Object.assign({}, item));
+      renderPlaylist();
+      setPlaylistStatus("Added — " + playlist.length + " song(s) queued.");
+    }
+
+    async function loadSongByItem(item, opts) {
+      const o = opts || {};
+      if (!item) return;
+      current = item;
+      if (o.syncPick && songPickEl) {
+        songPickEl.value = item.job_id;
+      }
+      const v = resolveStemUrl(item.vocals_url || "");
+      const b = resolveStemUrl(item.band_url || "");
+      PB.setSources(v, b);
+      PB.showTitle(item.title || item.job_id);
+      await loadLyrics(item.job_id);
+      await publishSession();
+      renderPlaylist();
+      setStatus("Ready: " + (item.title || item.job_id) + " — host hears vocals + band.");
+    }
+
+    async function playPlaylistFrom(startIdx) {
+      if (!playlist.length) {
+        setPlaylistStatus("Add songs to the playlist first.");
+        return;
+      }
+      const idx = Math.max(0, Math.min(startIdx, playlist.length - 1));
+      playlistPlaying = true;
+      playlistIndex = idx;
+      playlistAdvancing = true;
+      try {
+        await loadSongByItem(playlist[idx], { syncPick: true });
+        if (typeof PB.play === "function") {
+          await PB.play();
+        } else {
+          document.getElementById("play")?.click();
+        }
+        setPlaylistStatus(
+          "Playing " + (idx + 1) + " of " + playlist.length + ": " + buildSongDisplayLabel(playlist[idx])
+        );
+      } finally {
+        playlistAdvancing = false;
+      }
+    }
+
+    async function advancePlaylist() {
+      if (!playlistPlaying || playlistAdvancing) return;
+      const next = playlistIndex + 1;
+      if (next >= playlist.length) {
+        playlistPlaying = false;
+        playlistIndex = -1;
+        renderPlaylist();
+        setPlaylistStatus("Playlist finished.");
+        setStatus("Playlist finished.");
+        return;
+      }
+      playlistAdvancing = true;
+      try {
+        PB.pause();
+        await playPlaylistFrom(next);
+      } catch (e) {
+        playlistPlaying = false;
+        setStatus(String(e));
+        setPlaylistStatus("Playlist stopped: " + String(e));
+      } finally {
+        playlistAdvancing = false;
+      }
+    }
+
     function listenerUrl() {
       const room = (roomIdEl.value || "room1").trim();
       const u = new URL(window.location.href);
@@ -315,6 +526,11 @@
     }
 
     songPickEl.addEventListener("change", async function () {
+      if (!playlistAdvancing) {
+        playlistPlaying = false;
+        playlistIndex = -1;
+        renderPlaylist();
+      }
       const id = songPickEl.value;
       current = items.find((x) => x.job_id === id) || null;
       if (!current) {
@@ -332,13 +548,7 @@
         setStatus("");
         return;
       }
-      const v = resolveStemUrl(current.vocals_url || "");
-      const b = resolveStemUrl(current.band_url || "");
-      PB.setSources(v, b);
-      PB.showTitle(current.title || current.job_id);
-      await loadLyrics(current.job_id);
-      await publishSession();
-      setStatus("Ready: " + (current.title || current.job_id) + " — host hears vocals + band.");
+      await loadSongByItem(current, { syncPick: false });
     });
 
     refreshBtn.addEventListener("click", function () {
@@ -367,6 +577,21 @@
       publishSession().then(() => setStatus("Published.")).catch((e) => setStatus(String(e)));
     });
 
+    playlistAddBtn?.addEventListener("click", addToPlaylist);
+    playlistPlayBtn?.addEventListener("click", function () {
+      playPlaylistFrom(0).catch(function (e) {
+        setStatus(String(e));
+        setPlaylistStatus(String(e));
+      });
+    });
+    playlistClearBtn?.addEventListener("click", function () {
+      playlist = [];
+      playlistPlaying = false;
+      playlistIndex = -1;
+      renderPlaylist();
+      setPlaylistStatus("Playlist cleared.");
+    });
+
     [roomIdEl, hostNameEl].forEach((el) => {
       el &&
         el.addEventListener("input", function () {
@@ -384,12 +609,20 @@
       vocalsEl.addEventListener("seeked", function () {
         publishSession().catch(() => {});
       });
+      vocalsEl.addEventListener("ended", function () {
+        if (playlistPlaying && !playlistAdvancing) {
+          advancePlaylist().catch(function (e) {
+            setStatus(String(e));
+          });
+        }
+      });
     }
 
     timer = setInterval(function () {
       publishSession().catch(() => {});
     }, 1000);
 
+    renderPlaylist();
     loadSongs().catch((e) => setStatus(String(e)));
   })();
 })();

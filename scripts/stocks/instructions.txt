@@ -188,3 +188,12 @@ az storage blob upload --connection-string $MONITOR_STORAGE --container-name sig
 
 
 az storage blob upload --connection-string $MONITOR_STORAGE --container-name signals --name positions.json --file "c:\pers\krishnaposa-mlo-site\scripts\stocks\positions.json" --overwrite
+
+
+Phase	    When it triggers (defaults)	   What it means
+EXIT        Profit% ≥ 50%                   You’ve captured enough premium — time to take profit and close.
+STOP        Profit% ≤ −100%                 Loss is about 1× the credit collected — close to cap damage.
+DEFENSIVE   Buffer% < 0                     Stock is under the short put — spread is in trouble; defend (close, roll, or hedge).
+ROLL        DTE < 14 and Buffer% < 3%       Expiry is close and price is tight to the short strike — consider rolling out/down.
+MANAGE      DTE ≤ 21                        Entering the “decision window” — actively decide to close or roll before expiry.
+OPENED      None of the above               Healthy early/mid trade — no urgent change.

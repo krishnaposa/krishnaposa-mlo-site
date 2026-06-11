@@ -443,9 +443,20 @@
     }
     hookStallEvents();
 
+    async function playNow(){
+      await preloadIfNeeded();
+      if (vEl.paused && bEl.paused && (vEl.currentTime > 0 || bEl.currentTime > 0)) {
+        await resumePlay();
+      } else {
+        await startFromZeroWithOffset(currentOffsetMs());
+      }
+      if (K._onPlaybackStarted) K._onPlaybackStarted();
+    }
+
     return {
       isMobileMix,
       isNetworkPlayback: () => isNetworkPlayback,
+      play: playNow,
       setSources(vocalsUrl, bandUrl){
         if (!vEl || !bEl) return;
         const v = (vocalsUrl == null ? '' : String(vocalsUrl)).trim();

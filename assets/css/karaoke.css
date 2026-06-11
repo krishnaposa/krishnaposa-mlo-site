@@ -279,6 +279,88 @@ html.karaoke-mobile-host #hostPlayHelp{display:none}
   color:#1d4ed8;
 }
 
+/* Host playlist */
+.host-playlist{
+  list-style:none;
+  margin:.75rem 0 0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:.35rem;
+  min-height:2.5rem;
+}
+.host-playlist:empty::before{
+  content:"No songs yet — pick one above and tap Add selected song.";
+  display:block;
+  padding:.65rem .75rem;
+  border:1px dashed #cbd5e1;
+  border-radius:10px;
+  color:#64748b;
+  font-size:.9rem;
+}
+.host-playlist-item{
+  display:flex;
+  align-items:center;
+  gap:.5rem;
+  padding:.45rem .55rem;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  background:#f8fafc;
+  cursor:grab;
+  user-select:none;
+}
+.host-playlist-item:active{cursor:grabbing}
+.host-playlist-item.drag-over{
+  border-color:#2563eb;
+  background:#eff6ff;
+}
+.host-playlist-item.is-playing{
+  border-color:#2563eb;
+  background:#dbeafe;
+  box-shadow:0 0 0 2px rgba(37,99,235,.15);
+}
+.host-playlist-grip{
+  color:#94a3b8;
+  font-size:.85rem;
+  letter-spacing:-.15em;
+  flex-shrink:0;
+}
+.host-playlist-num{
+  flex-shrink:0;
+  width:1.4rem;
+  text-align:center;
+  font-size:.85rem;
+  font-weight:700;
+  color:#64748b;
+}
+.host-playlist-label{
+  flex:1;
+  min-width:0;
+  font-size:.92rem;
+  color:#0f172a;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.host-playlist-remove{
+  flex-shrink:0;
+  width:1.75rem;
+  height:1.75rem;
+  padding:0;
+  border:1px solid #cbd5e1;
+  border-radius:6px;
+  background:#fff;
+  color:#64748b;
+  font-size:1.1rem;
+  line-height:1;
+  cursor:pointer;
+}
+.host-playlist-remove:hover{
+  color:#b91c1c;
+  border-color:#fca5a5;
+  background:#fef2f2;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce){
   .btn,.progress .bar{transition:none}
