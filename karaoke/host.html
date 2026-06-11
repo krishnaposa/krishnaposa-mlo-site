@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Karaoke Host</title>
   <link rel="stylesheet" href="/assets/css/styles.css">
-  <link rel="stylesheet" href="/assets/css/karaoke.css?v=12">
+  <link rel="stylesheet" href="/assets/css/karaoke.css?v=13">
 </head>
 <body>
 <main class="container">
@@ -85,11 +85,14 @@
       <div class="host-accordion-body">
         <p class="help" style="margin-top:0">
           Line up songs for the night. Add from the picker above, drag to reorder, then <strong>Play playlist</strong>.
-          Each track plays in order with its own lyrics.
+          Each track plays in order with its own lyrics. On desktop, set <strong>Vocals output</strong> and
+          <strong>Band output</strong> above first — each added song remembers those devices (🔊). Change outputs
+          anytime; use <strong>Apply outputs to all</strong> to update every row.
         </p>
         <div class="row" style="margin-top:.5rem">
           <button id="playlistAdd" class="btn btn-outline" type="button">Add selected song</button>
           <button id="playlistPlay" class="btn btn-blue" type="button">Play playlist</button>
+          <button id="playlistSaveOutputs" class="btn btn-outline" type="button">Apply outputs to all</button>
           <button id="playlistClear" class="btn btn-outline" type="button">Clear playlist</button>
         </div>
         <ul id="playlistList" class="host-playlist" aria-label="Playlist"></ul>
@@ -148,7 +151,7 @@
 </main>
 <script>window.KARAOKE = window.KARAOKE || {};</script>
 <script src="/assets/js/karaoke-api-base.js?v=2"></script>
-<script src="/assets/js/karaoke-core.js?v=8"></script>
-<script src="/assets/js/karaoke-host.js?v=9"></script>
+<script src="/assets/js/karaoke-core.js?v=9"></script>
+<script src="/assets/js/karaoke-host.js?v=10"></script>
 </body>
 </html>

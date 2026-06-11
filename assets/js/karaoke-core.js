@@ -443,9 +443,19 @@
     }
     hookStallEvents();
 
-    async function playNow(){
+    async function playNow(opts){
+      const fromStart = !!(opts && opts.fromStart);
       await preloadIfNeeded();
-      if (vEl.paused && bEl.paused && (vEl.currentTime > 0 || bEl.currentTime > 0)) {
+      if (fromStart) {
+        clearDriftTimer();
+        try { vEl.pause(); } catch {}
+        try { bEl.pause(); } catch {}
+        isPlaying = false;
+        try { vEl.currentTime = 0; } catch {}
+        try { bEl.currentTime = 0; } catch {}
+        await applySinks();
+        await startFromZeroWithOffset(currentOffsetMs());
+      } else if (vEl.paused && bEl.paused && (vEl.currentTime > 0 || bEl.currentTime > 0)) {
         await resumePlay();
       } else {
         await startFromZeroWithOffset(currentOffsetMs());
@@ -457,6 +467,19 @@
       isMobileMix,
       isNetworkPlayback: () => isNetworkPlayback,
       play: playNow,
+      applySinks,
+      getOutputIds(){
+        return {
+          vocals: vOut?.value || 'default',
+          band: bOut?.value || 'default',
+        };
+      },
+      setOutputIds(ids){
+        if (!ids || typeof ids !== 'object') return;
+        if (vOut && ids.vocals) vOut.value = ids.vocals;
+        if (bOut && ids.band) bOut.value = ids.band;
+        return applySinks();
+      },
       setSources(vocalsUrl, bandUrl){
         if (!vEl || !bEl) return;
         const v = (vocalsUrl == null ? '' : String(vocalsUrl)).trim();
@@ -471,9 +494,12 @@
         _lastBlobV = v.startsWith('blob:') ? v : '';
         _lastBlobB = b.startsWith('blob:') ? b : '';
         isLoaded = false;
+        isPlaying = false;
+        clearDriftTimer();
         vEl.src = v;
         bEl.src = b;
         refreshNetworkMode();
+        void applySinks();
       },
       showTitle(t){ const el = K.$('trackTitle'); if (el) el.textContent = t || '—'; },
       getDurations(){ return { vocals: vEl?.duration || 0, band: bEl?.duration || 0 }; },

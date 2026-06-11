@@ -253,10 +253,15 @@
         if (playlistPlaying && idx === playlistIndex) {
           li.classList.add("is-playing");
         }
+        const outHint =
+          !PB.isMobileMix && (item.vocals_sink || item.band_sink)
+            ? '<span class="host-playlist-outs tiny" title="Outputs saved when added">🔊</span>'
+            : "";
         li.innerHTML =
           '<span class="host-playlist-grip" aria-hidden="true">⋮⋮</span>' +
           '<span class="host-playlist-num">' + (idx + 1) + "</span>" +
           '<span class="host-playlist-label">' + escHtml(buildSongDisplayLabel(item)) + "</span>" +
+          outHint +
           '<button type="button" class="host-playlist-remove" data-idx="' + idx + '" aria-label="Remove from playlist">×</button>';
 
         li.addEventListener("dragstart", function (e) {
@@ -363,9 +368,37 @@
         setPlaylistStatus("Already in playlist.");
         return;
       }
-      playlist.push(Object.assign({}, item));
+      const outs = typeof PB.getOutputIds === "function" ? PB.getOutputIds() : {};
+      playlist.push(
+        Object.assign({}, item, {
+          vocals_sink: outs.vocals || "",
+          band_sink: outs.band || "",
+        })
+      );
       renderPlaylist();
       setPlaylistStatus("Added — " + playlist.length + " song(s) queued.");
+    }
+
+    async function applyPlaylistOutputs(item) {
+      if (!item || typeof PB.setOutputIds !== "function") return;
+      const v = item.vocals_sink;
+      const b = item.band_sink;
+      if (!v && !b) return;
+      try {
+        await PB.setOutputIds({
+          vocals: v || undefined,
+          band: b || undefined,
+        });
+      } catch (e) {
+        console.warn("applyPlaylistOutputs", e);
+      }
+    }
+
+    function snapshotCurrentOutputsToPlaylistItem(item) {
+      if (!item || typeof PB.getOutputIds !== "function") return;
+      const outs = PB.getOutputIds();
+      item.vocals_sink = outs.vocals || "";
+      item.band_sink = outs.band || "";
     }
 
     async function loadSongByItem(item, opts) {
@@ -375,14 +408,24 @@
       if (o.syncPick && songPickEl) {
         songPickEl.value = item.job_id;
       }
+      if (o.usePlaylistOutputs !== false && (item.vocals_sink || item.band_sink)) {
+        await applyPlaylistOutputs(item);
+      }
       const v = resolveStemUrl(item.vocals_url || "");
       const b = resolveStemUrl(item.band_url || "");
       PB.setSources(v, b);
+      if (typeof PB.applySinks === "function") {
+        await PB.applySinks();
+      }
       PB.showTitle(item.title || item.job_id);
       await loadLyrics(item.job_id);
       await publishSession();
       renderPlaylist();
-      setStatus("Ready: " + (item.title || item.job_id) + " — host hears vocals + band.");
+      const routing =
+        !PB.isMobileMix && (item.vocals_sink || item.band_sink)
+          ? " — vocals/band on saved outputs"
+          : " — host hears vocals + band.";
+      setStatus("Ready: " + (item.title || item.job_id) + routing);
     }
 
     async function playPlaylistFrom(startIdx) {
@@ -395,9 +438,9 @@
       playlistIndex = idx;
       playlistAdvancing = true;
       try {
-        await loadSongByItem(playlist[idx], { syncPick: true });
+        await loadSongByItem(playlist[idx], { syncPick: true, usePlaylistOutputs: true });
         if (typeof PB.play === "function") {
-          await PB.play();
+          await PB.play({ fromStart: true });
         } else {
           document.getElementById("play")?.click();
         }
@@ -591,6 +634,30 @@
       renderPlaylist();
       setPlaylistStatus("Playlist cleared.");
     });
+
+    const playlistSaveOutsBtn = document.getElementById("playlistSaveOutputs");
+    playlistSaveOutsBtn?.addEventListener("click", function () {
+      if (!playlist.length) {
+        setPlaylistStatus("Playlist is empty.");
+        return;
+      }
+      playlist.forEach(function (item) {
+        snapshotCurrentOutputsToPlaylistItem(item);
+      });
+      renderPlaylist();
+      setPlaylistStatus("Saved current vocals/band outputs for all " + playlist.length + " song(s).");
+    });
+
+    function onOutputChangeDuringPlaylist() {
+      if (typeof PB.applySinks === "function") {
+        PB.applySinks().catch(function () {});
+      }
+      if (playlistPlaying && playlistIndex >= 0 && playlist[playlistIndex]) {
+        snapshotCurrentOutputsToPlaylistItem(playlist[playlistIndex]);
+      }
+    }
+    document.getElementById("vocalsOut")?.addEventListener("change", onOutputChangeDuringPlaylist);
+    document.getElementById("bandOut")?.addEventListener("change", onOutputChangeDuringPlaylist);
 
     [roomIdEl, hostNameEl].forEach((el) => {
       el &&

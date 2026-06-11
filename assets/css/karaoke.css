@@ -360,6 +360,19 @@ html.karaoke-mobile-host #hostPlayHelp{display:none}
   border-color:#fca5a5;
   background:#fef2f2;
 }
+.host-playlist-outs{
+  flex-shrink:0;
+  opacity:.75;
+  font-size:.85rem;
+}
+
+html:not(.karaoke-mobile-host) .host-section-playlist .host-playlist-outs{
+  display:inline;
+}
+html.karaoke-mobile-host .host-section-playlist .host-playlist-outs,
+html.karaoke-mobile-host #playlistSaveOutputs{
+  display:none;
+}
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce){
