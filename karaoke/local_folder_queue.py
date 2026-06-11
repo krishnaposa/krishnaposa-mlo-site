@@ -147,6 +147,13 @@ def _is_host_html_path(path: str) -> bool:
 
 
 SEPARATOR = os.environ.get("SEPARATOR", "spleeter").lower().strip()
+# Playback-only servers (e.g. Oracle VM with pre-split stems): skip separator install + split worker.
+KARAOKE_PLAYBACK_ONLY = (os.environ.get("KARAOKE_PLAYBACK_ONLY") or "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 # htdemucs_ft = higher quality, slower. Use DEMUCS_MODEL=htdemucs for a noticeable speed-up (still good stems).
 DEMUCS_MODEL = os.environ.get("DEMUCS_MODEL", "htdemucs_ft")
 # Demucs multiprocessing often fails on Windows with -j 2; override with DEMUCS_JOBS.
@@ -1190,6 +1197,11 @@ def process_job_file(input_file: Path, job_id: str, original_name: str) -> None:
 
 
 def worker_loop() -> None:
+    if KARAOKE_PLAYBACK_ONLY:
+        LOG.info("KARAOKE_PLAYBACK_ONLY=1 — split worker idle (playback / list / audience only)")
+        while True:
+            time.sleep(3600)
+        return
     _ffmpeg_path_prep()
     while True:
         try:
@@ -1736,6 +1748,7 @@ def main() -> None:
     _ffmpeg_path_prep()
     LOG.info("KARAOKE_LOCAL_ROOT=%s", ROOT)
     LOG.info("SEPARATOR=%s", SEPARATOR)
+    LOG.info("KARAOKE_PLAYBACK_ONLY=%s", "1" if KARAOKE_PLAYBACK_ONLY else "0")
     LOG.info("KARAOKE_LIST_CACHE_TTL=%ss", KARAOKE_LIST_CACHE_TTL)
     if KARAOKE_PRETRIM:
         LOG.info(
@@ -1743,13 +1756,18 @@ def main() -> None:
             KARAOKE_PRETRIM_SILENCE_DB,
             KARAOKE_PRETRIM_MIN_SILENCE,
         )
-    if SEPARATOR == "demucs":
-        LOG.info("DEMUCS_MODEL=%s DEMUCS_JOBS=%s", DEMUCS_MODEL, DEMUCS_JOBS)
-    try:
-        selected = resolve_separator()
-        LOG.info("Resolved separator=%s", selected)
-    except Exception as e:
-        LOG.error("Separator check failed: %s", e)
+    if KARAOKE_PLAYBACK_ONLY:
+        LOG.info(
+            "Playback-only mode — no spleeter/demucs required; upload/split disabled on this host"
+        )
+    else:
+        if SEPARATOR == "demucs":
+            LOG.info("DEMUCS_MODEL=%s DEMUCS_JOBS=%s", DEMUCS_MODEL, DEMUCS_JOBS)
+        try:
+            selected = resolve_separator()
+            LOG.info("Resolved separator=%s", selected)
+        except Exception as e:
+            LOG.error("Separator check failed: %s", e)
     LOG.info("Serving %s — submit/status/lyrics compatible with karaoke/index-local.html", PUBLIC_BASE)
     if _serve_repo_static_enabled():
         LOG.info(

@@ -18,6 +18,11 @@ export KARAOKE_LOCAL_HOST=127.0.0.1
 export KARAOKE_LOCAL_PORT=8787
 export KARAOKE_LOCAL_PUBLIC_BASE=https://sing.krishposa.com
 export KARAOKE_PLAYBACK_ONLY=1
+# Playback-only: pre-split stems in KARAOKE_LOCAL_ROOT/output — no spleeter/demucs on VM.
+# Separator ERROR at startup is harmless if this is set (after code update); server still serves host/audience.
+# To split NEW songs on the VM instead, unset KARAOKE_PLAYBACK_ONLY and:
+#   pip install -r requirements.txt   # spleeter (heavy)
+# or pip install -r karaoke/requirements-demucs.txt
 export KARAOKE_REPO_ROOT=/home/opc/krishnaposa-mlo-site
 export KARAOKE_ROOT_REDIRECT=/karaoke/audience.html
 
@@ -25,6 +30,41 @@ mkdir -p /home/opc/logs
 nohup /home/opc/krishnaposa-mlo-site/.venv/bin/python \
   /home/opc/krishnaposa-mlo-site/karaoke/local_audience_queue.py \
   >> /home/opc/logs/karaoke-local.log 2>&1 &
+
+# --- Find / kill / restart local_audience_queue.py ---
+# Find PID (ignore grep itself):
+pgrep -af local_audience_queue.py
+# or:
+ps -ef | grep local_audience_queue | grep -v grep
+
+# Kill gracefully (replace PID, e.g. 582446):
+kill PID
+# If it does not exit in ~5s:
+kill -9 PID
+
+# One-liner: kill whatever is running local_audience_queue.py
+pkill -f 'local_audience_queue.py'
+# Force:
+pkill -9 -f 'local_audience_queue.py'
+
+# Confirm port 8787 is free before restart:
+ss -tlnp | grep 8787
+
+# Restart (set env vars above first, or add to ~/.bashrc):
+# export KARAOKE_LOCAL_ROOT=...  (same as start section)
+nohup /home/opc/krishnaposa-mlo-site/.venv/bin/python \
+  /home/opc/krishnaposa-mlo-site/karaoke/local_audience_queue.py \
+  >> /home/opc/logs/karaoke-local.log 2>&1 &
+echo $!   # prints new PID
+
+# Health check:
+curl -sS http://127.0.0.1:8787/api/config | head
+curl -sS http://127.0.0.1:8787/api/list | head
+tail -30 /home/opc/logs/karaoke-local.log
+
+# Log noise you can ignore:
+#   POST /mics/api/v2/sentry/... 404 — Oracle/agent probe, not karaoke
+#   Separator check failed — OK on playback-only VM if KARAOKE_PLAYBACK_ONLY=1 (fix: pull latest repo + restart)
 
 scp -i /c/pers/oracleCloud/ssh-key-2026-05-11.key -r /c/pers/karaoke-local/ opc@129.158.220.48:/mnt/karaoke-data/karaoke-local/
 

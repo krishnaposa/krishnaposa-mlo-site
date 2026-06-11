@@ -146,6 +146,7 @@ def main() -> None:
     lfq._ffmpeg_path_prep()
     lfq.LOG.info("KARAOKE_LOCAL_ROOT=%s", lfq.ROOT)
     lfq.LOG.info("SEPARATOR=%s", lfq.SEPARATOR)
+    lfq.LOG.info("KARAOKE_PLAYBACK_ONLY=%s", "1" if lfq.KARAOKE_PLAYBACK_ONLY else "0")
     lfq.LOG.info("KARAOKE_LIST_CACHE_TTL=%ss", lfq.KARAOKE_LIST_CACHE_TTL)
     if lfq.KARAOKE_PRETRIM:
         lfq.LOG.info(
@@ -153,13 +154,18 @@ def main() -> None:
             lfq.KARAOKE_PRETRIM_SILENCE_DB,
             lfq.KARAOKE_PRETRIM_MIN_SILENCE,
         )
-    if lfq.SEPARATOR == "demucs":
-        lfq.LOG.info("DEMUCS_MODEL=%s DEMUCS_JOBS=%s", lfq.DEMUCS_MODEL, lfq.DEMUCS_JOBS)
-    try:
-        selected = lfq.resolve_separator()
-        lfq.LOG.info("Resolved separator=%s", selected)
-    except Exception as e:
-        lfq.LOG.error("Separator check failed: %s", e)
+    if lfq.KARAOKE_PLAYBACK_ONLY:
+        lfq.LOG.info(
+            "Playback-only mode — no spleeter/demucs required; upload/split disabled on this host"
+        )
+    else:
+        if lfq.SEPARATOR == "demucs":
+            lfq.LOG.info("DEMUCS_MODEL=%s DEMUCS_JOBS=%s", lfq.DEMUCS_MODEL, lfq.DEMUCS_JOBS)
+        try:
+            selected = lfq.resolve_separator()
+            lfq.LOG.info("Resolved separator=%s", selected)
+        except Exception as e:
+            lfq.LOG.error("Separator check failed: %s", e)
     lfq.LOG.info("Serving %s — audience + local queue mode", lfq.PUBLIC_BASE)
 
     t = threading.Thread(target=lfq.worker_loop, name="karaoke-worker", daemon=True)
