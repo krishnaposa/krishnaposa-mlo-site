@@ -171,10 +171,12 @@ def _compute_universe_budgeted(max_seconds: int) -> list[str]:
         raise ValueError("No tickers produced by entry script")
     return cleaned
 
-# --------------------------- Timer: monitor ---------------------------
+# --------------------------- Timer: monitor (evening — no PCS) ---------------------------
 @app.schedule(schedule="0 30 23 * * 1-5", arg_name="timer", run_on_startup=False, use_monitor=True)
 def monitor_signals(timer: func.TimerRequest) -> None:
     try:
+        # PCS runs on pcs_morning (~10:00 ET). Evening email is research/EOD only.
+        os.environ.setdefault("MONITOR_EMAIL_INCLUDE_PCS", "0")
         # 1) Quant run (includes email inside daily_monitor)
         df_all, df_leaders = daily_monitor.run_monitor(
             [],  # dynamic list handled in daily_monitor
@@ -246,6 +248,26 @@ def monitor_signals(timer: func.TimerRequest) -> None:
 
     except Exception as e:
         logging.exception(f"[monitor_signals] failed: {e}")
+
+# --------------------------- Timer: PCS morning (~10:00 ET) ---------------------------
+# 15:00 UTC = 10:00 EST (standard). During EDT (Mar–Nov) this fires at 11:00 ET.
+# Override with app setting PCS_MORNING_CRON if you prefer 14:00 UTC (10:00 EDT).
+@app.schedule(schedule="0 15 * * 1-5", arg_name="pcs_timer", run_on_startup=False, use_monitor=True)
+def pcs_morning(pcs_timer: func.TimerRequest) -> None:
+    try:
+        from monitoring.pcs_morning import run_pcs_morning
+
+        result = run_pcs_morning()
+        opp = result.get("opportunities") or {}
+        life = result.get("lifecycle") or {}
+        logging.info(
+            "[pcs_morning] done — ideas=%d actionable=%d email_sent=%s",
+            len(opp.get("tickers") or []),
+            len(life.get("actionable") or []),
+            result.get("email_sent"),
+        )
+    except Exception as e:
+        logging.exception(f"[pcs_morning] failed: {e}")
 
 # ---------- Timer: refresh cache ----------
 @app.schedule(schedule="0 9 * * 1-5", arg_name="myTimer", run_on_startup=True, use_monitor=True)

@@ -288,6 +288,10 @@ def _fmt_cell(col: str, val) -> str:
     return str(val)
 
 
+def _pcs_session_label() -> str:
+    return (os.getenv("PCS_SESSION_LABEL") or "next session").strip() or "next session"
+
+
 def format_pcs_opportunities_text(rows: List[dict], *, scanned: int, buys: int) -> str:
     """Plain-text table matching pie_analyze_swing PCS output."""
     header = (
@@ -301,7 +305,7 @@ def format_pcs_opportunities_text(rows: List[dict], *, scanned: int, buys: int) 
         )
     lines = [
         f"  Scanned {scanned} symbols · {buys} BUY (grade >= {PIE_MIN_GRADE}) · "
-        f"{len(rows)} PCS plan(s) for next session.",
+        f"{len(rows)} PCS plan(s) for {_pcs_session_label()}.",
         header,
     ]
     for r in rows:
@@ -341,7 +345,7 @@ def format_pcs_opportunities_html(rows: List[dict], *, scanned: int, buys: int) 
     )
     return (
         f"<p><b>PUT CREDIT SPREAD PLAN</b> (pie_analyze_swing funnel) — "
-        f"{scanned} scanned, {buys} BUY, {len(rows)} PCS for next session.</p>"
+        f"{scanned} scanned, {buys} BUY, {len(rows)} PCS for {_pcs_session_label()}.</p>"
         f"{table}"
         "<p style='font-size:11px;color:#666'>Estimates only — verify chain before trading.</p>"
     )

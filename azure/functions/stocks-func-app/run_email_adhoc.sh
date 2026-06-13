@@ -21,6 +21,9 @@ export EMAIL_PASSWORD="ivwy ubxh jzjd atmr"
 export EMAIL_TO="krishnaposa@gmail.com"
 export EMAIL_SUBJECT_PREFIX="Adhoc Stock Picks"
 
+# Evening-style daily email — PCS is on run_pcs_morning_adhoc.sh (~10:00 ET).
+export MONITOR_EMAIL_INCLUDE_PCS="${MONITOR_EMAIL_INCLUDE_PCS:-0}"
+
 # Required for universe/local-list Blob access.
 export MONITOR_STORAGE="${MONITOR_STORAGE:-<azure-storage-connection-string>}"
 
@@ -35,12 +38,12 @@ export MOMENTUM_TRAILING_STOP_PCT="${MOMENTUM_TRAILING_STOP_PCT:-0.15}"
 # After successful blob save, also write ./momentum_portfolio.json (handy for local).
 export MOMENTUM_PORTFOLIO_MIRROR_LOCAL="${MOMENTUM_PORTFOLIO_MIRROR_LOCAL:-1}"
 
-# Holdings list: trailing stop; state in holdings_trailing_state.json.
-# holdings_list.json is NOT auto-edited on exit (you remove tickers manually). Set to 1 to auto-drop exits from the blob:
+# Holdings trailing stop: run locally via scripts/stocks/holdings-analyzer.py (not in daily email).
 export HOLDINGS_LIST_REMOVE_ON_EXIT="${HOLDINGS_LIST_REMOVE_ON_EXIT:-0}"
 export HOLDINGS_TRAILING_EXITS_ENABLED="${HOLDINGS_TRAILING_EXITS_ENABLED:-1}"
 
-# PCS funnel (pie_analyze_swing) — same table as local pie_analyze_swing.py
+# PCS: use run_pcs_morning_adhoc.sh (morning execution email). Omit from this evening run:
+# export MONITOR_EMAIL_INCLUDE_PCS=1   # only if you want PCS in the full adhoc email too
 export PCS_OPPORTUNITIES_ENABLED="${PCS_OPPORTUNITIES_ENABLED:-1}"
 export PIE_TICKERS_FILE="${PIE_TICKERS_FILE:-/c/pers/krishnaposa-mlo-site/scripts/stocks/my_tickers.txt}"
 export PIE_MIN_GRADE="${PIE_MIN_GRADE:-B}"

@@ -3,8 +3,9 @@ Momentum portfolio — Finviz seeding + trailing stop exits.
 
 Separate from the main quant monitor; optional daily hook updates JSON and feeds the email.
 
-Holdings list (holdings_list.json) uses trailing-stop exits via run_holdings_trailing_daily()
-(state: holdings_trailing_state.json). Disable with HOLDINGS_TRAILING_EXITS_ENABLED=0.
+Holdings list (holdings_list.json) trailing-stop exits via run_holdings_trailing_daily()
+(state: holdings_trailing_state.json). Not included in daily email — use scripts/stocks/holdings-analyzer.py locally.
+Disable trailing logic: HOLDINGS_TRAILING_EXITS_ENABLED=0.
 Set HOLDINGS_LIST_REMOVE_ON_EXIT=1 to drop exited tickers from holdings_list.json automatically (default: manual edits only).
 
 Env:
@@ -391,6 +392,7 @@ def run_momentum_daily() -> Dict[str, Any]:
         "portfolio_file": storage_description(),
         "messages": [],
         "exited": [],
+        "new_highs_today": [],
         "holdings_rows": [],
         "portfolio_saved": False,
     }
@@ -434,6 +436,7 @@ def run_momentum_daily() -> Dict[str, Any]:
         if current_price > high_seen:
             portfolio[ticker]["high_seen"] = current_price
             updates_made = True
+            out["new_highs_today"].append(ticker)
             stop_px = current_price * (1.0 - TRAILING_STOP_PCT)
             out["messages"].append(
                 f"NEW HIGH {ticker} @ ${current_price:.2f} → trailing stop ${stop_px:.2f}"
@@ -465,20 +468,11 @@ def run_momentum_daily() -> Dict[str, Any]:
         out["messages"].append(msg)
         logger.warning("[momentum] %s", msg)
 
-    # Holdings snapshot for email table
+    # Book tickers for email listing + momentum sim/perf filter
     for ticker in sorted(portfolio.keys()):
         t = str(ticker).upper().strip()
-        hi = float((portfolio[t].get("high_seen")) or 0.0)
-        cp = _last_close_from_panel(closes, t)
-        stop_px = hi * (1.0 - TRAILING_STOP_PCT) if hi else float("nan")
-        out["holdings_rows"].append(
-            {
-                "ticker": t,
-                "last": cp,
-                "high_seen": hi,
-                "stop": stop_px,
-            }
-        )
+        if t:
+            out["holdings_rows"].append({"ticker": t})
 
     if not updates_made and not out["messages"]:
         out["messages"].append(
@@ -515,71 +509,86 @@ def _format_finviz_screen_email_html(result: Dict[str, Any]) -> str:
     return "".join(parts)
 
 
+def momentum_new_highs_today(result: Dict[str, Any]) -> List[str]:
+    raw = result.get("new_highs_today")
+    if raw is not None:
+        return [str(t).upper().strip() for t in raw if str(t).strip()]
+    # Back-compat: parse log messages if field missing
+    out: List[str] = []
+    for m in result.get("messages") or []:
+        s = str(m).strip()
+        if s.startswith("NEW HIGH "):
+            ticker = s[len("NEW HIGH ") :].split("@", 1)[0].strip().upper()
+            if ticker:
+                out.append(ticker)
+    return out
+
+
+def _format_new_highs_email_html(result: Dict[str, Any]) -> str:
+    tickers = momentum_new_highs_today(result)
+    if not tickers:
+        return ""
+    preview = ", ".join(tickers)
+    return (
+        f"<div style='margin-top:8px;font-size:12px'>"
+        f"<b>New high today:</b> "
+        f"<span style='font-family:ui-monospace,monospace'>{_esc(preview)}</span>"
+        f"</div>"
+    )
+
+
+def _format_new_highs_text(result: Dict[str, Any]) -> str:
+    tickers = momentum_new_highs_today(result)
+    if not tickers:
+        return ""
+    return f"  New high today: {', '.join(tickers)}"
+
+
+def _momentum_non_trailing_messages(msgs: List[Any]) -> List[str]:
+    out: List[str] = []
+    for m in msgs or []:
+        s = str(m).strip()
+        if not s or s.startswith("NEW HIGH ") or s.startswith("EXIT "):
+            continue
+        out.append(s)
+    return out
+
+
 def format_momentum_email_section(result: Dict[str, Any]) -> str:
-    """HTML fragment for send_email_report_with_sims."""
-    # Default missing key to on — only skip when explicitly disabled.
+    """HTML fragment for send_email_report_with_sims (Finviz seed + book tickers; no trailing table)."""
     if result.get("enabled") is False:
         return ""
 
     rows = result.get("holdings_rows") or []
-    msgs = result.get("messages") or []
-    exited = result.get("exited") or []
-
-    msg_html = "".join(f"<div style='margin:2px 0'>{_esc(m)}</div>" for m in msgs)
-
-    if exited:
-        msg_html += f"<div style='margin-top:6px'><b>Removed:</b> {_esc(', '.join(exited))}</div>"
-
-    table = ""
-    if rows:
-        parts = [
-            "<table border='0' cellspacing='0' cellpadding='4'>",
-            "<thead><tr>",
-            "<th align='left'>Ticker</th>",
-            "<th align='right'>Last</th>",
-            "<th align='right'>High seen</th>",
-            "<th align='right'>Trailing stop</th>",
-            "</tr></thead><tbody>",
-        ]
-        for r in rows[: PORTFOLIO_SIZE + 5]:
-            parts.append(
-                "<tr>"
-                f"<td>{_esc(str(r.get('ticker','')))}</td>"
-                f"<td align='right'>{_fmt_money(r.get('last'))}</td>"
-                f"<td align='right'>{_fmt_money(r.get('high_seen'))}</td>"
-                f"<td align='right'>{_fmt_money(r.get('stop'))}</td>"
-                "</tr>"
-            )
-        parts.append("</tbody></table>")
-        table = "".join(parts)
-    else:
-        table = "<i>No open momentum positions.</i>"
+    tickers = [str(r.get("ticker", "")).upper().strip() for r in rows if str(r.get("ticker", "")).strip()]
 
     meta = (
         f"<div style='font-size:11px;color:#666;margin-bottom:6px'>"
-        f"Storage: {_esc(str(result.get('portfolio_file','')))} · "
-        f"Trailing exit {TRAILING_STOP_PCT:.0%} off high_seen"
+        f"Storage: {_esc(str(result.get('portfolio_file', '')))}"
         f"</div>"
     )
 
     finviz_block = _format_finviz_screen_email_html(result)
-    return f"{meta}{finviz_block}{msg_html}<div style='margin-top:10px'>{table}</div>"
+    new_highs_html = _format_new_highs_email_html(result)
 
+    note_msgs = _momentum_non_trailing_messages(result.get("messages") or [])
+    notes_html = "".join(f"<div style='margin:2px 0'>{_esc(m)}</div>" for m in note_msgs)
 
-def _momentum_holdings_table_text(rows: List[Dict[str, Any]], *, max_rows: int = 80) -> str:
-    if not rows:
-        return "  (none)"
-    lines = [f"  {'Ticker':<8} {'Last':>10} {'High':>10} {'Stop':>10}"]
-    for r in rows[:max_rows]:
-        lines.append(
-            f"  {str(r.get('ticker', '')):<8} "
-            f"{_fmt_money(r.get('last')):>10} "
-            f"{_fmt_money(r.get('high_seen')):>10} "
-            f"{_fmt_money(r.get('stop')):>10}"
+    if tickers:
+        preview = ", ".join(tickers[:50])
+        if len(tickers) > 50:
+            preview += f" … (+{len(tickers) - 50} more)"
+        book = (
+            f"<div style='margin-top:8px;font-size:12px'>"
+            f"<b>Current book ({len(tickers)}):</b> "
+            f"<span style='font-family:ui-monospace,monospace'>{_esc(preview)}</span>"
+            f"</div>"
         )
-    if len(rows) > max_rows:
-        lines.append(f"  … {len(rows) - max_rows} more")
-    return "\n".join(lines)
+    else:
+        book = "<div style='margin-top:8px'><i>No open momentum positions.</i></div>"
+
+    body = f"{meta}{finviz_block}{new_highs_html}{notes_html}{book}"
+    return body if body.strip() else ""
 
 
 def format_holdings_trailing_text(result: Dict[str, Any]) -> str:
@@ -621,23 +630,29 @@ def _format_finviz_screen_text(result: Dict[str, Any]) -> str:
 
 
 def format_momentum_text(result: Dict[str, Any]) -> str:
-    """Plain-text momentum portfolio section (same data as email HTML)."""
+    """Plain-text momentum portfolio section (Finviz seed + tickers; no trailing table)."""
     if result.get("enabled") is False:
         return "  Momentum portfolio disabled."
 
-    lines: List[str] = [
-        f"  Storage: {result.get('portfolio_file', '')} · "
-        f"Trailing exit {TRAILING_STOP_PCT:.0%} off high_seen",
-    ]
+    rows = result.get("holdings_rows") or []
+    tickers = [str(r.get("ticker", "")).upper().strip() for r in rows if str(r.get("ticker", "")).strip()]
+
+    lines: List[str] = [f"  Storage: {result.get('portfolio_file', '')}"]
     finviz = _format_finviz_screen_text(result)
     if finviz:
         lines.append(finviz)
-    for m in result.get("messages") or []:
+    new_highs = _format_new_highs_text(result)
+    if new_highs:
+        lines.append(new_highs)
+    for m in _momentum_non_trailing_messages(result.get("messages") or []):
         lines.append(f"  • {m}")
-    exited = result.get("exited") or []
-    if exited:
-        lines.append(f"  Removed: {', '.join(exited)}")
-    lines.append(_momentum_holdings_table_text(result.get("holdings_rows") or [], max_rows=PORTFOLIO_SIZE + 5))
+    if tickers:
+        preview = ", ".join(tickers[:50])
+        if len(tickers) > 50:
+            preview += f" … (+{len(tickers) - 50} more)"
+        lines.append(f"  Current book ({len(tickers)}): {preview}")
+    else:
+        lines.append("  (no open momentum positions)")
     return "\n".join(lines)
 
 
@@ -648,16 +663,6 @@ def _esc(s: str) -> str:
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
-
-
-def _fmt_money(x: Any) -> str:
-    try:
-        v = float(x)
-        if v != v:  # NaN
-            return "—"
-        return f"${v:.2f}"
-    except Exception:
-        return "—"
 
 
 if __name__ == "__main__":

@@ -248,22 +248,19 @@ def format_monitor_report_text(
     alltime_high_value_list: Optional[List[str]] = None,
     alltime_high_trend_rows: Optional[List[Dict]] = None,
     trend_entry_rows: Optional[List[Dict]] = None,
-    holdings_list_tickers: Optional[List[str]] = None,
-    holdings_trailing_result: Optional[Dict] = None,
     sim_rows: Optional[List[Dict]] = None,
     wheel_rows: Optional[List[Dict]] = None,
     perf_rows: Optional[List[Dict]] = None,
     momentum_result: Optional[Dict] = None,
     momentum_sim_rows: Optional[List[Dict]] = None,
     momentum_perf_rows: Optional[List[Dict]] = None,
-    holdings_exit_alert_tickers: Optional[List[str]] = None,
     momentum_exited_tickers: Optional[List[str]] = None,
     pcs_opportunities_result: Optional[Dict] = None,
     pcs_lifecycle_result: Optional[Dict] = None,
     subj_prefix: str = "Daily Stock Picks",
 ) -> str:
     """Plain-text report matching the daily email sections."""
-    from .momentum_portfolio import format_holdings_trailing_text, format_momentum_text
+    from .momentum_portfolio import format_momentum_text
     from .pcs_lifecycle import format_pcs_lifecycle_text
     from .pcs_opportunities import format_pcs_opportunities_text
 
@@ -278,11 +275,6 @@ def format_monitor_report_text(
         "=" * 72,
     ]
     alerts: List[str] = []
-    he = holdings_exit_alert_tickers or []
-    if he:
-        alerts.append(f"Holdings exits: {', '.join(str(t) for t in he[:10])}")
-    if momentum_exited_tickers:
-        alerts.append(f"Momentum exits: {', '.join(str(t) for t in momentum_exited_tickers[:10])}")
     if alerts:
         lines.append("ALERTS: " + " · ".join(alerts))
         lines.append("")
@@ -303,49 +295,44 @@ def format_monitor_report_text(
     for title, body in sections:
         lines.extend([f"\n## {title}", body])
 
-    lines.append("\n## Holdings — price watch & trailing stop")
-    lines.append("Current holdings_list symbols:")
-    _hl = list(holdings_list_tickers) if holdings_list_tickers else []
-    lines.append(_list_text(_hl) if _hl else "  (none)")
-    if holdings_trailing_result is not None:
-        lines.append(format_holdings_trailing_text(holdings_trailing_result))
-    else:
-        lines.append("  (holdings trailing not run)")
-
-    lines.append("\n## PCS ideas for next session (pie_analyze_swing)")
     if pcs_opportunities_result is not None:
         opp_rows = pcs_opportunities_result.get("rows") or []
         scanned = int(pcs_opportunities_result.get("scanned") or 0)
         buys = int(pcs_opportunities_result.get("buys") or 0)
-        lines.append(format_pcs_opportunities_text(opp_rows, scanned=scanned, buys=buys))
-    else:
-        lines.append("  (PCS opportunities not run)")
+        lines.extend([
+            "\n## PCS ideas for next session (pie_analyze_swing)",
+            format_pcs_opportunities_text(opp_rows, scanned=scanned, buys=buys),
+        ])
 
-    lines.append("\n## Open positions — lifecycle (positions.json)")
     if pcs_lifecycle_result is not None:
-        lines.append(format_pcs_lifecycle_text(
-            pcs_lifecycle_result.get("swing_rows") or [],
-            pcs_lifecycle_result.get("pcs_rows") or [],
-        ))
-    else:
-        lines.append("  (PCS lifecycle not run)")
+        lines.extend([
+            "\n## Open positions — lifecycle (positions.json)",
+            format_pcs_lifecycle_text(
+                pcs_lifecycle_result.get("swing_rows") or [],
+                pcs_lifecycle_result.get("pcs_rows") or [],
+            ),
+        ])
 
-    lines.append("\n## Momentum portfolio (trailing stop)")
+    lines.append("\n## Momentum portfolio")
     if momentum_result is not None:
         mom_txt = format_momentum_text(momentum_result)
         lines.append(mom_txt if mom_txt.strip() else "  (empty)")
     else:
         lines.append("  Momentum portfolio not run (disabled or error).")
 
-    lines.append("\n## Momentum — Simulators (current book)")
+    lines.append("\n## Momentum — Simulators (new high today)")
     if momentum_sim_rows is None:
         lines.append("  (momentum not run)")
+    elif not momentum_sim_rows:
+        lines.append("  (no new highs today)")
     else:
         lines.append(_sim_table_text(momentum_sim_rows))
 
-    lines.append("\n## Momentum — Performance (current book)")
+    lines.append("\n## Momentum — Performance (new high today)")
     if momentum_perf_rows is None:
         lines.append("  (momentum not run)")
+    elif not momentum_perf_rows:
+        lines.append("  (no new highs today)")
     else:
         lines.append(_perf_table_text(momentum_perf_rows))
 
@@ -370,6 +357,134 @@ def print_monitor_report_text(**kwargs) -> None:
     print(format_monitor_report_text(**kwargs), flush=True)
 
 
+def format_pcs_execution_report_text(
+    *,
+    stamp: str,
+    pcs_opportunities_result: Optional[Dict] = None,
+    pcs_lifecycle_result: Optional[Dict] = None,
+    subj_prefix: str = "PCS — today",
+) -> str:
+    """Plain-text PCS execution report (morning email)."""
+    from .pcs_lifecycle import format_pcs_lifecycle_text
+    from .pcs_opportunities import format_pcs_opportunities_text
+
+    lines: List[str] = [
+        "",
+        "=" * 72,
+        f"{subj_prefix} — {stamp}",
+        "=" * 72,
+        "",
+        "Live option quotes — verify chain before placing orders.",
+    ]
+
+    if pcs_opportunities_result is not None:
+        opp_rows = pcs_opportunities_result.get("rows") or []
+        scanned = int(pcs_opportunities_result.get("scanned") or 0)
+        buys = int(pcs_opportunities_result.get("buys") or 0)
+        lines.extend([
+            "\n## PCS ideas — today's session",
+            format_pcs_opportunities_text(opp_rows, scanned=scanned, buys=buys),
+        ])
+
+    if pcs_lifecycle_result is not None:
+        lines.extend([
+            "\n## Open positions — lifecycle (positions.json)",
+            format_pcs_lifecycle_text(
+                pcs_lifecycle_result.get("swing_rows") or [],
+                pcs_lifecycle_result.get("pcs_rows") or [],
+            ),
+        ])
+
+    lines.extend(["", "=" * 72, ""])
+    return "\n".join(lines)
+
+
+def send_pcs_execution_email(
+    *,
+    stamp: str,
+    pcs_opportunities_section_html: Optional[str] = None,
+    pcs_opportunity_tickers: Optional[List[str]] = None,
+    pcs_lifecycle_section_html: Optional[str] = None,
+    pcs_actionable_tickers: Optional[List[str]] = None,
+    pcs_opportunities_result: Optional[Dict] = None,
+    pcs_lifecycle_result: Optional[Dict] = None,
+    subj_prefix: str = "PCS — today",
+) -> None:
+    """Morning PCS-only email: entry ideas + open-position plan."""
+    if os.getenv("SEND_EMAIL", "0") != "1":
+        return
+
+    email_from = os.getenv("EMAIL_FROM")
+    pwd = os.getenv("EMAIL_PASSWORD")
+    tos = [t.strip() for t in os.getenv("EMAIL_TO", "").split(",") if t.strip()]
+    if not (email_from and pwd and tos):
+        return
+
+    subject = f"{subj_prefix} — {stamp}".strip()
+    alert_parts: List[str] = []
+    po = pcs_opportunity_tickers or []
+    if po:
+        ox = ", ".join(str(t) for t in po[:8])
+        if len(po) > 8:
+            ox += " …"
+        alert_parts.append(f"ideas: {ox}")
+    pa = pcs_actionable_tickers or []
+    if pa:
+        px = ", ".join(str(t) for t in pa[:10])
+        if len(pa) > 10:
+            px += " …"
+        alert_parts.append(f"actions: {px}")
+    if alert_parts:
+        subject = f"{subject} — " + " · ".join(alert_parts)
+
+    opp_block = ""
+    if pcs_opportunities_section_html is not None:
+        opp_block = (
+            "<h3>PCS ideas — today's session</h3>"
+            f"<div>{pcs_opportunities_section_html}</div>"
+        )
+
+    lifecycle_block = ""
+    if pcs_lifecycle_section_html is not None:
+        lifecycle_block = (
+            "<h3>Open positions — lifecycle review (positions.json)</h3>"
+            f"<div>{pcs_lifecycle_section_html}</div>"
+        )
+
+    if not opp_block and not lifecycle_block:
+        opp_block = (
+            "<p><i>PCS morning run produced no sections "
+            "(check PCS_OPPORTUNITIES_ENABLED / PCS_LIFECYCLE_ENABLED).</i></p>"
+        )
+
+    html_body = f"""<html><body>
+      <h2>{subj_prefix} — {stamp}</h2>
+      <p style="font-size:12px;color:#666">Morning execution sheet — live option quotes. Verify chain before placing orders.</p>
+      {opp_block}
+      {lifecycle_block}
+    </body></html>"""
+
+    plain = format_pcs_execution_report_text(
+        stamp=stamp,
+        pcs_opportunities_result=pcs_opportunities_result,
+        pcs_lifecycle_result=pcs_lifecycle_result,
+        subj_prefix=subj_prefix,
+    )
+
+    msg = EmailMessage()
+    msg["From"] = email_from
+    msg["To"] = ", ".join(tos)
+    msg["Subject"] = subject
+    msg.set_content(plain)
+    msg.add_alternative(html_body, subtype="html")
+
+    ctx = ssl.create_default_context()
+    import smtplib
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as s:
+        s.login(email_from, pwd)
+        s.send_message(msg)
+
+
 def send_email_report_with_sims(*,
     stamp: str,
     universe_tickers: List[str],
@@ -380,8 +495,6 @@ def send_email_report_with_sims(*,
     alltime_high_trend_rows: Optional[List[Dict]] = None,
     trend_entry_list: Optional[List[str]] = None,
     trend_entry_rows: Optional[List[Dict]] = None,
-    holdings_list_tickers: Optional[List[str]] = None,  # current symbols from holdings_list.json (display only)
-    holdings_trailing_section_html: Optional[str] = None,  # holdings_list: weak symbols + trailing stop
     pcs_opportunities_section_html: Optional[str] = None,  # pie funnel PCS ideas for next session
     pcs_opportunity_tickers: Optional[List[str]] = None,  # PCS idea tickers (subject line)
     pcs_lifecycle_section_html: Optional[str] = None,  # swing + PCS held-position lifecycle
@@ -391,9 +504,8 @@ def send_email_report_with_sims(*,
     wheel_rows: Optional[List[Dict]] = None,  # cash-secured put wheel candidates
     perf_rows: Optional[List[Dict]] = None,   # ticker, perf_5d, perf_1m, perf_6m
     momentum_section_html: Optional[str] = None,  # monitoring.momentum_portfolio HTML fragment
-    momentum_sim_rows: Optional[List[Dict]] = None,  # MC/HMM/ML for current momentum book only
+    momentum_sim_rows: Optional[List[Dict]] = None,  # MC/HMM/ML for new-high tickers only
     momentum_perf_rows: Optional[List[Dict]] = None,
-    holdings_exit_alert_tickers: Optional[List[str]] = None,  # trailing exit tickers (subject line; list not auto-edited unless configured)
     momentum_exited_tickers: Optional[List[str]] = None,  # set when momentum ran; None if feature off
     subj_prefix: str = "Daily Stock Picks"
 ):
@@ -412,29 +524,20 @@ def send_email_report_with_sims(*,
     # subj_tail = f"Spreads: {s_spreads}" + (f" | LEAPS: {s_leaps}" if s_leaps else "")
     subject = f"{subj_prefix} — {stamp}".strip()
     alert_parts: List[str] = []
-    he = holdings_exit_alert_tickers or []
-    if he:
-        hx = ", ".join(str(t) for t in he[:10])
-        if len(he) > 10:
-            hx += " …"
-        alert_parts.append(f"Holdings exits: {hx}")
-    if momentum_exited_tickers is not None and momentum_exited_tickers:
-        mx = ", ".join(str(t) for t in momentum_exited_tickers[:10])
-        if len(momentum_exited_tickers) > 10:
-            mx += " …"
-        alert_parts.append(f"Momentum exits: {mx}")
-    po = pcs_opportunity_tickers or []
-    if po:
-        ox = ", ".join(str(t) for t in po[:8])
-        if len(po) > 8:
-            ox += " …"
-        alert_parts.append(f"PCS ideas: {ox}")
-    pa = pcs_actionable_tickers or []
-    if pa:
-        px = ", ".join(str(t) for t in pa[:10])
-        if len(pa) > 10:
-            px += " …"
-        alert_parts.append(f"Position actions: {px}")
+    if pcs_opportunity_tickers is not None:
+        po = pcs_opportunity_tickers or []
+        if po:
+            ox = ", ".join(str(t) for t in po[:8])
+            if len(po) > 8:
+                ox += " …"
+            alert_parts.append(f"PCS ideas: {ox}")
+    if pcs_actionable_tickers is not None:
+        pa = pcs_actionable_tickers or []
+        if pa:
+            px = ", ".join(str(t) for t in pa[:10])
+            if len(pa) > 10:
+                px += " …"
+            alert_parts.append(f"Position actions: {px}")
     if alert_parts:
         subject = f"{subject} — " + " · ".join(alert_parts)
 
@@ -447,30 +550,25 @@ def send_email_report_with_sims(*,
     html_alltime_high_value = _list_html(alltime_high_value_list or [])
     html_strong_buy_entries = _list_html(strong_buy_entries)
     html_trend_entries = _list_html(trend_entries)
-    _hl = list(holdings_list_tickers) if holdings_list_tickers else []
-    html_holdings_symbols = (
-        _list_html(_hl) if _hl else "<i>No symbols in holdings_list.json</i>"
-    )
-    html_holdings_trailing = (
-        holdings_trailing_section_html
-        if (holdings_trailing_section_html or "").strip()
-        else "<i>Holdings trailing section not available.</i>"
-    )
-    html_pcs_opportunities_block = (
-        "<h3>PCS ideas for next session (pie_analyze_swing)</h3>"
-        f"<div>{pcs_opportunities_section_html or '<i>PCS section not run.</i>'}</div>"
-    )
+    html_pcs_opportunities_block = ""
+    if pcs_opportunities_section_html is not None:
+        html_pcs_opportunities_block = (
+            "<h3>PCS ideas for next session (pie_analyze_swing)</h3>"
+            f"<div>{pcs_opportunities_section_html}</div>"
+        )
 
-    html_pcs_lifecycle_block = (
-        "<h3>Open positions — lifecycle review (positions.json)</h3>"
-        f"<div>{pcs_lifecycle_section_html or '<i>PCS lifecycle not run.</i>'}</div>"
-    )
+    html_pcs_lifecycle_block = ""
+    if pcs_lifecycle_section_html is not None:
+        html_pcs_lifecycle_block = (
+            "<h3>Open positions — lifecycle review (positions.json)</h3>"
+            f"<div>{pcs_lifecycle_section_html}</div>"
+        )
     html_wheel_tickers = _list_html(wheel_tickers)
     html_sims = _sim_table_html(sim_rows)
     html_perf = _perf_table_html(perf_rows)
     if momentum_section_html:
         html_momentum_block = (
-            "<h3>Momentum portfolio (trailing stop)</h3>"
+            "<h3>Momentum portfolio</h3>"
             f"<div>{momentum_section_html}</div>"
         )
     else:
@@ -479,14 +577,14 @@ def send_email_report_with_sims(*,
     if momentum_sim_rows is None:
         html_momentum_sims = "<i>Momentum portfolio not run (disabled or error).</i>"
     elif not momentum_sim_rows:
-        html_momentum_sims = "<i>No open momentum positions — no simulator rows.</i>"
+        html_momentum_sims = "<i>No new highs today — no simulator rows.</i>"
     else:
         html_momentum_sims = _sim_table_html(momentum_sim_rows)
 
     if momentum_perf_rows is None:
         html_momentum_perf = "<i>Momentum portfolio not run (disabled or error).</i>"
     elif not momentum_perf_rows:
-        html_momentum_perf = "<i>No open momentum positions — no performance rows.</i>"
+        html_momentum_perf = "<i>No new highs today — no performance rows.</i>"
     else:
         html_momentum_perf = _perf_table_html(momentum_perf_rows)
 
@@ -521,22 +619,16 @@ def send_email_report_with_sims(*,
       <div><i>Passed trend entry criteria</i></div>
       <div>{html_trend_entries}</div>
 
-      <h3>Holdings — weak symbols &amp; trailing stop (holdings_list.json)</h3>
-      <div><b>Current holdings_list symbols</b></div>
-      <div>{html_holdings_symbols}</div>
-      <div><i>Price watch: symbols with down today, down ~1 week, or below 20-DMA (any); table shows all three metrics. Trailing stop off high_seen. holdings_list.json is only auto-edited if HOLDINGS_LIST_REMOVE_ON_EXIT=1.</i></div>
-      <div>{html_holdings_trailing}</div>
-
       {html_pcs_opportunities_block}
 
       {html_pcs_lifecycle_block}
 
       {html_momentum_block}
 
-      <h3>Momentum — Simulators (current book)</h3>
+      <h3>Momentum — Simulators (new high today)</h3>
       {html_momentum_sims}
 
-      <h3>Momentum — Performance (current book)</h3>
+      <h3>Momentum — Performance (new high today)</h3>
       {html_momentum_perf}
 
       <h3>Wheel Stocks</h3>
