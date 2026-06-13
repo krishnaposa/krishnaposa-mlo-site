@@ -1,9 +1,12 @@
 # monitoring/emailer.py
 
+import logging
 import os
 import ssl
 from email.message import EmailMessage
 from typing import List, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _list_html(items: List[str], max_items: int = 100) -> str:
@@ -412,12 +415,16 @@ def send_pcs_execution_email(
 ) -> None:
     """Morning PCS-only email: entry ideas + open-position plan."""
     if os.getenv("SEND_EMAIL", "0") != "1":
+        logger.info("[pcs_email] SEND_EMAIL != 1 — not sending")
         return
 
     email_from = os.getenv("EMAIL_FROM")
     pwd = os.getenv("EMAIL_PASSWORD")
     tos = [t.strip() for t in os.getenv("EMAIL_TO", "").split(",") if t.strip()]
     if not (email_from and pwd and tos):
+        logger.warning(
+            "[pcs_email] missing EMAIL_FROM, EMAIL_PASSWORD, or EMAIL_TO — not sending"
+        )
         return
 
     subject = f"{subj_prefix} — {stamp}".strip()
@@ -483,6 +490,7 @@ def send_pcs_execution_email(
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as s:
         s.login(email_from, pwd)
         s.send_message(msg)
+    logger.info("[pcs_email] sent to %s subject=%s", ", ".join(tos), subject)
 
 
 def send_email_report_with_sims(*,
@@ -510,12 +518,16 @@ def send_email_report_with_sims(*,
     subj_prefix: str = "Daily Stock Picks"
 ):
     if os.getenv("SEND_EMAIL", "0") != "1":
+        logger.info("[email] SEND_EMAIL != 1 — not sending")
         return
 
     email_from = os.getenv("EMAIL_FROM")
     pwd        = os.getenv("EMAIL_PASSWORD")
     tos = [t.strip() for t in os.getenv("EMAIL_TO", "").split(",") if t.strip()]
     if not (email_from and pwd and tos):
+        logger.warning(
+            "[email] missing EMAIL_FROM, EMAIL_PASSWORD, or EMAIL_TO — not sending"
+        )
         return
 
     # Disabled for now: LEAPS/debit-spread AI lists are not included in the subject.

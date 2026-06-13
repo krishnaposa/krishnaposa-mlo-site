@@ -25,7 +25,7 @@ export EMAIL_SUBJECT_PREFIX="Adhoc Stock Picks"
 export MONITOR_EMAIL_INCLUDE_PCS="${MONITOR_EMAIL_INCLUDE_PCS:-0}"
 
 # Required for universe/local-list Blob access.
-export MONITOR_STORAGE="${MONITOR_STORAGE:-<azure-storage-connection-string>}"
+export MONITOR_STORAGE="${MONITOR_STORAGE:-DefaultEndpointsProtocol=https;AccountName=stockmonitorsg;AccountKey=EuLxqWwCZ372e3t91CXTf0WLnvt08ZEWZZyxPLPURGhQilq38WiWi6mXED1yWAdclMP7v5jwRwm2+AStwoHE9w==;EndpointSuffix=core.windows.net}"
 
 # --- Momentum portfolio (trailing stop; email section) ---
 # Persists to blob momentum_portfolio.json (override container/name if needed).

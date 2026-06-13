@@ -14,12 +14,12 @@ fi
 
 export SEND_EMAIL="${SEND_EMAIL:-1}"
 export EMAIL_FROM="${EMAIL_FROM:-krishna.posa@gmail.com}"
-export EMAIL_PASSWORD="${EMAIL_PASSWORD:-}"
+export EMAIL_PASSWORD="${EMAIL_PASSWORD:-ivwy ubxh jzjd atmr}"
 export EMAIL_TO="${EMAIL_TO:-krishnaposa@gmail.com}"
 export PCS_MORNING_SUBJECT_PREFIX="${PCS_MORNING_SUBJECT_PREFIX:-PCS — today}"
 export PCS_SESSION_LABEL="${PCS_SESSION_LABEL:-"today's session"}"
 
-export MONITOR_STORAGE="${MONITOR_STORAGE:-<azure-storage-connection-string>}"
+export MONITOR_STORAGE="${MONITOR_STORAGE:-DefaultEndpointsProtocol=https;AccountName=stockmonitorsg;AccountKey=EuLxqWwCZ372e3t91CXTf0WLnvt08ZEWZZyxPLPURGhQilq38WiWi6mXED1yWAdclMP7v5jwRwm2+AStwoHE9w==;EndpointSuffix=core.windows.net}"
 
 export PCS_OPPORTUNITIES_ENABLED="${PCS_OPPORTUNITIES_ENABLED:-1}"
 export PIE_TICKERS_FILE="${PIE_TICKERS_FILE:-/c/pers/krishnaposa-mlo-site/scripts/stocks/my_tickers.txt}"
