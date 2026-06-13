@@ -17,7 +17,7 @@ export EMAIL_FROM="${EMAIL_FROM:-krishna.posa@gmail.com}"
 export EMAIL_PASSWORD="${EMAIL_PASSWORD:-}"
 export EMAIL_TO="${EMAIL_TO:-krishnaposa@gmail.com}"
 export PCS_MORNING_SUBJECT_PREFIX="${PCS_MORNING_SUBJECT_PREFIX:-PCS — today}"
-export PCS_SESSION_LABEL="${PCS_SESSION_LABEL:-today's session}"
+export PCS_SESSION_LABEL="${PCS_SESSION_LABEL:-"today's session"}"
 
 export MONITOR_STORAGE="${MONITOR_STORAGE:-<azure-storage-connection-string>}"
 

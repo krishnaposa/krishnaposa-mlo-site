@@ -199,3 +199,14 @@ DEFENSIVE   Buffer% < 0                     Stock is under the short put — spr
 ROLL        DTE < 14 and Buffer% < 3%       Expiry is close and price is tight to the short strike — consider rolling out/down.
 MANAGE      DTE ≤ 21                        Entering the “decision window” — actively decide to close or roll before expiry.
 OPENED      None of the above               Healthy early/mid trade — no urgent change.
+
+
+# Morning PCS only
+cd azure/functions/stocks-func-app
+./run_pcs_morning_adhoc.sh
+
+# Evening full daily (no PCS)
+./run_email_adhoc.sh
+
+cd azure/functions/stocks-func-app
+func azure functionapp publish stocks-func-app --build remote
