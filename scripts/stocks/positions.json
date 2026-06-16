@@ -6,24 +6,34 @@
   },
   "swings": [],
   "spreads": [
-    {
-      "symbol": "ARM",
-      "short_put": 250.0,
-      "long_put": 240.0,
-      "expiration": "2026-07-17",
-      "credit": 4.55,
-      "entry_date": "2026-06-10",
-      "contracts": 2
-    },
-    {
-      "symbol": "ASML",
-      "short_put": 1620.0,
-      "long_put": 1560.0,
-      "expiration": "2026-07-17",
-      "credit": 24.0,
-      "entry_date": "2026-06-10",
-      "contracts": 2
-    },
+  {
+    "symbol": "AMAT",
+    "short_put": 550.0,
+    "long_put": 530.0,
+    "expiration": "2026-07-17",
+    "credit": 7.325,
+    "entry_date": "2026-06-15",
+    "contracts": 2
+  },
+  {
+    "symbol": "SNDK",
+    "short_put": 1880.0,
+    "long_put": 1800.0,
+    "expiration": "2026-07-17",
+    "credit": 29.15,
+    "entry_date": "2026-06-15",
+    "contracts": 2
+  },
+  {
+    "symbol": "STX",
+    "short_put": 900.0,
+    "long_put": 800.0,
+    "expiration": "2026-07-17",
+    "credit": 27.20,
+    "entry_date": "2026-06-15",
+    "contracts": 1
+  },
+    
     {
       "symbol": "IONQ",
       "short_put": 45.0,
