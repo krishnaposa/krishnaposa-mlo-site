@@ -7,7 +7,7 @@ Scans tickers from:
   3. local_list + holdings_list fallback
 
 Then:
-  ticker universe -> pie scanner -> BUY candidates -> option chain -> PCS plans.
+  ticker universe -> pie scanner -> Grade A/B and Grade C groups -> option chain -> PCS plans.
 
 Important:
   Credit% = credit / spread width.
@@ -26,14 +26,13 @@ from typing import Any, Dict, List, Optional
 
 import yfinance as yf
 
-from .pie_scanner import run_scan, select_buy_candidates
+from .pie_scanner import run_scan
 
 logger = logging.getLogger(__name__)
 
 PIE_TICKERS_BLOB = os.getenv("PIE_TICKERS_BLOB", "my_tickers.txt")
 PIE_TICKERS_FILE = os.getenv("PIE_TICKERS_FILE", "").strip()
 
-PIE_MIN_GRADE = os.getenv("PIE_MIN_GRADE", "B")
 PIE_TARGET_DTE = int(os.getenv("PIE_TARGET_DTE", "35"))
 PIE_OTM_PCT = float(os.getenv("PIE_OTM_PCT", "0.06"))
 PIE_SPREAD_WIDTH_PCT = float(os.getenv("PIE_SPREAD_WIDTH_PCT", "0.03"))
@@ -73,7 +72,6 @@ def _parse_ticker_text(raw: str) -> List[str]:
 
 
 def load_pie_scan_tickers() -> List[str]:
-    """PIE_TICKERS_FILE, else blob my_tickers.txt, else local_list + holdings_list."""
     if PIE_TICKERS_FILE:
         try:
             path = os.path.expanduser(PIE_TICKERS_FILE)
@@ -93,12 +91,7 @@ def load_pie_scan_tickers() -> List[str]:
         raw = blob.download_blob().readall().decode("utf-8", errors="ignore")
         tickers = _parse_ticker_text(raw)
         if tickers:
-            logger.info(
-                "[pcs_opportunities] %d tickers from %s/%s",
-                len(tickers),
-                LOCAL_LIST_CONTAINER,
-                PIE_TICKERS_BLOB,
-            )
+            logger.info("[pcs_opportunities] %d tickers from %s/%s", len(tickers), LOCAL_LIST_CONTAINER, PIE_TICKERS_BLOB)
             return tickers
     except Exception as e:
         logger.info("[pcs_opportunities] no %s blob (%s)", PIE_TICKERS_BLOB, e)
@@ -188,11 +181,7 @@ def build_pcs_plan(
 
     liquid = puts[
         puts.apply(
-            lambda r: _leg_is_liquid(
-                r,
-                min_oi=MIN_OPEN_INTEREST,
-                max_spread_pct=MAX_SPREAD_PCT,
-            ),
+            lambda r: _leg_is_liquid(r, min_oi=MIN_OPEN_INTEREST, max_spread_pct=MAX_SPREAD_PCT),
             axis=1,
         )
     ]
@@ -259,12 +248,49 @@ def build_pcs_plan(
     )
 
 
+def _row_from_plan(plan: PutCreditSpread, grade: str) -> dict:
+    return {
+        "Ticker": plan.symbol,
+        "Grade": grade,
+        "Expiry": plan.expiration,
+        "DTE": plan.dte,
+        "Short": plan.short_put,
+        "Long": plan.long_put,
+        "Width": plan.width,
+        "Credit": plan.credit,
+        "MaxRisk": plan.max_risk,
+        "Credit%": plan.credit_width_pct,
+        "OTM%": plan.otm_pct,
+        "IV%": plan.iv_pct,
+    }
+
+
+def _build_rows_from_scan(scan_group, label: str) -> List[dict]:
+    rows: List[dict] = []
+
+    for _, row in scan_group.head(PIE_MAX_PCS_CANDIDATES).iterrows():
+        sym = str(row["Ticker"]).upper().strip()
+        price = float(row["Price"])
+        grade = str(row.get("Grade", label)).upper().strip()
+
+        plan = build_pcs_plan(sym, price)
+        if plan is None:
+            continue
+
+        rows.append(_row_from_plan(plan, grade))
+
+    return rows
+
+
 def run_pcs_opportunities() -> Dict[str, Any]:
-    """
-    Returns {enabled, html, tickers, rows}.
-    rows: list of dicts for email table.
-    """
-    out: Dict[str, Any] = {"enabled": True, "html": "", "tickers": [], "rows": []}
+    out: Dict[str, Any] = {
+        "enabled": True,
+        "html": "",
+        "tickers": [],
+        "rows": [],
+        "rows_b": [],
+        "rows_c": [],
+    }
 
     if os.getenv("PCS_OPPORTUNITIES_ENABLED", "1") != "1":
         out["enabled"] = False
@@ -274,7 +300,8 @@ def run_pcs_opportunities() -> Dict[str, Any]:
 
     if not tickers:
         out["scanned"] = 0
-        out["buys"] = 0
+        out["grade_b_count"] = 0
+        out["grade_c_count"] = 0
         hint = (
             f"<code>{_esc(PIE_TICKERS_BLOB)}</code> to signals container, "
             "set PIE_TICKERS_FILE, or populate local_list."
@@ -283,53 +310,36 @@ def run_pcs_opportunities() -> Dict[str, Any]:
         return out
 
     scan = run_scan(tickers)
-    buys = select_buy_candidates(scan, min_grade=PIE_MIN_GRADE)
 
-    if buys.empty:
-        out["scanned"] = len(tickers)
-        out["buys"] = 0
-        out["html"] = (
-            f"<p><i>No BUY candidates "
-            f"(Grade &gt;= {_esc(PIE_MIN_GRADE)}) from {len(tickers)} scanned symbols.</i></p>"
-        )
-        return out
+    grade_b = scan[scan["Grade"].isin(["A", "B"])].copy()
+    grade_c = scan[scan["Grade"] == "C"].copy()
 
-    rows: List[dict] = []
+    rows_b = _build_rows_from_scan(grade_b, "B")
+    rows_c = _build_rows_from_scan(grade_c, "C")
 
-    for _, row in buys.head(PIE_MAX_PCS_CANDIDATES).iterrows():
-        sym = str(row["Ticker"]).upper().strip()
-        price = float(row["Price"])
+    rows_all = rows_b + rows_c
 
-        plan = build_pcs_plan(sym, price)
-        if plan is None:
-            continue
-
-        rows.append(
-            {
-                "Ticker": plan.symbol,
-                "Expiry": plan.expiration,
-                "DTE": plan.dte,
-                "Short": plan.short_put,
-                "Long": plan.long_put,
-                "Width": plan.width,
-                "Credit": plan.credit,
-                "MaxRisk": plan.max_risk,
-                "Credit%": plan.credit_width_pct,
-                "OTM%": plan.otm_pct,
-                "IV%": plan.iv_pct,
-            }
-        )
-
-    out["rows"] = rows
-    out["tickers"] = [r["Ticker"] for r in rows]
+    out["rows_b"] = rows_b
+    out["rows_c"] = rows_c
+    out["rows"] = rows_all
+    out["tickers"] = [r["Ticker"] for r in rows_all]
     out["scanned"] = len(tickers)
-    out["buys"] = len(buys)
-    out["html"] = format_pcs_opportunities_html(rows, scanned=len(tickers), buys=len(buys))
+    out["grade_b_count"] = len(grade_b)
+    out["grade_c_count"] = len(grade_c)
+    out["html"] = format_pcs_opportunities_html(
+        rows_b,
+        rows_c,
+        scanned=len(tickers),
+        grade_b_count=len(grade_b),
+        grade_c_count=len(grade_c),
+    )
+
     return out
 
 
 PCS_TABLE_COLS = [
     "Ticker",
+    "Grade",
     "Expiry",
     "DTE",
     "Short",
@@ -378,51 +388,9 @@ def _pcs_session_label() -> str:
     return (os.getenv("PCS_SESSION_LABEL") or "next session").strip() or "next session"
 
 
-def format_pcs_opportunities_text(rows: List[dict], *, scanned: int, buys: int) -> str:
-    """Plain-text table."""
-    header = (
-        f"  {'Ticker':<8} {'Expiry':<10} {'DTE':>4} {'Short':>7} {'Long':>7} "
-        f"{'Width':>6} {'Credit':>7} {'MaxRisk':>7} {'Credit%':>8} {'OTM%':>6} {'IV%':>6}"
-    )
-
+def _format_table(rows: List[dict]) -> str:
     if not rows:
-        return (
-            f"  Scanned {scanned} symbols · {buys} BUY "
-            f"(grade >= {PIE_MIN_GRADE}) · no PCS plans passed liquidity/credit filters."
-        )
-
-    lines = [
-        f"  Scanned {scanned} symbols · {buys} BUY "
-        f"(grade >= {PIE_MIN_GRADE}) · {len(rows)} PCS plan(s) for {_pcs_session_label()}.",
-        header,
-    ]
-
-    for r in rows:
-        lines.append(
-            f"  {str(r.get('Ticker', '')):<8} "
-            f"{str(r.get('Expiry', '')):<10} "
-            f"{int(r.get('DTE', 0)):>4} "
-            f"{_fmt_cell('Short', r.get('Short')):>7} "
-            f"{_fmt_cell('Long', r.get('Long')):>7} "
-            f"{_fmt_cell('Width', r.get('Width')):>6} "
-            f"{_fmt_cell('Credit', r.get('Credit')):>7} "
-            f"{_fmt_cell('MaxRisk', r.get('MaxRisk')):>7} "
-            f"{_fmt_cell('Credit%', r.get('Credit%')):>8} "
-            f"{_fmt_cell('OTM%', r.get('OTM%')):>6} "
-            f"{_fmt_cell('IV%', r.get('IV%')):>6}"
-        )
-
-    lines.append("  Estimates only — verify option chain, bid/ask, earnings, and liquidity before trading.")
-    return "\n".join(lines)
-
-
-def format_pcs_opportunities_html(rows: List[dict], *, scanned: int, buys: int) -> str:
-    if not rows:
-        return (
-            f"<p>Scanned {scanned} symbols · {buys} BUY names "
-            f"(grade &gt;= {_esc(PIE_MIN_GRADE)}) · "
-            "<i>no PCS plans passed liquidity/credit filters.</i></p>"
-        )
+        return "<p><i>None passed option-chain liquidity/credit filters.</i></p>"
 
     cols = PCS_TABLE_COLS
     head = "".join(f"<th align='left'>{_esc(c)}</th>" for c in cols)
@@ -432,18 +400,84 @@ def format_pcs_opportunities_html(rows: List[dict], *, scanned: int, buys: int) 
         tds = "".join(f"<td>{_esc(_fmt_cell(c, r.get(c)))}</td>" for c in cols)
         body.append(f"<tr>{tds}</tr>")
 
-    table = (
+    return (
         "<table border='1' cellspacing='0' cellpadding='4' "
         "style='border-collapse:collapse;font-family:ui-monospace,monospace;font-size:13px'>"
         f"<thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
     )
 
+
+def format_pcs_opportunities_html(
+    rows_b: List[dict],
+    rows_c: List[dict],
+    *,
+    scanned: int,
+    grade_b_count: int,
+    grade_c_count: int,
+) -> str:
+    total_rows = len(rows_b) + len(rows_c)
+
+    if total_rows == 0:
+        return (
+            f"<p>Scanned {scanned} symbols · "
+            f"{grade_b_count} Grade A/B · {grade_c_count} Grade C · "
+            "<i>no PCS plans passed option-chain liquidity/credit filters.</i></p>"
+        )
+
     return (
         f"<p><b>PUT CREDIT SPREAD PLAN</b> — "
-        f"{scanned} scanned, {buys} BUY, {len(rows)} PCS for {_pcs_session_label()}.</p>"
-        f"{table}"
+        f"{scanned} scanned, {grade_b_count} Grade A/B, {grade_c_count} Grade C, "
+        f"{total_rows} PCS for {_pcs_session_label()}.</p>"
+
+        "<p><b>Grade A/B PCS Candidates</b></p>"
+        f"{_format_table(rows_b)}"
+
+        "<p><b>Grade C PCS Candidates</b></p>"
+        f"{_format_table(rows_c)}"
+
         "<p style='font-size:11px;color:#666'>"
+        "Grade A/B = stronger setup. Grade C = secondary/watchlist setup. "
         "Credit% = credit / spread width. This is not true POP. "
         "Estimates only — verify option chain, bid/ask, earnings, and liquidity before trading."
         "</p>"
     )
+
+
+def format_pcs_opportunities_text(
+    rows_b: List[dict],
+    rows_c: List[dict],
+    *,
+    scanned: int,
+    grade_b_count: int,
+    grade_c_count: int,
+) -> str:
+    lines = [
+        f"Scanned {scanned} symbols · {grade_b_count} Grade A/B · {grade_c_count} Grade C",
+        "",
+        "Grade A/B PCS Candidates:",
+    ]
+
+    def add_rows(rows: List[dict]) -> None:
+        if not rows:
+            lines.append("  None passed filters.")
+            return
+
+        for r in rows:
+            lines.append(
+                f"  {r.get('Ticker','')} Grade={r.get('Grade','')} "
+                f"Exp={r.get('Expiry','')} DTE={r.get('DTE','')} "
+                f"Short={r.get('Short','')} Long={r.get('Long','')} "
+                f"Credit={r.get('Credit','')} Credit%={_fmt_cell('Credit%', r.get('Credit%'))} "
+                f"OTM%={r.get('OTM%','')} IV%={r.get('IV%','')}"
+            )
+
+    add_rows(rows_b)
+
+    lines.append("")
+    lines.append("Grade C PCS Candidates:")
+    add_rows(rows_c)
+
+    lines.append("")
+    lines.append("Estimates only — verify option chain, bid/ask, earnings, and liquidity before trading.")
+
+    return "\n".join(lines)
