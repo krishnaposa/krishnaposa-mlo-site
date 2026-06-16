@@ -78,15 +78,6 @@
       "credit": 4.2,
       "entry_date": "2026-06-10",
       "contracts": 2
-    },
-    {
-      "symbol": "SNDK",
-      "short_put": 1500.0,
-      "long_put": 1450.0,
-      "expiration": "2026-07-17",
-      "credit": 20.59,
-      "entry_date": "2026-06-10",
-      "contracts": 2
     }
   ]
 }
