@@ -664,7 +664,12 @@ def run_monitor(tickers, *, today=None, min_dollar_vol=MIN_DOLLAR_VOL_DEFAULT, p
             logger.warning("[pcs_opportunities] scan failed: %s", e)
             pcs_opportunities_section_html = f"<p><i>PCS opportunities error: {e}</i></p>"
             pcs_opportunity_tickers = []
-            pcs_opportunities_result = {"rows": [], "error": str(e)}
+            pcs_opportunities_result = {
+                "rows": [],
+                "rows_b": [],
+                "rows_c": [],
+                "error": str(e),
+            }
     elif include_pcs:
         pcs_opportunities_section_html = "<p><i>PCS opportunities disabled (PCS_OPPORTUNITIES_ENABLED=0).</i></p>"
 

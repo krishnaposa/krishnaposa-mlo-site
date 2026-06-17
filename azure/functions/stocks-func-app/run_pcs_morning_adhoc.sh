@@ -23,7 +23,6 @@ export MONITOR_STORAGE="${MONITOR_STORAGE:-DefaultEndpointsProtocol=https;Accoun
 
 export PCS_OPPORTUNITIES_ENABLED="${PCS_OPPORTUNITIES_ENABLED:-1}"
 export PIE_TICKERS_FILE="${PIE_TICKERS_FILE:-/c/pers/krishnaposa-mlo-site/scripts/stocks/my_tickers.txt}"
-export PIE_MIN_GRADE="${PIE_MIN_GRADE:-B}"
 export PIE_TARGET_DTE="${PIE_TARGET_DTE:-35}"
 export PIE_OTM_PCT="${PIE_OTM_PCT:-0.06}"
 export PIE_SPREAD_WIDTH_PCT="${PIE_SPREAD_WIDTH_PCT:-0.03}"

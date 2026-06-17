@@ -481,3 +481,37 @@ def format_pcs_opportunities_text(
     lines.append("Estimates only — verify option chain, bid/ask, earnings, and liquidity before trading.")
 
     return "\n".join(lines)
+
+
+def format_pcs_opportunities_result_text(result: Dict[str, Any]) -> str:
+    """Plain text from ``run_pcs_opportunities()`` output (Grade A/B + Grade C tables)."""
+    rows_b = result.get("rows_b")
+    rows_c = result.get("rows_c")
+    if rows_b is None and rows_c is None:
+        rows = result.get("rows") or []
+        rows_b = [r for r in rows if str(r.get("Grade", "")).upper() in ("A", "B")]
+        rows_c = [r for r in rows if str(r.get("Grade", "")).upper() == "C"]
+    return format_pcs_opportunities_text(
+        list(rows_b or []),
+        list(rows_c or []),
+        scanned=int(result.get("scanned") or 0),
+        grade_b_count=int(result.get("grade_b_count") or 0),
+        grade_c_count=int(result.get("grade_c_count") or 0),
+    )
+
+
+def format_pcs_opportunities_result_text(result: Dict[str, Any]) -> str:
+    """Plain text from ``run_pcs_opportunities()`` output (Grade A/B + Grade C tables)."""
+    rows_b = result.get("rows_b")
+    rows_c = result.get("rows_c")
+    if rows_b is None and rows_c is None:
+        rows = result.get("rows") or []
+        rows_b = [r for r in rows if str(r.get("Grade", "")).upper() in ("A", "B")]
+        rows_c = [r for r in rows if str(r.get("Grade", "")).upper() == "C"]
+    return format_pcs_opportunities_text(
+        list(rows_b or []),
+        list(rows_c or []),
+        scanned=int(result.get("scanned") or 0),
+        grade_b_count=int(result.get("grade_b_count") or 0),
+        grade_c_count=int(result.get("grade_c_count") or 0),
+    )

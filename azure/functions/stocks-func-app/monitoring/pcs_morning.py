@@ -47,7 +47,12 @@ def run_pcs_morning(*, stamp: Optional[str] = None) -> Dict[str, Any]:
             pcs_opportunity_tickers = list(pcs_opportunities_result.get("tickers") or [])
         except Exception as e:
             logger.exception("[pcs_morning] opportunities failed")
-            pcs_opportunities_result = {"rows": [], "error": str(e)}
+            pcs_opportunities_result = {
+                "rows": [],
+                "rows_b": [],
+                "rows_c": [],
+                "error": str(e),
+            }
             pcs_opportunities_html = f"<p><i>PCS opportunities error: {e}</i></p>"
 
     out["opportunities"] = pcs_opportunities_result

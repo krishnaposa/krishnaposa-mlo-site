@@ -265,7 +265,7 @@ def format_monitor_report_text(
     """Plain-text report matching the daily email sections."""
     from .momentum_portfolio import format_momentum_text
     from .pcs_lifecycle import format_pcs_lifecycle_text
-    from .pcs_opportunities import format_pcs_opportunities_text
+    from .pcs_opportunities import format_pcs_opportunities_result_text
 
     strong_buy_entries = _tickers_from_rows(alltime_high_trend_rows, entry_only=True)
     trend_entries = _tickers_from_rows(trend_entry_rows, entry_only=True)
@@ -299,12 +299,9 @@ def format_monitor_report_text(
         lines.extend([f"\n## {title}", body])
 
     if pcs_opportunities_result is not None:
-        opp_rows = pcs_opportunities_result.get("rows") or []
-        scanned = int(pcs_opportunities_result.get("scanned") or 0)
-        buys = int(pcs_opportunities_result.get("buys") or 0)
         lines.extend([
             "\n## PCS ideas for next session (pie_analyze_swing)",
-            format_pcs_opportunities_text(opp_rows, scanned=scanned, buys=buys),
+            format_pcs_opportunities_result_text(pcs_opportunities_result),
         ])
 
     if pcs_lifecycle_result is not None:
@@ -369,7 +366,7 @@ def format_pcs_execution_report_text(
 ) -> str:
     """Plain-text PCS execution report (morning email)."""
     from .pcs_lifecycle import format_pcs_lifecycle_text
-    from .pcs_opportunities import format_pcs_opportunities_text
+    from .pcs_opportunities import format_pcs_opportunities_result_text
 
     lines: List[str] = [
         "",
@@ -381,12 +378,9 @@ def format_pcs_execution_report_text(
     ]
 
     if pcs_opportunities_result is not None:
-        opp_rows = pcs_opportunities_result.get("rows") or []
-        scanned = int(pcs_opportunities_result.get("scanned") or 0)
-        buys = int(pcs_opportunities_result.get("buys") or 0)
         lines.extend([
             "\n## PCS ideas — today's session",
-            format_pcs_opportunities_text(opp_rows, scanned=scanned, buys=buys),
+            format_pcs_opportunities_result_text(pcs_opportunities_result),
         ])
 
     if pcs_lifecycle_result is not None:
