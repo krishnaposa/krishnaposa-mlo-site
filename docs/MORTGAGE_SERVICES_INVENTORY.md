@@ -72,7 +72,7 @@ flowchart TB
 | Nav label | Target |
 |-----------|--------|
 | Home | `index.html` |
-| Loan Programs | `loans.html` |
+| Mortgage Solutions | `loans.html` |
 | Resources | `resources.html` |
 | Loan Advisor (AI) | `loan-advisor.html` |
 | Refi Monitor | `refi-monitor.html` |
@@ -81,7 +81,7 @@ flowchart TB
 | Blog | `blogs/blog.html` |
 | Apply Now | External `https://krishposa.com/` |
 
-**Footer** (`partials/footer.html`): Home, Loans, Resources, AI Loan Advisor, Refi Monitor, About, Blog — no Tools/Calculators or Buyer Journey.
+**Footer** (`partials/footer.html`): Home, Mortgage Solutions, Resources, AI Loan Advisor, Refi Monitor, About, Blog — no Tools/Calculators or Buyer Journey.
 
 ---
 
@@ -90,7 +90,7 @@ flowchart TB
 | Path | Purpose |
 |------|---------|
 | `index.html` | Main landing: hero, FAQs, CTAs to AI advisor, buyer journey, LE compare |
-| `loans.html` | Programs: Conventional, FHA, VA, Jumbo, Refinance, Second Opinion |
+| `loans.html` | Mortgage solutions: Conventional, FHA, VA, Jumbo, Non-QM (Bank Statement, DSCR, ITIN, Foreign National, Asset Depletion), Refinance |
 | `resources.html` | Checklists, refi tips, LE-by-email, booking |
 | `about.html` | MLO bio, credentials |
 | `contact.html` | Apply (external), WhatsApp, calendar, contact |
