@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional
 import yfinance as yf
 
 from .pie_scanner import run_scan
+from .pcs_common import earnings_blocks_new_spread
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +40,9 @@ PIE_SPREAD_WIDTH_PCT = float(os.getenv("PIE_SPREAD_WIDTH_PCT", "0.03"))
 PIE_MAX_PCS_CANDIDATES = int(os.getenv("PIE_MAX_PCS_CANDIDATES", "12"))
 
 MIN_OPEN_INTEREST = int(os.getenv("PCS_MIN_OPEN_INTEREST", "100"))
-MAX_SPREAD_PCT = float(os.getenv("PCS_MAX_SPREAD_PCT", "20"))
-MIN_CREDIT_WIDTH = float(os.getenv("PCS_MIN_CREDIT_WIDTH", "0.10"))
+MAX_SPREAD_PCT = float(os.getenv("PCS_MAX_SPREAD_PCT", "15"))
+MIN_CREDIT_WIDTH = float(os.getenv("PCS_MIN_CREDIT_WIDTH", "0.15"))
+MIN_CREDIT_WIDTH_C = float(os.getenv("PCS_MIN_CREDIT_WIDTH_C", "0.10"))
 
 PCS_MIN_WIDTH = float(os.getenv("PCS_MIN_WIDTH", "1"))
 PCS_MAX_WIDTH = float(os.getenv("PCS_MAX_WIDTH", "10"))
@@ -141,6 +143,7 @@ def build_pcs_plan(
     target_dte: int = PIE_TARGET_DTE,
     otm_pct: float = PIE_OTM_PCT,
     spread_width_pct: float = PIE_SPREAD_WIDTH_PCT,
+    min_credit_width: float = MIN_CREDIT_WIDTH,
 ) -> Optional[PutCreditSpread]:
     if not symbol or price <= 0:
         return None
@@ -223,7 +226,7 @@ def build_pcs_plan(
 
     credit_width_pct = credit / width
 
-    if credit_width_pct < MIN_CREDIT_WIDTH:
+    if credit_width_pct < min_credit_width:
         return None
 
     max_risk = width - credit
@@ -265,21 +268,35 @@ def _row_from_plan(plan: PutCreditSpread, grade: str) -> dict:
     }
 
 
-def _build_rows_from_scan(scan_group, label: str) -> List[dict]:
+def _build_rows_from_scan(
+    scan_group,
+    label: str,
+    *,
+    min_credit_width: float = MIN_CREDIT_WIDTH,
+) -> List[dict]:
     rows: List[dict] = []
 
-    for _, row in scan_group.head(PIE_MAX_PCS_CANDIDATES).iterrows():
+    for _, row in scan_group.iterrows():
         sym = str(row["Ticker"]).upper().strip()
         price = float(row["Price"])
         grade = str(row.get("Grade", label)).upper().strip()
+        signal = str(row.get("Signal", "")).upper().strip()
 
-        plan = build_pcs_plan(sym, price)
+        if signal != "BUY":
+            continue
+
+        plan = build_pcs_plan(sym, price, min_credit_width=min_credit_width)
         if plan is None:
+            continue
+
+        if earnings_blocks_new_spread(sym, plan.dte):
+            logger.info("[pcs_opportunities] %s blocked — earnings within trade window", sym)
             continue
 
         rows.append(_row_from_plan(plan, grade))
 
-    return rows
+    rows.sort(key=lambda r: float(r.get("Credit%") or 0.0), reverse=True)
+    return rows[:PIE_MAX_PCS_CANDIDATES]
 
 
 def run_pcs_opportunities() -> Dict[str, Any]:
@@ -313,9 +330,11 @@ def run_pcs_opportunities() -> Dict[str, Any]:
 
     grade_b = scan[scan["Grade"].isin(["A", "B"])].copy()
     grade_c = scan[scan["Grade"] == "C"].copy()
+    grade_b_buy = grade_b[grade_b["Signal"] == "BUY"]
+    grade_c_buy = grade_c[grade_c["Signal"] == "BUY"]
 
-    rows_b = _build_rows_from_scan(grade_b, "B")
-    rows_c = _build_rows_from_scan(grade_c, "C")
+    rows_b = _build_rows_from_scan(grade_b_buy, "B", min_credit_width=MIN_CREDIT_WIDTH)
+    rows_c = _build_rows_from_scan(grade_c_buy, "C", min_credit_width=MIN_CREDIT_WIDTH_C)
 
     rows_all = rows_b + rows_c
 
@@ -324,14 +343,14 @@ def run_pcs_opportunities() -> Dict[str, Any]:
     out["rows"] = rows_all
     out["tickers"] = [r["Ticker"] for r in rows_all]
     out["scanned"] = len(tickers)
-    out["grade_b_count"] = len(grade_b)
-    out["grade_c_count"] = len(grade_c)
+    out["grade_b_count"] = len(grade_b_buy)
+    out["grade_c_count"] = len(grade_c_buy)
     out["html"] = format_pcs_opportunities_html(
         rows_b,
         rows_c,
         scanned=len(tickers),
-        grade_b_count=len(grade_b),
-        grade_c_count=len(grade_c),
+        grade_b_count=len(grade_b_buy),
+        grade_c_count=len(grade_c_buy),
     )
 
     return out
@@ -420,13 +439,13 @@ def format_pcs_opportunities_html(
     if total_rows == 0:
         return (
             f"<p>Scanned {scanned} symbols · "
-            f"{grade_b_count} Grade A/B · {grade_c_count} Grade C · "
-            "<i>no PCS plans passed option-chain liquidity/credit filters.</i></p>"
+            f"{grade_b_count} Grade A/B BUY · {grade_c_count} Grade C BUY · "
+            "<i>no PCS plans passed liquidity, credit, or earnings filters.</i></p>"
         )
 
     return (
         f"<p><b>PUT CREDIT SPREAD PLAN</b> — "
-        f"{scanned} scanned, {grade_b_count} Grade A/B, {grade_c_count} Grade C, "
+        f"{scanned} scanned, {grade_b_count} Grade A/B BUY, {grade_c_count} Grade C BUY, "
         f"{total_rows} PCS for {_pcs_session_label()}.</p>"
 
         "<p><b>Grade A/B PCS Candidates</b></p>"
@@ -436,9 +455,11 @@ def format_pcs_opportunities_html(
         f"{_format_table(rows_c)}"
 
         "<p style='font-size:11px;color:#666'>"
-        "Grade A/B = stronger setup. Grade C = secondary/watchlist setup. "
-        "Credit% = credit / spread width. This is not true POP. "
-        "Estimates only — verify option chain, bid/ask, earnings, and liquidity before trading."
+        "Entry filter: Signal=BUY only (no REDUCE/SELL). Ranked by Credit%. "
+        "Earnings blocked when report falls before spread expiry or within PCS_EARNINGS_BLOCK_DAYS. "
+        "Grade A/B = stronger setup; Grade C = secondary. "
+        "Credit% = credit / spread width (not true POP). "
+        "Estimates only — verify option chain, bid/ask, and liquidity before trading."
         "</p>"
     )
 
@@ -452,7 +473,7 @@ def format_pcs_opportunities_text(
     grade_c_count: int,
 ) -> str:
     lines = [
-        f"Scanned {scanned} symbols · {grade_b_count} Grade A/B · {grade_c_count} Grade C",
+        f"Scanned {scanned} symbols · {grade_b_count} Grade A/B BUY · {grade_c_count} Grade C BUY",
         "",
         "Grade A/B PCS Candidates:",
     ]
@@ -478,26 +499,12 @@ def format_pcs_opportunities_text(
     add_rows(rows_c)
 
     lines.append("")
-    lines.append("Estimates only — verify option chain, bid/ask, earnings, and liquidity before trading.")
+    lines.append(
+        "Entry filter: Signal=BUY. Earnings blocked before expiry / within PCS_EARNINGS_BLOCK_DAYS. "
+        "Estimates only — verify chain before trading."
+    )
 
     return "\n".join(lines)
-
-
-def format_pcs_opportunities_result_text(result: Dict[str, Any]) -> str:
-    """Plain text from ``run_pcs_opportunities()`` output (Grade A/B + Grade C tables)."""
-    rows_b = result.get("rows_b")
-    rows_c = result.get("rows_c")
-    if rows_b is None and rows_c is None:
-        rows = result.get("rows") or []
-        rows_b = [r for r in rows if str(r.get("Grade", "")).upper() in ("A", "B")]
-        rows_c = [r for r in rows if str(r.get("Grade", "")).upper() == "C"]
-    return format_pcs_opportunities_text(
-        list(rows_b or []),
-        list(rows_c or []),
-        scanned=int(result.get("scanned") or 0),
-        grade_b_count=int(result.get("grade_b_count") or 0),
-        grade_c_count=int(result.get("grade_c_count") or 0),
-    )
 
 
 def format_pcs_opportunities_result_text(result: Dict[str, Any]) -> str:

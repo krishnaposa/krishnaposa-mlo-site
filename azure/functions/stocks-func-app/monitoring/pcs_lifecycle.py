@@ -31,6 +31,20 @@ from typing import Any, Dict, List
 
 import yfinance as yf
 
+from .pcs_common import (
+    MANAGE_DTE,
+    PROFIT_TARGET,
+    ROLL_DTE,
+    STOP_LOSS,
+    determine_pcs_phase_fallback,
+    determine_pcs_phase_live,
+    is_highlight_action,
+    is_urgent_action,
+    pcs_action_for_phase,
+    pcs_buffer_pct,
+    put_row_for_strike,
+    spread_mid_cost,
+)
 from .position_metrics import (
     format_weak_symbols_html,
     get_position_price_metrics,
@@ -38,11 +52,6 @@ from .position_metrics import (
 
 logger = logging.getLogger(__name__)
 
-PROFIT_TARGET = float(os.getenv("PCS_PROFIT_TARGET", "50"))
-STOP_LOSS = float(os.getenv("PCS_STOP_LOSS", "-100"))
-ROLL_DTE = int(os.getenv("PCS_ROLL_DTE", "14"))
-ROLL_BUFFER = float(os.getenv("PCS_ROLL_BUFFER", "3"))
-MANAGE_DTE = int(os.getenv("PCS_MANAGE_DTE", "21"))
 TRAIL_STOP_PCT = float(os.getenv("PCS_TRAIL_STOP_PCT", "0.15"))
 
 POSITIONS_BLOB_NAME = os.getenv("PCS_POSITIONS_BLOB_NAME", "positions.json")
@@ -99,20 +108,6 @@ def determine_swing_phase(days_held: int, return_pct: float) -> str:
     if days_held >= 10:
         return "HOLD"
     return "WATCH"
-
-
-def determine_pcs_phase_live(dte: int, profit_pct: float, buffer_pct: float) -> str:
-    if profit_pct >= PROFIT_TARGET:
-        return "EXIT"
-    if profit_pct <= STOP_LOSS:
-        return "STOP"
-    if buffer_pct < 0:
-        return "DEFENSIVE"
-    if dte < ROLL_DTE and buffer_pct < ROLL_BUFFER:
-        return "ROLL"
-    if dte <= MANAGE_DTE:
-        return "MANAGE"
-    return "OPENED"
 
 
 def _days_since(date_str: str) -> int:
@@ -229,55 +224,42 @@ def review_spreads(spreads: List[dict]) -> List[dict]:
 
         cur_cost = float("nan")
         profit_pct = float("nan")
-        buffer_pct = (
-            ((price - short_k) / short_k * 100.0)
-            if price == price and short_k > 0
-            else float("nan")
-        )
+        buffer_pct = pcs_buffer_pct(float(price), short_k)
 
         phase = "UNKNOWN"
         action = "VERIFY MANUALLY"
 
         if dte < 0:
             phase = "EXPIRED"
-            action = "CHECK ASSIGNMENT / REMOVE"
+            action = pcs_action_for_phase(phase)
 
         elif width <= 0 or credit0 <= 0:
             phase = "BAD DATA"
-            action = "VERIFY POSITION DATA"
+            action = pcs_action_for_phase(phase)
 
         else:
             try:
                 tk = yf.Ticker(sym)
                 if expiry in (tk.options or []):
-                    puts = tk.option_chain(expiry).puts.set_index("strike")
-
-                    if short_k in puts.index and long_k in puts.index:
-                        short_mid = _mid(puts.loc[short_k])
-                        long_mid = _mid(puts.loc[long_k])
-                        cur_cost = short_mid - long_mid
-
+                    puts = tk.option_chain(expiry).puts
+                    cur_cost = spread_mid_cost(puts, short_k, long_k, _mid)
             except Exception as e:
                 logger.info("[pcs_lifecycle] option pricing failed for %s %s: %s", sym, expiry, e)
 
-            if cur_cost == cur_cost and cur_cost >= 0:
-                profit_pct = ((credit0 - cur_cost) / credit0 * 100.0)
+            profit_known = cur_cost == cur_cost and cur_cost >= 0
+            safe_buffer = buffer_pct if buffer_pct == buffer_pct else 0.0
 
-                safe_buffer = buffer_pct if buffer_pct == buffer_pct else 0.0
+            if profit_known:
+                profit_pct = ((credit0 - cur_cost) / credit0 * 100.0)
                 phase = determine_pcs_phase_live(
                     dte=dte,
                     profit_pct=profit_pct,
                     buffer_pct=safe_buffer,
                 )
-
-                action = {
-                    "EXIT": f"CLOSE (>={PROFIT_TARGET:g}% profit)",
-                    "STOP": f"CLOSE (stop, <={STOP_LOSS:g}% credit loss)",
-                    "DEFENSIVE": "DEFEND / ROLL CHECK (under short)",
-                    "ROLL": f"ROLL (<{ROLL_DTE}DTE, tight buffer)",
-                    "MANAGE": f"MANAGE (<={MANAGE_DTE}DTE: close/roll)",
-                    "OPENED": "HOLD",
-                }.get(phase, "VERIFY MANUALLY")
+                action = pcs_action_for_phase(phase)
+            elif safe_buffer == safe_buffer:
+                phase = determine_pcs_phase_fallback(dte, safe_buffer)
+                action = pcs_action_for_phase(phase, verify_suffix=" (verify $ before close)")
 
         rows.append(
             {
@@ -301,20 +283,11 @@ def review_spreads(spreads: List[dict]) -> List[dict]:
 
 
 def _is_action(action: str) -> bool:
-    action = str(action).upper()
+    return is_highlight_action(action)
 
-    action_words = [
-        "CLOSE",
-        "ROLL",
-        "DEFEND",
-        "STOP HIT",
-        "VERIFY",
-        "CHECK ASSIGNMENT",
-        "REVIEW",
-        "RAISE STOP",
-    ]
 
-    return any(word in action for word in action_words)
+def _is_urgent(action: str) -> bool:
+    return is_urgent_action(action)
 
 
 def run_pcs_lifecycle() -> Dict[str, Any]:
@@ -351,8 +324,8 @@ def run_pcs_lifecycle() -> Dict[str, Any]:
 
     actionable = sorted(
         set(
-            [r["Ticker"] for r in swing_rows if _is_action(r["Action"])]
-            + [r["Ticker"] for r in pcs_rows if _is_action(r["Action"])]
+            [r["Ticker"] for r in swing_rows if _is_urgent(r["Action"])]
+            + [r["Ticker"] for r in pcs_rows if _is_urgent(r["Action"])]
         )
     )
 
@@ -427,8 +400,8 @@ def format_pcs_lifecycle_email_section(swing_rows: List[dict], pcs_rows: List[di
 
     actionable = sorted(
         set(
-            [r["Ticker"] for r in swing_rows if _is_action(r["Action"])]
-            + [r["Ticker"] for r in pcs_rows if _is_action(r["Action"])]
+            [r["Ticker"] for r in swing_rows if _is_urgent(r["Action"])]
+            + [r["Ticker"] for r in pcs_rows if _is_urgent(r["Action"])]
         )
     )
 
@@ -442,12 +415,13 @@ def format_pcs_lifecycle_email_section(swing_rows: List[dict], pcs_rows: List[di
         "<p style='font-size:11px;color:#666'>"
         "Price watch: down today / down week / below 20-DMA. "
         "Highlighted rows = lifecycle action. "
-        "PCS Profit% is based on estimated current close cost from live option chain."
+        "PCS Profit% from live option chain; Buffer% = (price − short) / price. "
+        f"Exit ≥{PROFIT_TARGET:g}% profit · stop ≤{STOP_LOSS:g}% · roll &lt;{ROLL_DTE}DTE · manage ≤{MANAGE_DTE}DTE."
         "</p>",
     ]
 
     if pcs_rows:
-        parts.append("<p><b>Put credit spreads review</b></p>" + _table(pcs_rows, PCS_COLS))
+        parts.append("<p><b>Put credit spreads — exits &amp; management</b></p>" + _table(pcs_rows, PCS_COLS))
 
     if swing_rows:
         parts.append("<p><b>Swing positions review</b></p>" + _table(swing_rows, SWING_COLS))
@@ -463,8 +437,8 @@ def format_pcs_lifecycle_text(swing_rows: List[dict], pcs_rows: List[dict]) -> s
 
     actionable = sorted(
         set(
-            [r["Ticker"] for r in swing_rows if _is_action(r["Action"])]
-            + [r["Ticker"] for r in pcs_rows if _is_action(r["Action"])]
+            [r["Ticker"] for r in swing_rows if _is_urgent(r["Action"])]
+            + [r["Ticker"] for r in pcs_rows if _is_urgent(r["Action"])]
         )
     )
 

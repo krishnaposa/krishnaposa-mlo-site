@@ -377,12 +377,6 @@ def format_pcs_execution_report_text(
         "Live option quotes — verify chain before placing orders.",
     ]
 
-    if pcs_opportunities_result is not None:
-        lines.extend([
-            "\n## PCS ideas — today's session",
-            format_pcs_opportunities_result_text(pcs_opportunities_result),
-        ])
-
     if pcs_lifecycle_result is not None:
         lines.extend([
             "\n## Open positions — lifecycle (positions.json)",
@@ -390,6 +384,12 @@ def format_pcs_execution_report_text(
                 pcs_lifecycle_result.get("swing_rows") or [],
                 pcs_lifecycle_result.get("pcs_rows") or [],
             ),
+        ])
+
+    if pcs_opportunities_result is not None:
+        lines.extend([
+            "\n## PCS ideas — today's session",
+            format_pcs_opportunities_result_text(pcs_opportunities_result),
         ])
 
     lines.extend(["", "=" * 72, ""])
@@ -423,27 +423,20 @@ def send_pcs_execution_email(
 
     subject = f"{subj_prefix} — {stamp}".strip()
     alert_parts: List[str] = []
-    po = pcs_opportunity_tickers or []
-    if po:
-        ox = ", ".join(str(t) for t in po[:8])
-        if len(po) > 8:
-            ox += " …"
-        alert_parts.append(f"ideas: {ox}")
     pa = pcs_actionable_tickers or []
     if pa:
         px = ", ".join(str(t) for t in pa[:10])
         if len(pa) > 10:
             px += " …"
         alert_parts.append(f"actions: {px}")
+    po = pcs_opportunity_tickers or []
+    if po:
+        ox = ", ".join(str(t) for t in po[:8])
+        if len(po) > 8:
+            ox += " …"
+        alert_parts.append(f"ideas: {ox}")
     if alert_parts:
         subject = f"{subject} — " + " · ".join(alert_parts)
-
-    opp_block = ""
-    if pcs_opportunities_section_html is not None:
-        opp_block = (
-            "<h3>PCS ideas — today's session</h3>"
-            f"<div>{pcs_opportunities_section_html}</div>"
-        )
 
     lifecycle_block = ""
     if pcs_lifecycle_section_html is not None:
@@ -452,8 +445,15 @@ def send_pcs_execution_email(
             f"<div>{pcs_lifecycle_section_html}</div>"
         )
 
-    if not opp_block and not lifecycle_block:
+    opp_block = ""
+    if pcs_opportunities_section_html is not None:
         opp_block = (
+            "<h3>PCS ideas — today's session</h3>"
+            f"<div>{pcs_opportunities_section_html}</div>"
+        )
+
+    if not opp_block and not lifecycle_block:
+        lifecycle_block = (
             "<p><i>PCS morning run produced no sections "
             "(check PCS_OPPORTUNITIES_ENABLED / PCS_LIFECYCLE_ENABLED).</i></p>"
         )
@@ -461,8 +461,8 @@ def send_pcs_execution_email(
     html_body = f"""<html><body>
       <h2>{subj_prefix} — {stamp}</h2>
       <p style="font-size:12px;color:#666">Morning execution sheet — live option quotes. Verify chain before placing orders.</p>
-      {opp_block}
       {lifecycle_block}
+      {opp_block}
     </body></html>"""
 
     plain = format_pcs_execution_report_text(
