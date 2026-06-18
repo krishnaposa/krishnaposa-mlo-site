@@ -146,7 +146,8 @@ python pie_analyze_swing.py --review --alerts-only
 python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100 --pcs-roll-dte 14 --pcs-manage-dte 21
 
 # PCS scan filters (build_pcs_plan): min_open_interest=100, max_spread_pct=15, min_credit_width=0.15 (Grade C: PCS_MIN_CREDIT_WIDTH_C=0.10)
-# Entry: Signal=BUY only; ranked by Credit%; earnings blocked (PCS_BLOCK_EARNINGS=1, PCS_EARNINGS_BLOCK_DAYS=14)
+# Entry funnel: PCS_FUNNEL=grade (default, Grade A/B/C excl REDUCE/SELL) | buy (pie_analyze default) | all (pie_analyze --all)
+# Entry: earnings blocked when report before spread expiry (PCS_BLOCK_EARNINGS=1)
 # Azure PCS email (morning pcs_morning + optional evening if MONITOR_EMAIL_INCLUDE_PCS=1):
 #   monitoring/pcs_opportunities.py — pie scanner splits Grade A/B vs Grade C into two tables
 #   PCS_OPPORTUNITIES_ENABLED=1 (default), tickers from blob signals/my_tickers.txt else local_list+holdings_list

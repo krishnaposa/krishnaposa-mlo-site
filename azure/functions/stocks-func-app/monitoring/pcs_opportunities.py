@@ -25,14 +25,21 @@ from html import escape as _esc
 from typing import Any, Dict, List, Optional
 
 import yfinance as yf
+import pandas as pd
 
-from .pie_scanner import run_scan
+from .pie_scanner import run_scan, select_buy_candidates
 from .pcs_common import earnings_blocks_new_spread
 
 logger = logging.getLogger(__name__)
 
 PIE_TICKERS_BLOB = os.getenv("PIE_TICKERS_BLOB", "my_tickers.txt")
 PIE_TICKERS_FILE = os.getenv("PIE_TICKERS_FILE", "").strip()
+
+# buy = pie_analyze_swing default (Signal=BUY, grade>=PCS_MIN_GRADE)
+# grade = Grade A/B or C with Signal not REDUCE/SELL (matches typical PCS watchlists)
+# all = pie_analyze_swing --all (every scanned ticker, split by grade group)
+PCS_FUNNEL = os.getenv("PCS_FUNNEL", "grade").strip().lower()
+PCS_MIN_GRADE = os.getenv("PCS_MIN_GRADE", "B").strip().upper()
 
 PIE_TARGET_DTE = int(os.getenv("PIE_TARGET_DTE", "35"))
 PIE_OTM_PCT = float(os.getenv("PIE_OTM_PCT", "0.06"))
@@ -41,11 +48,11 @@ PIE_MAX_PCS_CANDIDATES = int(os.getenv("PIE_MAX_PCS_CANDIDATES", "12"))
 
 MIN_OPEN_INTEREST = int(os.getenv("PCS_MIN_OPEN_INTEREST", "100"))
 MAX_SPREAD_PCT = float(os.getenv("PCS_MAX_SPREAD_PCT", "15"))
-MIN_CREDIT_WIDTH = float(os.getenv("PCS_MIN_CREDIT_WIDTH", "0.15"))
+MIN_CREDIT_WIDTH = float(os.getenv("PCS_MIN_CREDIT_WIDTH", "0.10"))
 MIN_CREDIT_WIDTH_C = float(os.getenv("PCS_MIN_CREDIT_WIDTH_C", "0.10"))
 
-PCS_MIN_WIDTH = float(os.getenv("PCS_MIN_WIDTH", "1"))
-PCS_MAX_WIDTH = float(os.getenv("PCS_MAX_WIDTH", "10"))
+PCS_MIN_WIDTH = float(os.getenv("PCS_MIN_WIDTH", "0.5"))
+PCS_MAX_WIDTH = float(os.getenv("PCS_MAX_WIDTH", "20"))
 
 
 @dataclass
@@ -268,6 +275,33 @@ def _row_from_plan(plan: PutCreditSpread, grade: str) -> dict:
     }
 
 
+def _funnel_label() -> str:
+    if PCS_FUNNEL == "buy":
+        return f"BUY + Grade>={PCS_MIN_GRADE}"
+    if PCS_FUNNEL == "all":
+        return "all scanned"
+    return "Grade filter (excl REDUCE/SELL)"
+
+
+def _funnel_scan_group(scan: pd.DataFrame, *, grades: tuple[str, ...]) -> pd.DataFrame:
+    """Select rows for a grade group using PCS_FUNNEL (aligned with pie_analyze_swing)."""
+    if scan.empty:
+        return scan
+
+    grade_mask = scan["Grade"].isin(grades)
+
+    if PCS_FUNNEL == "all":
+        return scan[grade_mask].copy()
+
+    if PCS_FUNNEL == "buy":
+        buys = select_buy_candidates(scan, min_grade=PCS_MIN_GRADE)
+        return buys[buys["Grade"].isin(grades)].copy()
+
+    # grade — bullish setups suitable for PCS; do not require rare BUY signal
+    bullish = ~scan["Signal"].isin(["REDUCE", "SELL"])
+    return scan[grade_mask & bullish].copy()
+
+
 def _build_rows_from_scan(
     scan_group,
     label: str,
@@ -280,10 +314,6 @@ def _build_rows_from_scan(
         sym = str(row["Ticker"]).upper().strip()
         price = float(row["Price"])
         grade = str(row.get("Grade", label)).upper().strip()
-        signal = str(row.get("Signal", "")).upper().strip()
-
-        if signal != "BUY":
-            continue
 
         plan = build_pcs_plan(sym, price, min_credit_width=min_credit_width)
         if plan is None:
@@ -328,13 +358,11 @@ def run_pcs_opportunities() -> Dict[str, Any]:
 
     scan = run_scan(tickers)
 
-    grade_b = scan[scan["Grade"].isin(["A", "B"])].copy()
-    grade_c = scan[scan["Grade"] == "C"].copy()
-    grade_b_buy = grade_b[grade_b["Signal"] == "BUY"]
-    grade_c_buy = grade_c[grade_c["Signal"] == "BUY"]
+    grade_b_src = _funnel_scan_group(scan, grades=("A", "B"))
+    grade_c_src = _funnel_scan_group(scan, grades=("C",))
 
-    rows_b = _build_rows_from_scan(grade_b_buy, "B", min_credit_width=MIN_CREDIT_WIDTH)
-    rows_c = _build_rows_from_scan(grade_c_buy, "C", min_credit_width=MIN_CREDIT_WIDTH_C)
+    rows_b = _build_rows_from_scan(grade_b_src, "B", min_credit_width=MIN_CREDIT_WIDTH)
+    rows_c = _build_rows_from_scan(grade_c_src, "C", min_credit_width=MIN_CREDIT_WIDTH_C)
 
     rows_all = rows_b + rows_c
 
@@ -343,14 +371,16 @@ def run_pcs_opportunities() -> Dict[str, Any]:
     out["rows"] = rows_all
     out["tickers"] = [r["Ticker"] for r in rows_all]
     out["scanned"] = len(tickers)
-    out["grade_b_count"] = len(grade_b_buy)
-    out["grade_c_count"] = len(grade_c_buy)
+    out["funnel"] = PCS_FUNNEL
+    out["grade_b_count"] = len(grade_b_src)
+    out["grade_c_count"] = len(grade_c_src)
     out["html"] = format_pcs_opportunities_html(
         rows_b,
         rows_c,
         scanned=len(tickers),
-        grade_b_count=len(grade_b_buy),
-        grade_c_count=len(grade_c_buy),
+        grade_b_count=len(grade_b_src),
+        grade_c_count=len(grade_c_src),
+        funnel_label=_funnel_label(),
     )
 
     return out
@@ -433,19 +463,22 @@ def format_pcs_opportunities_html(
     scanned: int,
     grade_b_count: int,
     grade_c_count: int,
+    funnel_label: str = "",
 ) -> str:
     total_rows = len(rows_b) + len(rows_c)
+    funnel_note = funnel_label or _funnel_label()
 
     if total_rows == 0:
         return (
-            f"<p>Scanned {scanned} symbols · "
-            f"{grade_b_count} Grade A/B BUY · {grade_c_count} Grade C BUY · "
-            "<i>no PCS plans passed liquidity, credit, or earnings filters.</i></p>"
+            f"<p>Scanned {scanned} symbols · funnel: {_esc(funnel_note)} · "
+            f"{grade_b_count} Grade A/B pool · {grade_c_count} Grade C pool · "
+            "<i>no PCS plans passed option-chain liquidity, credit, or earnings filters.</i></p>"
         )
 
     return (
         f"<p><b>PUT CREDIT SPREAD PLAN</b> — "
-        f"{scanned} scanned, {grade_b_count} Grade A/B BUY, {grade_c_count} Grade C BUY, "
+        f"{scanned} scanned, funnel: {_esc(funnel_note)}, "
+        f"{grade_b_count} Grade A/B pool, {grade_c_count} Grade C pool, "
         f"{total_rows} PCS for {_pcs_session_label()}.</p>"
 
         "<p><b>Grade A/B PCS Candidates</b></p>"
@@ -455,10 +488,11 @@ def format_pcs_opportunities_html(
         f"{_format_table(rows_c)}"
 
         "<p style='font-size:11px;color:#666'>"
-        "Entry filter: Signal=BUY only (no REDUCE/SELL). Ranked by Credit%. "
-        "Earnings blocked when report falls before spread expiry or within PCS_EARNINGS_BLOCK_DAYS. "
+        f"Funnel: {PCS_FUNNEL} ({_esc(funnel_note)}). Ranked by Credit%. "
+        "Earnings blocked when report falls before spread expiry. "
         "Grade A/B = stronger setup; Grade C = secondary. "
         "Credit% = credit / spread width (not true POP). "
+        "Set PCS_FUNNEL=buy to match pie_analyze_swing default, or all for --all. "
         "Estimates only — verify option chain, bid/ask, and liquidity before trading."
         "</p>"
     )
@@ -471,9 +505,12 @@ def format_pcs_opportunities_text(
     scanned: int,
     grade_b_count: int,
     grade_c_count: int,
+    funnel_label: str = "",
 ) -> str:
+    funnel_note = funnel_label or _funnel_label()
     lines = [
-        f"Scanned {scanned} symbols · {grade_b_count} Grade A/B BUY · {grade_c_count} Grade C BUY",
+        f"Scanned {scanned} symbols · funnel: {funnel_note} · "
+        f"{grade_b_count} Grade A/B pool · {grade_c_count} Grade C pool",
         "",
         "Grade A/B PCS Candidates:",
     ]
@@ -500,8 +537,8 @@ def format_pcs_opportunities_text(
 
     lines.append("")
     lines.append(
-        "Entry filter: Signal=BUY. Earnings blocked before expiry / within PCS_EARNINGS_BLOCK_DAYS. "
-        "Estimates only — verify chain before trading."
+        f"Funnel: {PCS_FUNNEL} ({funnel_note}). "
+        "Earnings blocked before spread expiry. Estimates only — verify chain before trading."
     )
 
     return "\n".join(lines)
@@ -521,4 +558,5 @@ def format_pcs_opportunities_result_text(result: Dict[str, Any]) -> str:
         scanned=int(result.get("scanned") or 0),
         grade_b_count=int(result.get("grade_b_count") or 0),
         grade_c_count=int(result.get("grade_c_count") or 0),
+        funnel_label=str(result.get("funnel_label") or result.get("funnel") or ""),
     )

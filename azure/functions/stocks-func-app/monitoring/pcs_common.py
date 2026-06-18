@@ -62,8 +62,7 @@ def earnings_blocks_new_spread(symbol: str, spread_dte: int) -> bool:
     """
     True if earnings should block opening a new put credit spread.
 
-    Blocks when the next earnings date falls before spread expiry (during the trade),
-    or within PCS_EARNINGS_BLOCK_DAYS (imminent).
+    Blocks when the next earnings date falls before spread expiry (during the trade).
     """
     if not PCS_BLOCK_EARNINGS:
         return False
@@ -71,8 +70,6 @@ def earnings_blocks_new_spread(symbol: str, spread_dte: int) -> bool:
     if dte_earn is None or dte_earn < 0:
         return False
     if dte_earn < int(spread_dte):
-        return True
-    if dte_earn <= PCS_EARNINGS_BLOCK_DAYS:
         return True
     return False
 

@@ -44,24 +44,6 @@
       "contracts": 10
     },
     {
-      "symbol": "MRVL",
-      "short_put": 240.0,
-      "long_put": 230.0,
-      "expiration": "2026-07-17",
-      "credit": 4.0,
-      "entry_date": "2026-06-10",
-      "contracts": 2
-    },
-    {
-      "symbol": "MU",
-      "short_put": 840.0,
-      "long_put": 810.0,
-      "expiration": "2026-07-17",
-      "credit": 12.0,
-      "entry_date": "2026-06-10",
-      "contracts": 2
-    },
-    {
       "symbol": "MXL",
       "short_put": 65.0,
       "long_put": 55.0,
