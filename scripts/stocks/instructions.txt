@@ -152,7 +152,7 @@ python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100
 #   monitoring/pcs_opportunities.py — pie scanner splits Grade A/B vs Grade C into two tables
 #   PCS_OPPORTUNITIES_ENABLED=1 (default), tickers from blob signals/my_tickers.txt else local_list+holdings_list
 #   Local adhoc: ./run_pcs_morning_adhoc.sh (PIE_TICKERS_FILE, PCS_POSITIONS_FILE)
-#   Columns: Ticker, Grade, Expiry, DTE, Short, Long, Width, Credit, MaxRisk, Credit%, OTM%, IV%
+#   Columns: Ticker, Grade, Signal, Expiry, DTE, Short, Long, Width, Credit, MaxRisk, Credit%, OTM%, IV%
 #   PIE_TARGET_DTE=35  PIE_OTM_PCT=0.06  PIE_SPREAD_WIDTH_PCT=0.03  PIE_MAX_PCS_CANDIDATES=12 (per grade group)
 #   Open positions lifecycle: monitoring/pcs_lifecycle.py reads signals/positions.json (PCS_LIFECYCLE_ENABLED=1)
 #   Local adhoc: PCS_POSITIONS_FILE=scripts/stocks/positions.json (see run_email_adhoc.sh)

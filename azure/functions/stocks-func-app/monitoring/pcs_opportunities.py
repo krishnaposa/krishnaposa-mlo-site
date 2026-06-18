@@ -258,10 +258,11 @@ def build_pcs_plan(
     )
 
 
-def _row_from_plan(plan: PutCreditSpread, grade: str) -> dict:
+def _row_from_plan(plan: PutCreditSpread, grade: str, signal: str) -> dict:
     return {
         "Ticker": plan.symbol,
         "Grade": grade,
+        "Signal": signal,
         "Expiry": plan.expiration,
         "DTE": plan.dte,
         "Short": plan.short_put,
@@ -314,6 +315,7 @@ def _build_rows_from_scan(
         sym = str(row["Ticker"]).upper().strip()
         price = float(row["Price"])
         grade = str(row.get("Grade", label)).upper().strip()
+        signal = str(row.get("Signal", "")).upper().strip()
 
         plan = build_pcs_plan(sym, price, min_credit_width=min_credit_width)
         if plan is None:
@@ -323,7 +325,7 @@ def _build_rows_from_scan(
             logger.info("[pcs_opportunities] %s blocked — earnings within trade window", sym)
             continue
 
-        rows.append(_row_from_plan(plan, grade))
+        rows.append(_row_from_plan(plan, grade, signal))
 
     rows.sort(key=lambda r: float(r.get("Credit%") or 0.0), reverse=True)
     return rows[:PIE_MAX_PCS_CANDIDATES]
@@ -389,6 +391,7 @@ def run_pcs_opportunities() -> Dict[str, Any]:
 PCS_TABLE_COLS = [
     "Ticker",
     "Grade",
+    "Signal",
     "Expiry",
     "DTE",
     "Short",
@@ -522,7 +525,7 @@ def format_pcs_opportunities_text(
 
         for r in rows:
             lines.append(
-                f"  {r.get('Ticker','')} Grade={r.get('Grade','')} "
+                f"  {r.get('Ticker','')} Grade={r.get('Grade','')} Signal={r.get('Signal','')} "
                 f"Exp={r.get('Expiry','')} DTE={r.get('DTE','')} "
                 f"Short={r.get('Short','')} Long={r.get('Long','')} "
                 f"Credit={r.get('Credit','')} Credit%={_fmt_cell('Credit%', r.get('Credit%'))} "
