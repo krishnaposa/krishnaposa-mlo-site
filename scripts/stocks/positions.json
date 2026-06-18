@@ -6,6 +6,24 @@
   },
   "swings": [],
   "spreads": [
+    {
+      "symbol": "WYFI",
+      "short_put": 35.0,
+      "long_put": 30.0,
+      "expiration": "2026-07-17",
+      "credit": 2.32,
+      "entry_date": "2026-06-18",
+      "contracts": 10
+    },
+    {
+      "symbol": "FLNC",
+      "short_put": 22.0,
+      "long_put": 21.0,
+      "expiration": "2026-07-17",
+      "credit": 0.39,
+      "entry_date": "2026-06-18",
+      "contracts": 40
+    },
   {
     "symbol": "AMAT",
     "short_put": 550.0,
