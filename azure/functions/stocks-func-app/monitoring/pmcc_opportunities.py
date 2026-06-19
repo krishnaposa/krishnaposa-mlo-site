@@ -6,7 +6,7 @@ Two-phase: quick trend/price filter, then option-chain analysis for top names.
 
 Env:
   PMCC_OPPORTUNITIES_ENABLED=1
-  PMCC_MIN_PRICE=20  PMCC_MAX_PRICE=200
+  PMCC_MIN_PRICE=20  PMCC_MAX_PRICE=0 (0 = no upper cap)
   PMCC_MIN_SCORE=6.0
   PMCC_PREFILTER_N=50  PMCC_MAX_CANDIDATES=12
 """
@@ -55,7 +55,7 @@ from .pmcc_common import (
 logger = logging.getLogger(__name__)
 
 PMCC_MIN_PRICE = float(os.getenv("PMCC_MIN_PRICE", "20"))
-PMCC_MAX_PRICE = float(os.getenv("PMCC_MAX_PRICE", "200"))
+PMCC_MAX_PRICE = float(os.getenv("PMCC_MAX_PRICE", "0"))  # 0 = no upper cap
 PMCC_SWEET_MIN = float(os.getenv("PMCC_SWEET_MIN", "30"))
 PMCC_SWEET_MAX = float(os.getenv("PMCC_SWEET_MAX", "100"))
 PMCC_MIN_SCORE = float(os.getenv("PMCC_MIN_SCORE", "5.0"))
@@ -75,6 +75,14 @@ PMCC_EARNINGS_BLOCK_DAYS = int(os.getenv("PMCC_EARNINGS_BLOCK_DAYS", "14"))
 
 BENCHMARK = os.getenv("PMCC_BENCHMARK", "SPY")
 BIOTECH_KEYWORDS = ("biotech", "biotechnology", "pharmaceutical", "drug manufacturers")
+
+
+def _price_ok(price: float) -> bool:
+    if price != price or price < PMCC_MIN_PRICE:
+        return False
+    if PMCC_MAX_PRICE > 0 and price > PMCC_MAX_PRICE:
+        return False
+    return True
 
 
 def _trend_prefilter(tickers: List[str]) -> pd.DataFrame:
@@ -113,7 +121,7 @@ def _trend_prefilter(tickers: List[str]) -> pd.DataFrame:
             dma200 = float(s.rolling(200).mean().iloc[-1]) if len(s) >= 200 else float("nan")
             rs = float(s.pct_change(20).iloc[-1] - bench.pct_change(20).iloc[-1])
             price = float(s.iloc[-1])
-            if price < PMCC_MIN_PRICE or price > PMCC_MAX_PRICE:
+            if not _price_ok(price):
                 continue
             above50 = price > dma50
             above200 = price > dma200 if dma200 == dma200 else False
@@ -151,7 +159,7 @@ def _build_pmcc_pool(tickers: List[str], scan: pd.DataFrame, trend: pd.DataFrame
     scan_rows: List[dict] = []
     if not scan.empty:
         pool_scan = scan[~scan["Signal"].isin(["REDUCE", "SELL"])].copy()
-        pool_scan = pool_scan[pool_scan["Price"].astype(float).between(PMCC_MIN_PRICE, PMCC_MAX_PRICE)]
+        pool_scan = pool_scan[pool_scan["Price"].astype(float).apply(_price_ok)]
         for _, r in pool_scan.iterrows():
             g = str(r.get("Grade", "D")).upper()
             scan_rows.append({
@@ -782,7 +790,9 @@ def run_pmcc_opportunities() -> Dict[str, Any]:
     if pre.empty:
         out["html"] = (
             f"<p>Scanned {len(tickers)} symbols · "
-            "<i>none passed price ($20–$200) / trend prefilter.</i></p>"
+            f"<i>none passed price prefilter (min ${PMCC_MIN_PRICE:g}"
+            + (f", max ${PMCC_MAX_PRICE:g}" if PMCC_MAX_PRICE > 0 else ", no max")
+            + ").</i></p>"
         )
         return out
 
