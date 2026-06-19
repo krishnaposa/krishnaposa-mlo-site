@@ -43,6 +43,9 @@ PMCC_LEAP_EXIT_DELTA_MIN = float(os.getenv("PMCC_LEAP_EXIT_DELTA_MIN", "0.70"))
 PMCC_TARGET_ANNUAL_RETURN = float(os.getenv("PMCC_TARGET_ANNUAL_RETURN", "25"))
 PMCC_BETTER_OPP_MIN_SCORE = float(os.getenv("PMCC_BETTER_OPP_MIN_SCORE", "8.0"))
 
+PMCC_MODE = os.getenv("PMCC_MODE", "core").strip().lower()
+PMCC_EARNINGS_BLOCK_DAYS = int(os.getenv("PMCC_EARNINGS_BLOCK_DAYS", "7"))
+
 
 def mid_price(row) -> float:
     bid = float(row.get("bid") or 0.0)
@@ -93,6 +96,45 @@ def extrinsic_pct(spot: float, strike: float, option_mid: float) -> float:
         return float("nan")
     ext = option_mid - intrinsic_call(spot, strike)
     return max(ext, 0.0) / option_mid
+
+
+def pmcc_structure_ok(
+    *,
+    leap_strike: float,
+    leap_debit: float,
+    short_strike: float,
+    short_credit: float,
+) -> bool:
+    """Short strike must exceed long strike + net debit (LEAP debit minus short credit)."""
+    net_debit = leap_debit - short_credit
+    breakeven = leap_strike + net_debit
+    return short_strike > breakeven
+
+
+def pmcc_trade_metrics(
+    *,
+    leap_strike: float,
+    leap_debit: float,
+    short_strike: float,
+    short_credit: float,
+    spot: float,
+    short_dte: int,
+) -> dict:
+    net_debit = leap_debit - short_credit
+    breakeven = leap_strike + net_debit
+    max_risk = net_debit * 100.0
+    upside_room = (short_strike / spot - 1.0) * 100.0 if spot > 0 else float("nan")
+    monthly_on_debit = short_credit / leap_debit * 100.0 if leap_debit > 0 else float("nan")
+    annualized_on_debit = monthly_on_debit * (365.0 / max(short_dte, 1))
+
+    return {
+        "NetDebit": round(net_debit, 2),
+        "MaxRisk": round(max_risk, 0),
+        "Breakeven": round(breakeven, 2),
+        "UpsideRoom%": round(upside_room, 1),
+        "MonthlyOnDebit%": round(monthly_on_debit, 2),
+        "AnnualizedOnDebit%": round(annualized_on_debit, 1),
+    }
 
 
 def call_row_for_strike(calls: pd.DataFrame, strike: float, *, tol: float | None = None) -> Optional[pd.Series]:
@@ -258,7 +300,7 @@ def combine_pmcc_actions(*, leap_phase: str, short_phase: str, short_action: str
 
 def is_pmcc_highlight_action(action: str) -> bool:
     act = str(action).upper()
-    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "MANAGE", "VERIFY", "EXPIRING", "EXIT LEAP", "WATCH LEAP")
+    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "MANAGE", "VERIFY", "EXPIRING", "EXIT LEAP", "WATCH LEAP", "FIX STRUCTURE")
     return any(k in act for k in keywords)
 
 
@@ -266,5 +308,5 @@ def is_pmcc_urgent_action(action: str) -> bool:
     act = str(action).upper()
     if act.startswith("HOLD"):
         return False
-    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "EXIT LEAP")
+    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "EXIT LEAP", "FIX STRUCTURE")
     return any(k in act for k in keywords)

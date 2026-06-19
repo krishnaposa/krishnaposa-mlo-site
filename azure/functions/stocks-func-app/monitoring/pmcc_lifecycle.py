@@ -50,6 +50,8 @@ from .pmcc_common import (
     is_pmcc_highlight_action,
     is_pmcc_urgent_action,
     mid_price,
+    pmcc_structure_ok,
+    pmcc_trade_metrics,
     short_call_action_for_phase,
 )
 from .position_metrics import format_weak_symbols_html, get_position_price_metrics
@@ -307,6 +309,24 @@ def review_pmcc_positions(
             leap_detail=better_opp or "",
         )
 
+        trade_metrics: dict = {}
+        if long_k > 0 and long_debit > 0 and short_k > 0 and short_credit > 0:
+            trade_metrics = pmcc_trade_metrics(
+                leap_strike=long_k,
+                leap_debit=long_debit,
+                short_strike=short_k,
+                short_credit=short_credit,
+                spot=float(price) if price == price else 0.0,
+                short_dte=max(short_dte, 1),
+            )
+            if not pmcc_structure_ok(
+                leap_strike=long_k,
+                leap_debit=long_debit,
+                short_strike=short_k,
+                short_credit=short_credit,
+            ):
+                combined_action = f"FIX STRUCTURE (short ≤ BE {trade_metrics.get('Breakeven')}); {combined_action}"
+
         rows.append({
             "Ticker": sym,
             "Price": round(price, 2) if price == price else None,
@@ -320,6 +340,10 @@ def review_pmcc_positions(
             "LongDelta": round(long_delta, 2) if long_delta == long_delta else None,
             "LongPnL%": round(long_pnl_pct, 1) if long_pnl_pct == long_pnl_pct else None,
             "AnnReturn%": round(ann_return, 1) if ann_return == ann_return else None,
+            "NetDebit": trade_metrics.get("NetDebit"),
+            "Breakeven": trade_metrics.get("Breakeven"),
+            "MaxRisk": trade_metrics.get("MaxRisk"),
+            "MonthlyOnDebit%": trade_metrics.get("MonthlyOnDebit%"),
             "ShortExp": short_exp or "—",
             "ShortDTE": short_dte if short_k > 0 else None,
             "ShortStrike": short_k if short_k > 0 else None,
@@ -373,9 +397,11 @@ PMCC_COLS = [
     "LongDTE",
     "LongDelta",
     "LongPnL%",
-    "AnnReturn%",
+    "NetDebit",
+    "Breakeven",
     "ShortDTE",
     "ShortProfit%",
+    "MonthlyOnDebit%",
     "Action",
 ]
 
@@ -386,6 +412,7 @@ def _leap_exit_rules_html() -> str:
         f"DTE &lt; {PMCC_LEAP_EXIT_MIN_DTE // 30} months · REDUCE/SELL signal · "
         f"gain ≥{PMCC_LEAP_EXIT_GAIN_MIN:g}% · Δ &lt; {PMCC_LEAP_EXIT_DELTA_MIN:g} · "
         f"annualized ≥{PMCC_TARGET_ANNUAL_RETURN:g}% · better PMCC in ideas.<br>"
+        "Structure: short strike must exceed long strike + net debit.<br>"
         "<b>Otherwise:</b> close short at ≥50% profit; roll if challenged; keep selling calls.</p>"
     )
 
@@ -449,7 +476,7 @@ def format_pmcc_lifecycle_text(rows: List[dict]) -> str:
         lines.append(
             f"    {r.get('Ticker','')} price={r.get('Price','')} "
             f"LEAP DTE={r.get('LongDTE','')} Δ={r.get('LongDelta','')} "
-            f"pnl={r.get('LongPnL%','')}% ann={r.get('AnnReturn%','')}% | "
+            f"pnl={r.get('LongPnL%','')}% netDebit={r.get('NetDebit','')} BE={r.get('Breakeven','')} | "
             f"short DTE={r.get('ShortDTE','')} profit={r.get('ShortProfit%','')}% "
             f"-> {r.get('Action','')}"
         )
