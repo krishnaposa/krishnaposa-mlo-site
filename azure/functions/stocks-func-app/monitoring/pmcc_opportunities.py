@@ -60,7 +60,7 @@ PMCC_SWEET_MIN = float(os.getenv("PMCC_SWEET_MIN", "30"))
 PMCC_SWEET_MAX = float(os.getenv("PMCC_SWEET_MAX", "100"))
 PMCC_MIN_SCORE = float(os.getenv("PMCC_MIN_SCORE", "5.0"))
 PMCC_PREFILTER_N = int(os.getenv("PMCC_PREFILTER_N", "120"))
-PMCC_MAX_CHAIN_ANALYSIS = int(os.getenv("PMCC_MAX_CHAIN_ANALYSIS", "50"))
+PMCC_MAX_CHAIN_ANALYSIS = int(os.getenv("PMCC_MAX_CHAIN_ANALYSIS", "80"))
 PMCC_MAX_CANDIDATES = int(os.getenv("PMCC_MAX_CANDIDATES", "12"))
 PMCC_MIN_OI = int(os.getenv("PMCC_MIN_OI", "50"))
 PMCC_LEAP_MIN_OI = int(os.getenv("PMCC_LEAP_MIN_OI", "50"))
@@ -75,6 +75,8 @@ PMCC_EARNINGS_BLOCK_DAYS = int(os.getenv("PMCC_EARNINGS_BLOCK_DAYS", "14"))
 
 BENCHMARK = os.getenv("PMCC_BENCHMARK", "SPY")
 BIOTECH_KEYWORDS = ("biotech", "biotechnology", "pharmaceutical", "drug manufacturers")
+SIGNAL_RANK = {"BUY": 0, "HOLD": 1, "WATCH": 2, "": 3}
+GRADE_RANK = {"A": 0, "B": 1, "C": 2, "D": 3, "": 4}
 
 
 def _price_ok(price: float) -> bool:
@@ -83,6 +85,27 @@ def _price_ok(price: float) -> bool:
     if PMCC_MAX_PRICE > 0 and price > PMCC_MAX_PRICE:
         return False
     return True
+
+
+def _trend_lookup(trend: pd.DataFrame) -> Dict[str, pd.Series]:
+    if trend.empty:
+        return {}
+    return {str(r["Ticker"]).upper(): r for _, r in trend.iterrows()}
+
+
+def _chain_analysis_pool(pre: pd.DataFrame) -> pd.DataFrame:
+    """Pick names for option-chain work: grade, signal, prefilter, then trend strength."""
+    if pre.empty:
+        return pre
+    df = pre.copy()
+    df["_gr"] = df["Grade"].astype(str).str.upper().map(lambda g: GRADE_RANK.get(g, 4))
+    df["_sr"] = df["Signal"].astype(str).str.upper().map(lambda s: SIGNAL_RANK.get(s, 3))
+    df["_tp"] = pd.to_numeric(df["TrendPts"], errors="coerce").fillna(0)
+    ranked = df.sort_values(
+        ["_gr", "_sr", "Prefilter", "_tp"],
+        ascending=[True, True, False, False],
+    )
+    return ranked.head(PMCC_MAX_CHAIN_ANALYSIS).drop(columns=["_gr", "_sr", "_tp"])
 
 
 def _trend_prefilter(tickers: List[str]) -> pd.DataFrame:
@@ -155,6 +178,7 @@ def _build_pmcc_pool(tickers: List[str], scan: pd.DataFrame, trend: pd.DataFrame
     """
     grade_boost = {"A": 20, "B": 16, "C": 12, "D": 6}
     cols = ["Ticker", "Price", "Prefilter", "TrendPts", "PricePts", "RS%", "Above50", "Above200", "DMA50", "DMA200", "Grade", "Signal"]
+    trend_by_sym = _trend_lookup(trend)
 
     scan_rows: List[dict] = []
     if not scan.empty:
@@ -162,24 +186,26 @@ def _build_pmcc_pool(tickers: List[str], scan: pd.DataFrame, trend: pd.DataFrame
         pool_scan = pool_scan[pool_scan["Price"].astype(float).apply(_price_ok)]
         for _, r in pool_scan.iterrows():
             g = str(r.get("Grade", "D")).upper()
+            sym = str(r["Ticker"]).upper()
+            trow = trend_by_sym.get(sym)
             scan_rows.append({
-                "Ticker": str(r["Ticker"]).upper(),
+                "Ticker": sym,
                 "Price": round(float(r["Price"]), 2),
                 "Prefilter": grade_boost.get(g, 6),
-                "TrendPts": 4,
-                "PricePts": 2,
-                "RS%": None,
-                "Above50": None,
-                "Above200": None,
-                "DMA50": None,
-                "DMA200": np.nan,
+                "TrendPts": int(trow["TrendPts"]) if trow is not None and trow.get("TrendPts") == trow.get("TrendPts") else 4,
+                "PricePts": int(trow["PricePts"]) if trow is not None and trow.get("PricePts") == trow.get("PricePts") else 2,
+                "RS%": round(float(trow["RS%"]), 2) if trow is not None and trow.get("RS%") == trow.get("RS%") else None,
+                "Above50": bool(trow["Above50"]) if trow is not None and trow.get("Above50") is not None else None,
+                "Above200": bool(trow["Above200"]) if trow is not None and trow.get("Above200") is not None else None,
+                "DMA50": round(float(trow["DMA50"]), 2) if trow is not None and trow.get("DMA50") == trow.get("DMA50") else None,
+                "DMA200": round(float(trow["DMA200"]), 2) if trow is not None and trow.get("DMA200") == trow.get("DMA200") else np.nan,
                 "Grade": g,
                 "Signal": str(r.get("Signal", "")),
             })
 
     scan_df = pd.DataFrame(scan_rows)
     if not scan_df.empty:
-        scan_df = scan_df.sort_values("Prefilter", ascending=False)
+        scan_df = scan_df.sort_values(["Prefilter", "TrendPts"], ascending=[False, False])
 
     trend_df = trend.copy() if not trend.empty else pd.DataFrame()
     if not trend_df.empty:
@@ -797,7 +823,7 @@ def run_pmcc_opportunities() -> Dict[str, Any]:
         return out
 
     rows: List[dict] = []
-    chain_pool = pre.head(PMCC_MAX_CHAIN_ANALYSIS)
+    chain_pool = _chain_analysis_pool(pre)
     symbols = [str(r["Ticker"]).upper() for _, r in chain_pool.iterrows()]
     returns_map = _batch_return_metrics(symbols)
     fund_cache: Dict[str, dict] = {}

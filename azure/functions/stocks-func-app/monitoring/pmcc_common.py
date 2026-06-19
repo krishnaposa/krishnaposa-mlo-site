@@ -56,7 +56,11 @@ def spread_pct(row) -> float:
 
 
 def leg_is_liquid(row, *, min_oi: int, max_spread_pct: float) -> bool:
-    oi = int(row.get("openInterest") or 0)
+    raw_oi = row.get("openInterest")
+    if raw_oi is None or (isinstance(raw_oi, float) and raw_oi != raw_oi):
+        oi = 0
+    else:
+        oi = int(raw_oi or 0)
     if oi < min_oi:
         return False
     sp = spread_pct(row)
