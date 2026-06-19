@@ -55,7 +55,8 @@ def run_pmcc_morning(*, stamp: Optional[str] = None) -> Dict[str, Any]:
         try:
             from .pmcc_lifecycle import run_pmcc_lifecycle
 
-            life_result = run_pmcc_lifecycle()
+            opp_rows = list(opp_result.get("rows") or []) if opp_result else []
+            life_result = run_pmcc_lifecycle(opportunities=opp_rows)
             life_html = life_result.get("html") or ""
             actionable = list(life_result.get("actionable") or [])
         except Exception as e:

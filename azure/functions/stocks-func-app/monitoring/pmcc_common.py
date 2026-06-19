@@ -37,6 +37,12 @@ PMCC_SHORT_DELTA_TARGET = float(os.getenv("PMCC_SHORT_DELTA_TARGET", "0.22"))
 PMCC_SHORT_MIN_OI = int(os.getenv("PMCC_SHORT_MIN_OI", "50"))
 PMCC_SHORT_MAX_SPREAD_PCT = float(os.getenv("PMCC_SHORT_MAX_SPREAD_PCT", "0.10"))
 
+PMCC_LEAP_EXIT_MIN_DTE = int(os.getenv("PMCC_LEAP_EXIT_MIN_DTE", "365"))
+PMCC_LEAP_EXIT_GAIN_MIN = float(os.getenv("PMCC_LEAP_EXIT_GAIN_MIN", "75"))
+PMCC_LEAP_EXIT_DELTA_MIN = float(os.getenv("PMCC_LEAP_EXIT_DELTA_MIN", "0.70"))
+PMCC_TARGET_ANNUAL_RETURN = float(os.getenv("PMCC_TARGET_ANNUAL_RETURN", "25"))
+PMCC_BETTER_OPP_MIN_SCORE = float(os.getenv("PMCC_BETTER_OPP_MIN_SCORE", "8.0"))
+
 
 def mid_price(row) -> float:
     bid = float(row.get("bid") or 0.0)
@@ -185,9 +191,74 @@ def short_call_action_for_phase(phase: str, *, verify_suffix: str = "") -> str:
     return f"{base}{verify_suffix}" if verify_suffix else base
 
 
+def leap_hold_guidance_for_short_phase(short_phase: str) -> str:
+    """When LEAP is held, what to do on the short side (ChatGPT 'OTHERWISE' rules)."""
+    if short_phase in ("CLOSE_PROFIT", "EXPIRING"):
+        return "Roll short call after close"
+    if short_phase in ("CHALLENGED", "ROLL"):
+        return "Roll short call"
+    if short_phase == "NO_SHORT":
+        return "Sell next short call (30–45 DTE)"
+    return "Keep selling calls; collect income"
+
+
+def determine_leap_exit_phase(
+    *,
+    long_dte: int,
+    long_pnl_pct: float,
+    long_delta: float,
+    annualized_return_pct: float,
+    thesis_broken: bool,
+    better_opportunity: str | None = None,
+) -> str:
+    """Return LEAP exit phase, or HOLD when no exit trigger fires."""
+    if long_dte > 0 and long_dte < PMCC_LEAP_EXIT_MIN_DTE:
+        return "EXIT_DTE"
+    if thesis_broken:
+        return "EXIT_THESIS"
+    if long_pnl_pct == long_pnl_pct and long_pnl_pct >= PMCC_LEAP_EXIT_GAIN_MIN:
+        return "EXIT_GAIN"
+    if long_delta == long_delta and long_delta < PMCC_LEAP_EXIT_DELTA_MIN:
+        return "EXIT_DELTA"
+    if (
+        annualized_return_pct == annualized_return_pct
+        and annualized_return_pct >= PMCC_TARGET_ANNUAL_RETURN
+    ):
+        return "EXIT_TARGET"
+    if better_opportunity:
+        return "EXIT_BETTER_OPP"
+    return "HOLD"
+
+
+def leap_exit_action_for_phase(phase: str, *, detail: str = "") -> str:
+    mapping = {
+        "EXIT_DTE": f"EXIT LEAP (<{PMCC_LEAP_EXIT_MIN_DTE // 30}mo DTE — roll or close)",
+        "EXIT_THESIS": "EXIT LEAP (thesis broken — scanner REDUCE/SELL)",
+        "EXIT_GAIN": f"EXIT LEAP (gain ≥{PMCC_LEAP_EXIT_GAIN_MIN:g}% — take profit)",
+        "EXIT_DELTA": f"EXIT LEAP (Δ <{PMCC_LEAP_EXIT_DELTA_MIN:g} — deep ITM, roll LEAP)",
+        "EXIT_TARGET": f"EXIT LEAP (annualized ≥{PMCC_TARGET_ANNUAL_RETURN:g}% target)",
+        "EXIT_BETTER_OPP": f"EXIT LEAP (better PMCC: {detail})" if detail else "EXIT LEAP (better opportunity in ideas)",
+        "HOLD": "HOLD LEAP",
+        "WATCH_DMA": "WATCH LEAP (below 200 DMA)",
+    }
+    return mapping.get(phase, "REVIEW LEAP")
+
+
+def combine_pmcc_actions(*, leap_phase: str, short_phase: str, short_action: str, leap_detail: str = "") -> str:
+    """LEAP exit overrides short hold; otherwise pair short action with income guidance."""
+    if leap_phase.startswith("EXIT"):
+        return leap_exit_action_for_phase(leap_phase, detail=leap_detail)
+    if leap_phase == "WATCH_DMA":
+        return f"{short_action}; {leap_exit_action_for_phase(leap_phase)}"
+    guidance = leap_hold_guidance_for_short_phase(short_phase)
+    if short_action.startswith("HOLD"):
+        return f"{short_action} — {guidance}"
+    return f"{short_action}; {guidance}"
+
+
 def is_pmcc_highlight_action(action: str) -> bool:
     act = str(action).upper()
-    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "MANAGE", "VERIFY", "EXPIRING")
+    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "MANAGE", "VERIFY", "EXPIRING", "EXIT LEAP", "WATCH LEAP")
     return any(k in act for k in keywords)
 
 
@@ -195,5 +266,5 @@ def is_pmcc_urgent_action(action: str) -> bool:
     act = str(action).upper()
     if act.startswith("HOLD"):
         return False
-    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT")
+    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "EXIT LEAP")
     return any(k in act for k in keywords)

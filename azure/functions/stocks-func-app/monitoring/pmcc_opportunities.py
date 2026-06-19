@@ -8,6 +8,7 @@ Env:
   PMCC_OPPORTUNITIES_ENABLED=1
   PMCC_MIN_PRICE=20  PMCC_MAX_PRICE=0 (0 = no upper cap)
   PMCC_MIN_SCORE=6.0
+  PMCC_BLOCK_NEG_1Y=1  (blocks negative 1Y return)
   PMCC_PREFILTER_N=50  PMCC_MAX_CANDIDATES=12
 """
 
@@ -71,6 +72,7 @@ PMCC_BLOCK_FUND_FAIL = os.getenv("PMCC_BLOCK_FUND_FAIL", "1") == "1"
 PMCC_MIN_MARKET_CAP = float(os.getenv("PMCC_MIN_MARKET_CAP", "1e9"))
 PMCC_MAX_PS = float(os.getenv("PMCC_MAX_PS", "40"))
 PMCC_BLOCK_EARNINGS = os.getenv("PMCC_BLOCK_EARNINGS", "1") == "1"
+PMCC_BLOCK_NEG_1Y = os.getenv("PMCC_BLOCK_NEG_1Y", "1") == "1"
 PMCC_EARNINGS_BLOCK_DAYS = int(os.getenv("PMCC_EARNINGS_BLOCK_DAYS", "14"))
 
 BENCHMARK = os.getenv("PMCC_BENCHMARK", "SPY")
@@ -618,6 +620,13 @@ def _analyze_symbol(
     sym = str(row["Ticker"]).upper()
     spot = float(row["Price"])
 
+    rets = returns_map.get(sym, {})
+    ret_63 = rets.get("ret_63", float("nan"))
+    ret_252 = rets.get("ret_252", float("nan"))
+    if PMCC_BLOCK_NEG_1Y and ret_252 == ret_252 and ret_252 < 0:
+        logger.info("[pmcc] %s blocked — negative 1Y return (%.1f%%)", sym, ret_252 * 100)
+        return None
+
     try:
         tk = yf.Ticker(sym)
         expiries = list(tk.options or [])
@@ -649,9 +658,6 @@ def _analyze_symbol(
         logger.info("[pmcc] %s blocked — fundamentals FAIL (%s)", sym, fund.get("notes"))
         return None
 
-    rets = returns_map.get(sym, {})
-    ret_63 = rets.get("ret_63", float("nan"))
-    ret_252 = rets.get("ret_252", float("nan"))
     leap_thesis, leap_note = _leap_thesis_score(ret_63, ret_252, fund)
     fund_score, fund_note = _fundamentals_score(fund)
 
@@ -851,21 +857,13 @@ PMCC_TABLE_COLS = [
     "Signal",
     "Price",
     "Score",
-    "LeapThesis",
-    "Fund",
     "Ret1Y%",
     "Ret3M%",
-    "Margin%",
-    "P/S",
-    "RS%",
     "LeapExp",
-    "LeapDTE",
     "LeapStrike",
     "LeapDebit",
     "LeapDelta",
-    "LeapExt%",
     "ShortExp",
-    "ShortDTE",
     "ShortStrike",
     "ShortCredit",
     "ShortDelta",
@@ -876,12 +874,17 @@ PMCC_TABLE_COLS = [
 def _fmt_pmcc(col: str, val) -> str:
     if val is None or val == "":
         return ""
+    try:
+        if isinstance(val, float) and val != val:
+            return ""
+    except TypeError:
+        pass
     if col in ("Price", "LeapDebit", "ShortCredit", "LeapStrike", "ShortStrike"):
         try:
             return f"{float(val):.2f}"
         except (TypeError, ValueError):
             return str(val)
-    if col in ("LeapDelta", "ShortDelta", "Score", "RS%", "LeapExt%", "ShortMonthly%"):
+    if col in ("LeapDelta", "ShortDelta", "Score", "Ret1Y%", "Ret3M%", "ShortMonthly%"):
         try:
             return f"{float(val):.1f}"
         except (TypeError, ValueError):
@@ -936,11 +939,9 @@ def format_pmcc_opportunities_text(rows: List[dict], *, scanned: int, prefiltere
         return "\n".join(lines)
 
     for r in rows:
-            lines.append(
-                f"  {r.get('Ticker','')} Grade={r.get('Grade','')} Signal={r.get('Signal','')} "
-                f"score={r.get('Score','')} leap={r.get('LeapThesis','')} fund={r.get('Fund','')} "
-                f"1Y={r.get('Ret1Y%','')}% 3M={r.get('Ret3M%','')}% "
-                f"margin={r.get('Margin%','')}% P/S={r.get('P/S','')} "
+        lines.append(
+            f"  {r.get('Ticker','')} Grade={r.get('Grade','')} Signal={r.get('Signal','')} "
+            f"score={r.get('Score','')} 1Y={r.get('Ret1Y%','')}% 3M={r.get('Ret3M%','')}% "
             f"LEAP {r.get('LeapExp','')} {r.get('LeapStrike','')} @ {r.get('LeapDebit','')} "
             f"Δ={r.get('LeapDelta','')} | short {r.get('ShortExp','')} "
             f"{r.get('ShortStrike','')} cr {r.get('ShortCredit','')} "

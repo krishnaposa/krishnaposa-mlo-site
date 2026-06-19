@@ -18,7 +18,9 @@ positions.json shape (pmcc array):
   }
 
 Short call: close at PMCC_SHORT_PROFIT_TARGET (50%), roll if challenged.
-Long LEAP: hold; flag if price below 200 DMA.
+Long LEAP exit if: DTE < 12mo, thesis broken, gain ≥75%, Δ < 0.70,
+  annualized return ≥ target, or better PMCC in today's ideas.
+Otherwise: keep selling / rolling short calls and collect income.
 """
 
 from __future__ import annotations
@@ -34,8 +36,16 @@ import yfinance as yf
 import pandas as pd
 
 from .pmcc_common import (
+    PMCC_BETTER_OPP_MIN_SCORE,
+    PMCC_LEAP_EXIT_DELTA_MIN,
+    PMCC_LEAP_EXIT_GAIN_MIN,
+    PMCC_LEAP_EXIT_MIN_DTE,
     PMCC_SHORT_PROFIT_TARGET,
+    PMCC_TARGET_ANNUAL_RETURN,
+    bs_call_delta,
     call_row_for_strike,
+    combine_pmcc_actions,
+    determine_leap_exit_phase,
     determine_short_call_phase,
     is_pmcc_highlight_action,
     is_pmcc_urgent_action,
@@ -115,13 +125,90 @@ def _dte(expiry: str) -> int:
     return (d - datetime.today().date()).days
 
 
-def review_pmcc_positions(positions: List[dict]) -> List[dict]:
+def _holding_years(entry_date: str) -> float:
+    try:
+        d0 = datetime.strptime(str(entry_date), "%Y-%m-%d").date()
+    except Exception:
+        return float("nan")
+    days = (datetime.today().date() - d0).days
+    return max(days / 365.25, 1.0 / 365.25)
+
+
+def _annualized_return_pct(
+    long_debit: float,
+    long_value: float,
+    short_credit: float,
+    entry_date: str,
+) -> float:
+    if long_debit <= 0 or long_value != long_value:
+        return float("nan")
+    years = _holding_years(entry_date)
+    if years != years or years <= 0:
+        return float("nan")
+    total_pnl = (long_value - long_debit) + max(short_credit, 0.0)
+    total_ret = total_pnl / long_debit
+    if total_ret <= -1.0:
+        return float("nan")
+    return ((1.0 + total_ret) ** (1.0 / years) - 1.0) * 100.0
+
+
+def _scan_signals(symbols: List[str]) -> Dict[str, str]:
+    if not symbols:
+        return {}
+    try:
+        from .pie_scanner import run_scan
+
+        scan = run_scan(symbols)
+        if scan is None or scan.empty:
+            return {}
+        return {
+            str(r["Ticker"]).upper(): str(r.get("Signal", ""))
+            for _, r in scan.iterrows()
+        }
+    except Exception as e:
+        logger.info("[pmcc_lifecycle] scan signals failed: %s", e)
+        return {}
+
+
+def _best_other_opportunity(
+    sym: str,
+    opportunities: List[dict],
+) -> str | None:
+    """Top BUY/HOLD idea that isn't this symbol and clears the score bar."""
+    best: tuple[str, float] | None = None
+    for row in opportunities:
+        ticker = str(row.get("Ticker", "")).upper()
+        if not ticker or ticker == sym:
+            continue
+        signal = str(row.get("Signal", "")).upper()
+        if signal not in ("BUY", "HOLD"):
+            continue
+        try:
+            score = float(row.get("Score") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if score < PMCC_BETTER_OPP_MIN_SCORE:
+            continue
+        if best is None or score > best[1]:
+            best = (ticker, score)
+    if best is None:
+        return None
+    return f"{best[0]} {best[1]:.1f}"
+
+
+def review_pmcc_positions(
+    positions: List[dict],
+    *,
+    opportunities: List[dict] | None = None,
+) -> List[dict]:
     if not positions:
         return []
 
     syms = [str(p.get("symbol", "")).upper().strip() for p in positions if p.get("symbol")]
     metrics = get_position_price_metrics(syms)
     dma200_by_sym = _dma200_map(syms)
+    signals = _scan_signals(syms)
+    opp_rows = list(opportunities or [])
     rows = []
 
     for pos in positions:
@@ -132,6 +219,7 @@ def review_pmcc_positions(positions: List[dict]) -> List[dict]:
         long_k = float(pos.get("long_call") or 0.0)
         long_exp = str(pos.get("long_expiration", ""))
         long_debit = float(pos.get("long_debit") or 0.0)
+        entry_date = str(pos.get("entry_date", ""))
         short_k = float(pos.get("short_call") or 0.0)
         short_exp = str(pos.get("short_expiration", ""))
         short_credit = float(pos.get("short_credit") or 0.0)
@@ -145,6 +233,7 @@ def review_pmcc_positions(positions: List[dict]) -> List[dict]:
         short_dte = _dte(short_exp)
 
         long_value = float("nan")
+        long_delta = float("nan")
         short_cost = float("nan")
         short_profit_pct = float("nan")
 
@@ -156,6 +245,10 @@ def review_pmcc_positions(positions: List[dict]) -> List[dict]:
                 long_row = call_row_for_strike(tk.option_chain(long_exp).calls, long_k)
                 if long_row is not None:
                     long_value = mid_price(long_row)
+                    if price == price and long_dte > 0:
+                        iv = float(long_row.get("impliedVolatility") or 0.0)
+                        if iv > 0:
+                            long_delta = bs_call_delta(float(price), long_k, long_dte, iv)
 
             if short_exp in opts and short_k > 0:
                 short_row = call_row_for_strike(tk.option_chain(short_exp).calls, short_k)
@@ -189,26 +282,44 @@ def review_pmcc_positions(positions: List[dict]) -> List[dict]:
         if long_debit > 0 and long_value == long_value:
             long_pnl_pct = ((long_value - long_debit) / long_debit * 100.0)
 
-        long_action = "HOLD LEAP"
-        if price == price and dma200 == dma200 and price < dma200:
-            long_action = "WATCH LEAP (below 200 DMA)"
-        if long_dte < 180:
-            long_action = "REVIEW LEAP (DTE < 6mo — roll LEAP?)"
+        signal = str(signals.get(sym, "")).upper()
+        below_dma = price == price and dma200 == dma200 and price < dma200
+        thesis_broken = signal in ("REDUCE", "SELL")
 
-        combined_action = short_action
-        if "WATCH" in long_action or "REVIEW" in long_action:
-            combined_action = f"{short_action}; {long_action}"
+        ann_return = _annualized_return_pct(long_debit, long_value, short_credit, entry_date)
+        better_opp = _best_other_opportunity(sym, opp_rows)
+
+        leap_phase = determine_leap_exit_phase(
+            long_dte=long_dte,
+            long_pnl_pct=long_pnl_pct,
+            long_delta=long_delta,
+            annualized_return_pct=ann_return,
+            thesis_broken=thesis_broken,
+            better_opportunity=better_opp,
+        )
+        if leap_phase == "HOLD" and below_dma and signal not in ("REDUCE", "SELL"):
+            leap_phase = "WATCH_DMA"
+
+        combined_action = combine_pmcc_actions(
+            leap_phase=leap_phase,
+            short_phase=short_phase,
+            short_action=short_action,
+            leap_detail=better_opp or "",
+        )
 
         rows.append({
             "Ticker": sym,
             "Price": round(price, 2) if price == price else None,
+            "Signal": signal or None,
             "Contracts": contracts,
             "LongExp": long_exp,
             "LongDTE": long_dte,
             "LongStrike": long_k,
             "LongDebit": round(long_debit, 2),
             "LongMark": round(long_value, 2) if long_value == long_value else None,
+            "LongDelta": round(long_delta, 2) if long_delta == long_delta else None,
             "LongPnL%": round(long_pnl_pct, 1) if long_pnl_pct == long_pnl_pct else None,
+            "AnnReturn%": round(ann_return, 1) if ann_return == ann_return else None,
             "ShortExp": short_exp or "—",
             "ShortDTE": short_dte if short_k > 0 else None,
             "ShortStrike": short_k if short_k > 0 else None,
@@ -216,13 +327,14 @@ def review_pmcc_positions(positions: List[dict]) -> List[dict]:
             "ShortCost": round(short_cost, 2) if short_cost == short_cost else None,
             "ShortProfit%": round(short_profit_pct, 1) if short_profit_pct == short_profit_pct else None,
             "ShortPhase": short_phase,
+            "LeapPhase": leap_phase,
             "Action": combined_action,
         })
 
     return rows
 
 
-def run_pmcc_lifecycle() -> Dict[str, Any]:
+def run_pmcc_lifecycle(opportunities: List[dict] | None = None) -> Dict[str, Any]:
     out: Dict[str, Any] = {
         "enabled": True,
         "found": False,
@@ -244,7 +356,7 @@ def run_pmcc_lifecycle() -> Dict[str, Any]:
         return out
 
     out["found"] = True
-    rows = review_pmcc_positions(positions)
+    rows = review_pmcc_positions(positions, opportunities=opportunities)
     out["rows"] = rows
 
     actionable = sorted({
@@ -258,19 +370,24 @@ def run_pmcc_lifecycle() -> Dict[str, Any]:
 PMCC_COLS = [
     "Ticker",
     "Price",
-    "LongExp",
     "LongDTE",
-    "LongStrike",
-    "LongMark",
+    "LongDelta",
     "LongPnL%",
-    "ShortExp",
+    "AnnReturn%",
     "ShortDTE",
-    "ShortStrike",
-    "ShortCredit",
-    "ShortCost",
     "ShortProfit%",
     "Action",
 ]
+
+
+def _leap_exit_rules_html() -> str:
+    return (
+        "<p style='font-size:11px;color:#666'><b>EXIT LEAP if any:</b> "
+        f"DTE &lt; {PMCC_LEAP_EXIT_MIN_DTE // 30} months · REDUCE/SELL signal · "
+        f"gain ≥{PMCC_LEAP_EXIT_GAIN_MIN:g}% · Δ &lt; {PMCC_LEAP_EXIT_DELTA_MIN:g} · "
+        f"annualized ≥{PMCC_TARGET_ANNUAL_RETURN:g}% · better PMCC in ideas.<br>"
+        "<b>Otherwise:</b> close short at ≥50% profit; roll if challenged; keep selling calls.</p>"
+    )
 
 
 def _table(rows: List[dict], cols: List[str]) -> str:
@@ -311,10 +428,7 @@ def format_pmcc_lifecycle_email_section(rows: List[dict]) -> str:
     return "".join([
         summary,
         weak_block,
-        "<p style='font-size:11px;color:#666'>"
-        f"Short call: close at ≥{PMCC_SHORT_PROFIT_TARGET:g}% profit; roll if challenged. "
-        "Long LEAP: hold unless below 200 DMA or LEAP DTE &lt; 6 months."
-        "</p>",
+        _leap_exit_rules_html(),
         "<p><b>PMCC open positions</b></p>",
         _table(rows, PMCC_COLS),
     ])
@@ -334,10 +448,9 @@ def format_pmcc_lifecycle_text(rows: List[dict]) -> str:
     for r in rows:
         lines.append(
             f"    {r.get('Ticker','')} price={r.get('Price','')} "
-            f"LEAP {r.get('LongExp','')} {r.get('LongStrike','')} "
-            f"mark={r.get('LongMark','')} pnl={r.get('LongPnL%','')}% | "
-            f"short {r.get('ShortExp','')} {r.get('ShortStrike','')} "
-            f"cr={r.get('ShortCredit','')} cost={r.get('ShortCost','')} "
-            f"profit={r.get('ShortProfit%','')}% -> {r.get('Action','')}"
+            f"LEAP DTE={r.get('LongDTE','')} Δ={r.get('LongDelta','')} "
+            f"pnl={r.get('LongPnL%','')}% ann={r.get('AnnReturn%','')}% | "
+            f"short DTE={r.get('ShortDTE','')} profit={r.get('ShortProfit%','')}% "
+            f"-> {r.get('Action','')}"
         )
     return "\n".join(lines)
