@@ -487,6 +487,132 @@ def send_pcs_execution_email(
     logger.info("[pcs_email] sent to %s subject=%s", ", ".join(tos), subject)
 
 
+def format_pmcc_execution_report_text(
+    *,
+    stamp: str,
+    pmcc_opportunities_result: Optional[Dict] = None,
+    pmcc_lifecycle_result: Optional[Dict] = None,
+    subj_prefix: str = "PMCC — today",
+) -> str:
+    from .pmcc_lifecycle import format_pmcc_lifecycle_text
+    from .pmcc_opportunities import format_pmcc_opportunities_result_text
+
+    lines: List[str] = [
+        "",
+        "=" * 72,
+        f"{subj_prefix} — {stamp}",
+        "=" * 72,
+        "",
+        "PMCC screening — verify LEAP debit and short-call credit before trading.",
+    ]
+
+    if pmcc_lifecycle_result is not None:
+        lines.extend([
+            "\n## Open PMCC positions (positions.json)",
+            format_pmcc_lifecycle_text(pmcc_lifecycle_result.get("rows") or []),
+        ])
+
+    if pmcc_opportunities_result is not None:
+        lines.extend([
+            "\n## PMCC ideas — new setups",
+            format_pmcc_opportunities_result_text(pmcc_opportunities_result),
+        ])
+
+    lines.extend(["", "=" * 72, ""])
+    return "\n".join(lines)
+
+
+def send_pmcc_execution_email(
+    *,
+    stamp: str,
+    pmcc_opportunities_section_html: Optional[str] = None,
+    pmcc_opportunity_tickers: Optional[List[str]] = None,
+    pmcc_lifecycle_section_html: Optional[str] = None,
+    pmcc_actionable_tickers: Optional[List[str]] = None,
+    pmcc_opportunities_result: Optional[Dict] = None,
+    pmcc_lifecycle_result: Optional[Dict] = None,
+    subj_prefix: str = "PMCC — today",
+) -> None:
+    """Morning PMCC email: screening ideas + open-position lifecycle."""
+    if os.getenv("SEND_EMAIL", "0") != "1":
+        logger.info("[pmcc_email] SEND_EMAIL != 1 — not sending")
+        return
+
+    email_from = os.getenv("EMAIL_FROM")
+    pwd = os.getenv("EMAIL_PASSWORD")
+    tos = [t.strip() for t in os.getenv("EMAIL_TO", "").split(",") if t.strip()]
+    if not (email_from and pwd and tos):
+        logger.warning(
+            "[pmcc_email] missing EMAIL_FROM, EMAIL_PASSWORD, or EMAIL_TO — not sending"
+        )
+        return
+
+    subject = f"{subj_prefix} — {stamp}".strip()
+    alert_parts: List[str] = []
+    pa = pmcc_actionable_tickers or []
+    if pa:
+        px = ", ".join(str(t) for t in pa[:10])
+        if len(pa) > 10:
+            px += " …"
+        alert_parts.append(f"actions: {px}")
+    po = pmcc_opportunity_tickers or []
+    if po:
+        ox = ", ".join(str(t) for t in po[:8])
+        if len(po) > 8:
+            ox += " …"
+        alert_parts.append(f"ideas: {ox}")
+    if alert_parts:
+        subject = f"{subject} — " + " · ".join(alert_parts)
+
+    lifecycle_block = ""
+    if pmcc_lifecycle_section_html is not None:
+        lifecycle_block = (
+            "<h3>Open PMCC positions — lifecycle (positions.json)</h3>"
+            f"<div>{pmcc_lifecycle_section_html}</div>"
+        )
+
+    opp_block = ""
+    if pmcc_opportunities_section_html is not None:
+        opp_block = (
+            "<h3>PMCC ideas — LEAP + short call</h3>"
+            f"<div>{pmcc_opportunities_section_html}</div>"
+        )
+
+    if not opp_block and not lifecycle_block:
+        lifecycle_block = (
+            "<p><i>PMCC morning run produced no sections "
+            "(check PMCC_OPPORTUNITIES_ENABLED / PMCC_LIFECYCLE_ENABLED).</i></p>"
+        )
+
+    html_body = f"""<html><body>
+      <h2>{subj_prefix} — {stamp}</h2>
+      <p style="font-size:12px;color:#666">PMCC screening — live option quotes. Verify chain before orders.</p>
+      {lifecycle_block}
+      {opp_block}
+    </body></html>"""
+
+    plain = format_pmcc_execution_report_text(
+        stamp=stamp,
+        pmcc_opportunities_result=pmcc_opportunities_result,
+        pmcc_lifecycle_result=pmcc_lifecycle_result,
+        subj_prefix=subj_prefix,
+    )
+
+    msg = EmailMessage()
+    msg["From"] = email_from
+    msg["To"] = ", ".join(tos)
+    msg["Subject"] = subject
+    msg.set_content(plain)
+    msg.add_alternative(html_body, subtype="html")
+
+    ctx = ssl.create_default_context()
+    import smtplib
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as s:
+        s.login(email_from, pwd)
+        s.send_message(msg)
+    logger.info("[pmcc_email] sent to %s subject=%s", ", ".join(tos), subject)
+
+
 def send_email_report_with_sims(*,
     stamp: str,
     universe_tickers: List[str],

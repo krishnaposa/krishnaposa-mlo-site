@@ -269,6 +269,24 @@ def pcs_morning(pcs_timer: func.TimerRequest) -> None:
     except Exception as e:
         logging.exception(f"[pcs_morning] failed: {e}")
 
+# --------------------------- Timer: PMCC morning (~10:30 ET) ---------------------------
+@app.schedule(schedule="30 15 * * 1-5", arg_name="pmcc_timer", run_on_startup=False, use_monitor=True)
+def pmcc_morning(pmcc_timer: func.TimerRequest) -> None:
+    try:
+        from monitoring.pmcc_morning import run_pmcc_morning
+
+        result = run_pmcc_morning()
+        opp = result.get("opportunities") or {}
+        life = result.get("lifecycle") or {}
+        logging.info(
+            "[pmcc_morning] done — ideas=%d actionable=%d email_sent=%s",
+            len(opp.get("tickers") or []),
+            len(life.get("actionable") or []),
+            result.get("email_sent"),
+        )
+    except Exception as e:
+        logging.exception(f"[pmcc_morning] failed: {e}")
+
 # ---------- Timer: refresh cache ----------
 @app.schedule(schedule="0 9 * * 1-5", arg_name="myTimer", run_on_startup=True, use_monitor=True)
 def refresh_universe(myTimer: func.TimerRequest) -> None:

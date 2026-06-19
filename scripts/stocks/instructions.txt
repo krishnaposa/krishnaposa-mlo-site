@@ -160,7 +160,18 @@ python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100
 
 # positions.json shape:
 #   {"swings": [{"symbol","entry_price","entry_date","shares","stop_price"}],
-#    "spreads": [{"symbol","short_put","long_put","expiration","credit","entry_date"}]}
+#    "spreads": [{"symbol","short_put","long_put","expiration","credit","entry_date","contracts"}],
+#    "pmcc": [{"symbol","long_call","long_expiration","long_debit","entry_date","contracts",
+#              "short_call","short_expiration","short_credit","short_entry_date"}]}
+
+# PMCC morning email (pmcc_morning timer ~10:30 ET + run_pmcc_morning_adhoc.sh):
+#   monitoring/pmcc_opportunities.py — stock score + LEAP + short-call plan
+#   PMCC_OPPORTUNITIES_ENABLED=1, tickers from PIE_TICKERS_FILE / my_tickers.txt
+#   Score weights: growth 35%, liquidity 20%, IV 20%, trend 15%, LEAPS 10%
+#   LEAP: 18–30mo, Δ 0.80–0.95, extrinsic <15% | Short: 30–45 DTE, Δ 0.15–0.25
+#   PMCC_MIN_SCORE=5.5  PMCC_PREFILTER_N=80  PMCC_MAX_CHAIN_ANALYSIS=30  PMCC_MAX_CANDIDATES=12
+#   monitoring/pmcc_lifecycle.py — close short at 50% profit; roll if challenged
+#   PMCC_LIFECYCLE_ENABLED=1  PMCC_POSITIONS_FILE=scripts/stocks/positions.json
 
 
 

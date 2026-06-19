@@ -1,0 +1,195 @@
+"""
+Shared helpers for PMCC (Poor Man's Covered Call) opportunities and lifecycle.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import math
+import os
+from typing import Callable, Optional
+
+import numpy as np
+import pandas as pd
+from scipy.stats import norm
+
+PMCC_SHORT_PROFIT_TARGET = float(os.getenv("PMCC_SHORT_PROFIT_TARGET", "50"))
+PMCC_SHORT_MIN_DTE = int(os.getenv("PMCC_SHORT_MIN_DTE", "7"))
+PMCC_SHORT_ROLL_DTE = int(os.getenv("PMCC_SHORT_ROLL_DTE", "21"))
+PMCC_CHALLENGE_PCT = float(os.getenv("PMCC_CHALLENGE_PCT", "0.02"))
+PMCC_STRIKE_MATCH_TOL = float(os.getenv("PMCC_STRIKE_MATCH_TOL", "0.02"))
+PMCC_RISK_FREE = float(os.getenv("PMCC_RISK_FREE_RATE", "0.04"))
+
+PMCC_LEAP_MIN_DTE = int(os.getenv("PMCC_LEAP_MIN_DTE", "540"))
+PMCC_LEAP_MAX_DTE = int(os.getenv("PMCC_LEAP_MAX_DTE", "900"))
+PMCC_LEAP_TARGET_DTE = int(os.getenv("PMCC_LEAP_TARGET_DTE", "730"))
+PMCC_LEAP_DELTA_MIN = float(os.getenv("PMCC_LEAP_DELTA_MIN", "0.80"))
+PMCC_LEAP_DELTA_MAX = float(os.getenv("PMCC_LEAP_DELTA_MAX", "0.95"))
+PMCC_LEAP_DELTA_TARGET = float(os.getenv("PMCC_LEAP_DELTA_TARGET", "0.87"))
+PMCC_MAX_EXTRINSIC_PCT = float(os.getenv("PMCC_MAX_EXTRINSIC_PCT", "0.15"))
+
+PMCC_SHORT_MIN_DTE_WIN = int(os.getenv("PMCC_SHORT_MIN_DTE_WIN", "30"))
+PMCC_SHORT_MAX_DTE_WIN = int(os.getenv("PMCC_SHORT_MAX_DTE_WIN", "45"))
+PMCC_SHORT_DELTA_MIN = float(os.getenv("PMCC_SHORT_DELTA_MIN", "0.12"))
+PMCC_SHORT_DELTA_MAX = float(os.getenv("PMCC_SHORT_DELTA_MAX", "0.40"))
+PMCC_SHORT_DELTA_TARGET = float(os.getenv("PMCC_SHORT_DELTA_TARGET", "0.22"))
+
+PMCC_SHORT_MIN_OI = int(os.getenv("PMCC_SHORT_MIN_OI", "50"))
+PMCC_SHORT_MAX_SPREAD_PCT = float(os.getenv("PMCC_SHORT_MAX_SPREAD_PCT", "0.10"))
+
+
+def mid_price(row) -> float:
+    bid = float(row.get("bid") or 0.0)
+    ask = float(row.get("ask") or 0.0)
+    if bid > 0 and ask > 0 and ask >= bid:
+        return (bid + ask) / 2.0
+    return float(row.get("lastPrice") or 0.0)
+
+
+def spread_pct(row) -> float:
+    bid = float(row.get("bid") or 0.0)
+    ask = float(row.get("ask") or 0.0)
+    mid = mid_price(row)
+    if mid <= 0 or bid <= 0 or ask <= 0:
+        return float("nan")
+    return (ask - bid) / mid
+
+
+def leg_is_liquid(row, *, min_oi: int, max_spread_pct: float) -> bool:
+    oi = int(row.get("openInterest") or 0)
+    if oi < min_oi:
+        return False
+    sp = spread_pct(row)
+    return sp == sp and sp <= max_spread_pct
+
+
+def bs_call_delta(spot: float, strike: float, dte: int, iv: float, *, r: float = PMCC_RISK_FREE) -> float:
+    if spot <= 0 or strike <= 0 or dte <= 0 or iv <= 0:
+        return float("nan")
+    t = dte / 365.0
+    try:
+        d1 = (math.log(spot / strike) + (r + 0.5 * iv * iv) * t) / (iv * math.sqrt(t))
+        return float(norm.cdf(d1))
+    except (ValueError, ZeroDivisionError):
+        return float("nan")
+
+
+def intrinsic_call(spot: float, strike: float) -> float:
+    return max(spot - strike, 0.0)
+
+
+def extrinsic_pct(spot: float, strike: float, option_mid: float) -> float:
+    if option_mid <= 0:
+        return float("nan")
+    ext = option_mid - intrinsic_call(spot, strike)
+    return max(ext, 0.0) / option_mid
+
+
+def call_row_for_strike(calls: pd.DataFrame, strike: float, *, tol: float | None = None) -> Optional[pd.Series]:
+    if calls is None or calls.empty or "strike" not in calls.columns:
+        return None
+    tol = PMCC_STRIKE_MATCH_TOL if tol is None else tol
+    target = float(strike)
+    diffs = (calls["strike"].astype(float) - target).abs()
+    if diffs.empty:
+        return None
+    idx = diffs.idxmin()
+    if float(diffs.loc[idx]) > tol:
+        return None
+    return calls.loc[idx]
+
+
+def choose_expiry(
+    expiries: list[str],
+    *,
+    min_dte: int,
+    max_dte: int,
+    target_dte: int | None = None,
+    today: dt.date | None = None,
+) -> tuple[Optional[str], Optional[int]]:
+    if today is None:
+        today = dt.date.today()
+    if target_dte is None:
+        target_dte = (min_dte + max_dte) // 2
+
+    best: Optional[str] = None
+    best_dte: Optional[int] = None
+    for exp in expiries or []:
+        try:
+            dte = (dt.datetime.strptime(exp, "%Y-%m-%d").date() - today).days
+        except Exception:
+            continue
+        if dte < min_dte or dte > max_dte:
+            continue
+        if best is None or abs(dte - target_dte) < abs((best_dte or 0) - target_dte):
+            best = exp
+            best_dte = dte
+    return (best, best_dte) if best else (None, None)
+
+
+def has_weekly_expiries(expiries: list[str], today: dt.date | None = None) -> bool:
+    if today is None:
+        today = dt.date.today()
+    for exp in expiries or []:
+        try:
+            dte = (dt.datetime.strptime(exp, "%Y-%m-%d").date() - today).days
+        except Exception:
+            continue
+        if 1 <= dte <= 10:
+            return True
+    return False
+
+
+def determine_short_call_phase(
+    *,
+    dte: int,
+    profit_pct: float,
+    spot: float,
+    short_strike: float,
+    profit_known: bool,
+) -> str:
+    if profit_known and profit_pct >= PMCC_SHORT_PROFIT_TARGET:
+        return "CLOSE_PROFIT"
+    if spot == spot and short_strike > 0 and spot >= short_strike:
+        return "CHALLENGED"
+    if (
+        spot == spot
+        and short_strike > 0
+        and spot >= short_strike * (1.0 - PMCC_CHALLENGE_PCT)
+        and dte <= PMCC_SHORT_ROLL_DTE
+    ):
+        return "ROLL"
+    if dte <= PMCC_SHORT_MIN_DTE:
+        return "EXPIRING"
+    if dte <= PMCC_SHORT_ROLL_DTE:
+        return "MANAGE"
+    return "HOLD"
+
+
+def short_call_action_for_phase(phase: str, *, verify_suffix: str = "") -> str:
+    mapping = {
+        "CLOSE_PROFIT": f"CLOSE short (≥{PMCC_SHORT_PROFIT_TARGET:g}% profit)",
+        "CHALLENGED": "DEFEND / ROLL short (price at/above short strike)",
+        "ROLL": f"ROLL short (<{PMCC_SHORT_ROLL_DTE}DTE, near strike)",
+        "EXPIRING": f"CLOSE/ROLL short (≤{PMCC_SHORT_MIN_DTE}DTE)",
+        "MANAGE": f"MANAGE short (≤{PMCC_SHORT_ROLL_DTE}DTE)",
+        "HOLD": "HOLD short (let decay)",
+        "NO_SHORT": "SELL short call (30–45 DTE, Δ 0.15–0.25)",
+        "BAD_DATA": "VERIFY position data",
+    }
+    base = mapping.get(phase, "VERIFY MANUALLY")
+    return f"{base}{verify_suffix}" if verify_suffix else base
+
+
+def is_pmcc_highlight_action(action: str) -> bool:
+    act = str(action).upper()
+    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "MANAGE", "VERIFY", "EXPIRING")
+    return any(k in act for k in keywords)
+
+
+def is_pmcc_urgent_action(action: str) -> bool:
+    act = str(action).upper()
+    if act.startswith("HOLD"):
+        return False
+    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT")
+    return any(k in act for k in keywords)
