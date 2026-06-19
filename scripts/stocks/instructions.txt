@@ -167,7 +167,8 @@ python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100
 # PMCC morning email (pmcc_morning timer ~10:30 ET + run_pmcc_morning_adhoc.sh):
 #   monitoring/pmcc_opportunities.py — stock score + LEAP + short-call plan
 #   PMCC_OPPORTUNITIES_ENABLED=1, tickers from PIE_TICKERS_FILE / my_tickers.txt
-#   Score weights: growth 35%, liquidity 20%, IV 20%, trend 15%, LEAPS 10%
+#   Score weights: 2yr thesis 30% (1Y/3M returns + YoY growth), fundamentals 30% (rev/earn/margin/P/S)
+#   PMCC_BLOCK_FUND_FAIL=1 blocks FAIL verdict (mcap, shrinking rev, extreme P/S)
 #   LEAP: 18–30mo, Δ 0.80–0.95, extrinsic <15% | Short: 30–45 DTE, Δ 0.15–0.25
 #   PMCC_MIN_SCORE=5.5  PMCC_PREFILTER_N=80  PMCC_MAX_CHAIN_ANALYSIS=30  PMCC_MAX_CANDIDATES=12
 #   monitoring/pmcc_lifecycle.py — close short at 50% profit; roll if challenged
