@@ -514,7 +514,7 @@ def _pick_leap_leg(
 
 
 def _pick_short_call_relaxed(calls: pd.DataFrame, spot: float, dte: int) -> Optional[dict]:
-    """Fallback short pick — wider delta/spread when strict match finds nothing."""
+    """Fallback short pick — relax liquidity/spread only; delta stays 0.15–0.25."""
     if calls is None or calls.empty:
         return None
 
@@ -528,14 +528,14 @@ def _pick_short_call_relaxed(calls: pd.DataFrame, spot: float, dte: int) -> Opti
         if bid <= 0 or ask <= 0:
             continue
         oi = int(row.get("openInterest") or 0)
-        if oi < 20:
+        if oi < 10:
             continue
         strike = float(row["strike"])
         iv = float(row.get("impliedVolatility") or 0.0)
         if iv <= 0:
             continue
         delta = bs_call_delta(spot, strike, dte, iv)
-        if delta != delta or delta < 0.08 or delta > 0.50:
+        if delta != delta or delta < PMCC_SHORT_DELTA_MIN or delta > PMCC_SHORT_DELTA_MAX:
             continue
         mid = mid_price(row)
         if mid <= 0:
@@ -886,7 +886,10 @@ def _fmt_pmcc(col: str, val) -> str:
             return str(val)
     if col in ("LeapDelta", "ShortDelta", "Score", "Ret1Y%", "Ret3M%", "ShortMonthly%"):
         try:
-            return f"{float(val):.1f}"
+            fval = float(val)
+            if fval != fval:
+                return ""
+            return f"{fval:.2f}" if col in ("LeapDelta", "ShortDelta") else f"{fval:.1f}"
         except (TypeError, ValueError):
             return str(val)
     return str(val)
