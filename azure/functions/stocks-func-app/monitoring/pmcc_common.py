@@ -47,6 +47,7 @@ PMCC_MODE = os.getenv("PMCC_MODE", "core").strip().lower()
 PMCC_EARNINGS_BLOCK_DAYS = int(os.getenv("PMCC_EARNINGS_BLOCK_DAYS", "7"))
 PMCC_MIN_MONTHLY_ON_DEBIT = float(os.getenv("PMCC_MIN_MONTHLY_ON_DEBIT", "1.0"))
 PMCC_SHORT_DELTA_TIEBREAK = float(os.getenv("PMCC_SHORT_DELTA_TIEBREAK", "0.15"))
+PMCC_MAX_BREAKEVEN_PCT_ABOVE_SPOT = float(os.getenv("PMCC_MAX_BREAKEVEN_PCT_ABOVE_SPOT", "5"))
 
 
 def mid_price(row) -> float:
@@ -100,17 +101,36 @@ def extrinsic_pct(spot: float, strike: float, option_mid: float) -> float:
     return max(ext, 0.0) / option_mid
 
 
+def breakeven_pct_above_spot(spot: float, breakeven: float) -> float:
+    if spot <= 0 or breakeven != breakeven:
+        return float("nan")
+    return (breakeven / spot - 1.0) * 100.0
+
+
+def breakeven_ok_vs_spot(spot: float, breakeven: float) -> bool:
+    """Breakeven at or slightly above spot; ideal is BE <= spot (<= 0%)."""
+    pct = breakeven_pct_above_spot(spot, breakeven)
+    if pct != pct:
+        return False
+    return pct <= PMCC_MAX_BREAKEVEN_PCT_ABOVE_SPOT
+
+
 def pmcc_structure_ok(
     *,
     leap_strike: float,
     leap_debit: float,
     short_strike: float,
     short_credit: float,
+    spot: float | None = None,
 ) -> bool:
-    """Short strike must exceed long strike + net debit (LEAP debit minus short credit)."""
+    """Short strike > breakeven; breakeven within PMCC_MAX_BREAKEVEN_PCT_ABOVE_SPOT of spot."""
     net_debit = leap_debit - short_credit
     breakeven = leap_strike + net_debit
-    return short_strike > breakeven
+    if short_strike <= breakeven:
+        return False
+    if spot is not None and spot > 0:
+        return breakeven_ok_vs_spot(spot, breakeven)
+    return True
 
 
 def pmcc_trade_metrics(
@@ -128,11 +148,13 @@ def pmcc_trade_metrics(
     upside_room = (short_strike / spot - 1.0) * 100.0 if spot > 0 else float("nan")
     monthly_on_debit = short_credit / leap_debit * 100.0 if leap_debit > 0 else float("nan")
     annualized_on_debit = monthly_on_debit * (365.0 / max(short_dte, 1))
+    be_vs_spot = breakeven_pct_above_spot(spot, breakeven)
 
     return {
         "NetDebit": round(net_debit, 2),
         "MaxRisk": round(max_risk, 0),
         "Breakeven": round(breakeven, 2),
+        "BreakevenVsSpot%": round(be_vs_spot, 2) if be_vs_spot == be_vs_spot else None,
         "UpsideRoom%": round(upside_room, 1),
         "MonthlyOnDebit%": round(monthly_on_debit, 2),
         "AnnualizedOnDebit%": round(annualized_on_debit, 1),
@@ -167,7 +189,14 @@ def short_leg_pick_score(short: dict, *, delta: float) -> float:
     ann = float(short.get("AnnualizedOnDebit%") or 0.0)
     delta_fit = max(0.0, PMCC_SHORT_DELTA_MAX - abs(delta - PMCC_SHORT_DELTA_TARGET))
     oi = float(short.get("oi") or 0.0)
-    return monthly * 4.0 + ann * 0.03 + delta_fit * PMCC_SHORT_DELTA_TIEBREAK + min(oi, 1000) / 2000.0
+    score = monthly * 4.0 + ann * 0.03 + delta_fit * PMCC_SHORT_DELTA_TIEBREAK + min(oi, 1000) / 2000.0
+    be_vs = short.get("BreakevenVsSpot%")
+    if be_vs is not None and be_vs == be_vs:
+        if be_vs <= 0:
+            score += 2.0
+        elif be_vs <= 3.0:
+            score += 1.0
+    return score
 
 
 def call_row_for_strike(calls: pd.DataFrame, strike: float, *, tol: float | None = None) -> Optional[pd.Series]:
@@ -333,7 +362,7 @@ def combine_pmcc_actions(*, leap_phase: str, short_phase: str, short_action: str
 
 def is_pmcc_highlight_action(action: str) -> bool:
     act = str(action).upper()
-    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "MANAGE", "VERIFY", "EXPIRING", "EXIT LEAP", "WATCH LEAP", "FIX STRUCTURE")
+    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "MANAGE", "VERIFY", "EXPIRING", "EXIT LEAP", "WATCH LEAP", "FIX STRUCTURE", "FIX BREAKEVEN")
     return any(k in act for k in keywords)
 
 
@@ -341,5 +370,5 @@ def is_pmcc_urgent_action(action: str) -> bool:
     act = str(action).upper()
     if act.startswith("HOLD"):
         return False
-    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "EXIT LEAP", "FIX STRUCTURE")
+    keywords = ("CLOSE", "ROLL", "DEFEND", "SELL SHORT", "EXIT LEAP", "FIX STRUCTURE", "FIX BREAKEVEN")
     return any(k in act for k in keywords)

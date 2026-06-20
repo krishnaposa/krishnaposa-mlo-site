@@ -40,6 +40,7 @@ from .pmcc_common import (
     PMCC_LEAP_EXIT_DELTA_MIN,
     PMCC_LEAP_EXIT_GAIN_MIN,
     PMCC_LEAP_EXIT_MIN_DTE,
+    PMCC_MAX_BREAKEVEN_PCT_ABOVE_SPOT,
     PMCC_SHORT_PROFIT_TARGET,
     PMCC_TARGET_ANNUAL_RETURN,
     bs_call_delta,
@@ -324,8 +325,16 @@ def review_pmcc_positions(
                 leap_debit=long_debit,
                 short_strike=short_k,
                 short_credit=short_credit,
+                spot=float(price) if price == price else None,
             ):
                 combined_action = f"FIX STRUCTURE (short ≤ BE {trade_metrics.get('Breakeven')}); {combined_action}"
+            elif price == price:
+                be_vs = trade_metrics.get("BreakevenVsSpot%")
+                if be_vs is not None and be_vs == be_vs and be_vs > PMCC_MAX_BREAKEVEN_PCT_ABOVE_SPOT:
+                    combined_action = (
+                        f"FIX BREAKEVEN (BE {be_vs:.1f}% above spot, max {PMCC_MAX_BREAKEVEN_PCT_ABOVE_SPOT:g}%); "
+                        f"{combined_action}"
+                    )
 
         rows.append({
             "Ticker": sym,
@@ -342,6 +351,7 @@ def review_pmcc_positions(
             "AnnReturn%": round(ann_return, 1) if ann_return == ann_return else None,
             "NetDebit": trade_metrics.get("NetDebit"),
             "Breakeven": trade_metrics.get("Breakeven"),
+            "BreakevenVsSpot%": trade_metrics.get("BreakevenVsSpot%"),
             "MaxRisk": trade_metrics.get("MaxRisk"),
             "MonthlyOnDebit%": trade_metrics.get("MonthlyOnDebit%"),
             "ShortExp": short_exp or "—",
@@ -398,7 +408,7 @@ PMCC_COLS = [
     "LongDelta",
     "LongPnL%",
     "NetDebit",
-    "Breakeven",
+    "BreakevenVsSpot%",
     "ShortDTE",
     "ShortProfit%",
     "MonthlyOnDebit%",
@@ -412,7 +422,8 @@ def _leap_exit_rules_html() -> str:
         f"DTE &lt; {PMCC_LEAP_EXIT_MIN_DTE // 30} months · REDUCE/SELL signal · "
         f"gain ≥{PMCC_LEAP_EXIT_GAIN_MIN:g}% · Δ &lt; {PMCC_LEAP_EXIT_DELTA_MIN:g} · "
         f"annualized ≥{PMCC_TARGET_ANNUAL_RETURN:g}% · better PMCC in ideas.<br>"
-        "Structure: short strike must exceed long strike + net debit.<br>"
+        "Structure: short strike > breakeven; breakeven ≤ "
+        f"{PMCC_MAX_BREAKEVEN_PCT_ABOVE_SPOT:g}% above spot (ideal: at/below spot).<br>"
         "<b>Otherwise:</b> close short at ≥50% profit; roll if challenged; keep selling calls.</p>"
     )
 

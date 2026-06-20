@@ -59,6 +59,7 @@ from .pmcc_common import (
     short_leg_pick_score,
     spread_pct,
     PMCC_MIN_MONTHLY_ON_DEBIT,
+    PMCC_MAX_BREAKEVEN_PCT_ABOVE_SPOT,
 )
 
 logger = logging.getLogger(__name__)
@@ -598,12 +599,13 @@ def _pick_leap_leg(calls: pd.DataFrame, spot: float, dte: int) -> Optional[dict]
     return best
 
 
-def _pmcc_structure_ok(leap: dict, short: dict) -> bool:
+def _pmcc_structure_ok(leap: dict, short: dict, spot: float) -> bool:
     return pmcc_structure_ok(
         leap_strike=float(leap["strike"]),
         leap_debit=float(leap["mid"]),
         short_strike=float(short["strike"]),
         short_credit=float(short["credit"]),
+        spot=spot,
     )
 
 
@@ -679,7 +681,7 @@ def _pick_short_call_relaxed(
             "iv_pct": round(iv * 100, 1),
         }
 
-        if not _pmcc_structure_ok(leap, short):
+        if not _pmcc_structure_ok(leap, short, spot):
             continue
 
         metrics = _pmcc_metrics(leap, short, spot, dte)
@@ -748,7 +750,7 @@ def _pick_short_call(
             "iv_pct": round(iv * 100, 1),
         }
 
-        if not _pmcc_structure_ok(leap, short):
+        if not _pmcc_structure_ok(leap, short, spot):
             continue
 
         metrics = _pmcc_metrics(leap, short, spot, dte)
@@ -1000,6 +1002,7 @@ def _analyze_symbol(
         "NetDebit": short["NetDebit"],
         "MaxRisk": short["MaxRisk"],
         "Breakeven": short["Breakeven"],
+        "BreakevenVsSpot%": short.get("BreakevenVsSpot%"),
         "UpsideRoom%": short["UpsideRoom%"],
         "MonthlyOnDebit%": short["MonthlyOnDebit%"],
         "AnnualizedOnDebit%": short["AnnualizedOnDebit%"],
@@ -1080,7 +1083,6 @@ PMCC_TABLE_COLS = [
     "Ret3M%",
     "LeapExp",
     "LeapStrike",
-    "LeapDebit",
     "LeapDelta",
     "ShortExp",
     "ShortStrike",
@@ -1088,10 +1090,7 @@ PMCC_TABLE_COLS = [
     "ShortDelta",
     "NetDebit",
     "Breakeven",
-    "MaxRisk",
-    "UpsideRoom%",
     "MonthlyOnDebit%",
-    "AnnualizedOnDebit%",
 ]
 
 
@@ -1107,7 +1106,6 @@ def _fmt_pmcc(col: str, val) -> str:
 
     if col in (
         "Price",
-        "LeapDebit",
         "ShortCredit",
         "LeapStrike",
         "ShortStrike",
@@ -1129,11 +1127,7 @@ def _fmt_pmcc(col: str, val) -> str:
         "Score",
         "Ret1Y%",
         "Ret3M%",
-        "ShortMonthly%",
-        "UpsideRoom%",
         "MonthlyOnDebit%",
-        "AnnualizedOnDebit%",
-        "MaxRisk",
     ):
         try:
             fval = float(val)
@@ -1181,8 +1175,9 @@ def format_pmcc_opportunities_html(
         "Score weights: thesis 25%, fundamentals 25%, short income 20%, liquidity 10%, IV 10%, trend 10%. "
         "Short call picked for max premium (MonthlyOnDebit%) within Δ 0.15–0.25 across 25–55 DTE expiries. "
         "Long LEAP: 18–30mo, Δ 0.80–0.95, low extrinsic. "
-        "PMCC structure requires short strike > long strike + net debit. "
-        "MonthlyOnDebit% = short credit / LEAPS debit. "
+        "PMCC structure requires short strike > breakeven; breakeven ≤ "
+        f"{PMCC_MAX_BREAKEVEN_PCT_ABOVE_SPOT:g}% above spot (ideal: at/below spot). "
+        "MonthlyOnDebit% = short income per month as % of net LEAP cost. "
         "Close short at 50% profit. Verify chain before trading."
         "</p>"
     )
@@ -1202,12 +1197,11 @@ def format_pmcc_opportunities_text(rows: List[dict], *, scanned: int, prefiltere
         lines.append(
             f"  {r.get('Ticker','')} Grade={r.get('Grade','')} Signal={r.get('Signal','')} "
             f"score={r.get('Score','')} 1Y={r.get('Ret1Y%','')}% 3M={r.get('Ret3M%','')}% "
-            f"LEAP {r.get('LeapExp','')} {r.get('LeapStrike','')} @ {r.get('LeapDebit','')} "
-            f"Δ={r.get('LeapDelta','')} | short {r.get('ShortExp','')} "
-            f"{r.get('ShortStrike','')} cr {r.get('ShortCredit','')} "
-            f"Δ={r.get('ShortDelta','')} netDebit={r.get('NetDebit','')} "
-            f"BE={r.get('Breakeven','')} risk=${r.get('MaxRisk','')} "
-            f"moDebit%={r.get('MonthlyOnDebit%','')} annDebit%={r.get('AnnualizedOnDebit%','')}"
+            f"LEAP {r.get('LeapExp','')} {r.get('LeapStrike','')} Δ={r.get('LeapDelta','')} | "
+            f"short {r.get('ShortExp','')} {r.get('ShortStrike','')} "
+            f"cr {r.get('ShortCredit','')} Δ={r.get('ShortDelta','')} "
+            f"netDebit={r.get('NetDebit','')} BE={r.get('Breakeven','')} "
+            f"income={r.get('MonthlyOnDebit%','')}%/mo"
         )
 
     lines.append("")
