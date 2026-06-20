@@ -173,7 +173,8 @@ python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100
 #   PMCC_BLOCK_NEG_1Y=1 blocks negative 1Y return
 #   PMCC_EARNINGS_BLOCK_DAYS=7 blocks ideas with earnings within N days
 #   Structure: short strike > long strike + net debit; table shows NetDebit/Breakeven/MaxRisk
-#   LEAP: 18–30mo, Δ 0.80–0.95, extrinsic <15% | Short: 30–45 DTE, Δ 0.15–0.25
+#   Short: Δ 0.15–0.25; picks max MonthlyOnDebit% across 25–55 DTE (PMCC_MIN_MONTHLY_ON_DEBIT=1)
+#   Score: thesis 25%, fund 25%, short income 20%, liq/IV/trend 10% each
 #   PMCC_MIN_SCORE=6.0  PMCC_PREFILTER_N=120  PMCC_MAX_CHAIN_ANALYSIS=80  PMCC_MAX_CANDIDATES=12
 #   monitoring/pmcc_lifecycle.py — LEAP exit + short-call management
 #   EXIT LEAP: DTE<12mo, REDUCE/SELL, gain≥75%, Δ<0.70, ann return≥25%, better idea in scan

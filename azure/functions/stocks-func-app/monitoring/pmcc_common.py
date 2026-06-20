@@ -45,6 +45,8 @@ PMCC_BETTER_OPP_MIN_SCORE = float(os.getenv("PMCC_BETTER_OPP_MIN_SCORE", "8.0"))
 
 PMCC_MODE = os.getenv("PMCC_MODE", "core").strip().lower()
 PMCC_EARNINGS_BLOCK_DAYS = int(os.getenv("PMCC_EARNINGS_BLOCK_DAYS", "7"))
+PMCC_MIN_MONTHLY_ON_DEBIT = float(os.getenv("PMCC_MIN_MONTHLY_ON_DEBIT", "1.0"))
+PMCC_SHORT_DELTA_TIEBREAK = float(os.getenv("PMCC_SHORT_DELTA_TIEBREAK", "0.15"))
 
 
 def mid_price(row) -> float:
@@ -135,6 +137,37 @@ def pmcc_trade_metrics(
         "MonthlyOnDebit%": round(monthly_on_debit, 2),
         "AnnualizedOnDebit%": round(annualized_on_debit, 1),
     }
+
+
+def pmcc_income_score(monthly_on_debit_pct: float) -> float:
+    """Score short-call income vs LEAP debit (typical PMCC: ~1.5–6%/month on debit)."""
+    if monthly_on_debit_pct != monthly_on_debit_pct:
+        return 5.0
+    m = monthly_on_debit_pct
+    if m >= 6.0:
+        return 10.0
+    if m >= 5.0:
+        return 9.0
+    if m >= 4.0:
+        return 8.0
+    if m >= 3.0:
+        return 7.0
+    if m >= 2.0:
+        return 6.0
+    if m >= 1.5:
+        return 5.0
+    if m >= 1.0:
+        return 4.0
+    return 3.0
+
+
+def short_leg_pick_score(short: dict, *, delta: float) -> float:
+    """Higher is better — maximize short premium while staying in delta band."""
+    monthly = float(short.get("MonthlyOnDebit%") or 0.0)
+    ann = float(short.get("AnnualizedOnDebit%") or 0.0)
+    delta_fit = max(0.0, PMCC_SHORT_DELTA_MAX - abs(delta - PMCC_SHORT_DELTA_TARGET))
+    oi = float(short.get("oi") or 0.0)
+    return monthly * 4.0 + ann * 0.03 + delta_fit * PMCC_SHORT_DELTA_TIEBREAK + min(oi, 1000) / 2000.0
 
 
 def call_row_for_strike(calls: pd.DataFrame, strike: float, *, tol: float | None = None) -> Optional[pd.Series]:

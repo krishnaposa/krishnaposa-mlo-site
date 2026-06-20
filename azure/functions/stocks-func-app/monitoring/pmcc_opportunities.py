@@ -55,7 +55,10 @@ from .pmcc_common import (
     mid_price,
     pmcc_structure_ok,
     pmcc_trade_metrics,
+    pmcc_income_score,
+    short_leg_pick_score,
     spread_pct,
+    PMCC_MIN_MONTHLY_ON_DEBIT,
 )
 
 logger = logging.getLogger(__name__)
@@ -633,7 +636,7 @@ def _pick_short_call_relaxed(
 
     otm = calls[calls["strike"].astype(float) > spot * 1.005]
     best = None
-    best_rank = float("inf")
+    best_rank = float("-inf")
 
     for _, row in otm.iterrows():
         bid = float(row.get("bid") or 0.0)
@@ -683,9 +686,9 @@ def _pick_short_call_relaxed(
         short.update(metrics)
         short["monthly_pct"] = metrics["MonthlyOnDebit%"]
 
-        rank = abs(delta - PMCC_SHORT_DELTA_TARGET) - min(oi, 500) / 5000.0
+        rank = short_leg_pick_score(short, delta=delta)
 
-        if rank < best_rank:
+        if rank > best_rank:
             best_rank = rank
             best = short
 
@@ -718,7 +721,7 @@ def _pick_short_call(
         return None
 
     best = None
-    best_rank = float("inf")
+    best_rank = float("-inf")
 
     for _, row in otm.iterrows():
         strike = float(row["strike"])
@@ -752,11 +755,11 @@ def _pick_short_call(
         short.update(metrics)
         short["monthly_pct"] = metrics["MonthlyOnDebit%"]
 
-        delta_dist = abs(delta - PMCC_SHORT_DELTA_TARGET)
-        oi_penalty = 0.0 if _safe_oi(row) >= PMCC_MIN_OI else 0.5
-        rank = delta_dist + oi_penalty
+        rank = short_leg_pick_score(short, delta=delta)
+        if _safe_oi(row) < PMCC_MIN_OI:
+            rank -= 0.5
 
-        if rank < best_rank:
+        if rank > best_rank:
             best_rank = rank
             best = short
 
@@ -841,8 +844,9 @@ def _analyze_symbol(
         return None
 
     short = None
-    short_expiry_used = short_exp
-    short_dte_used = short_dte
+    short_expiry_used: Optional[str] = None
+    short_dte_used: Optional[int] = None
+    best_short_rank = float("-inf")
 
     short_exp_candidates: List[str] = []
 
@@ -858,24 +862,38 @@ def _analyze_symbol(
         if 25 <= dte <= 55 and exp not in short_exp_candidates:
             short_exp_candidates.append(exp)
 
-    for exp in short_exp_candidates[:6]:
+    for exp in short_exp_candidates[:8]:
         try:
             dte = (datetime.strptime(exp, "%Y-%m-%d").date() - today).days
             short_calls = tk.option_chain(exp).calls
         except Exception:
             continue
 
-        short = _pick_short_call(short_calls, spot, dte, leap)
+        candidate = _pick_short_call(short_calls, spot, dte, leap)
+        if candidate is None:
+            candidate = _pick_short_call_relaxed(short_calls, spot, dte, leap)
 
-        if short is None:
-            short = _pick_short_call_relaxed(short_calls, spot, dte, leap)
+        if not candidate:
+            continue
 
-        if short:
+        pick_rank = short_leg_pick_score(candidate, delta=float(candidate["delta"]))
+        if pick_rank > best_short_rank:
+            best_short_rank = pick_rank
+            short = candidate
             short_expiry_used = exp
             short_dte_used = dte
-            break
 
     if not short:
+        return None
+
+    monthly_on_debit = float(short.get("MonthlyOnDebit%") or 0.0)
+    if monthly_on_debit == monthly_on_debit and monthly_on_debit < PMCC_MIN_MONTHLY_ON_DEBIT:
+        logger.info(
+            "[pmcc] %s blocked — short income %.2f%%/mo on debit < %.2f%%",
+            sym,
+            monthly_on_debit,
+            PMCC_MIN_MONTHLY_ON_DEBIT,
+        )
         return None
 
     try:
@@ -922,12 +940,14 @@ def _analyze_symbol(
     iv_score = min(iv_score, 10.0)
 
     trend_score = min(float(row.get("TrendPts", 0)) * 1.25, 10.0)
+    income_score = pmcc_income_score(monthly_on_debit)
 
     total = (
-        0.30 * leap_thesis
-        + 0.30 * fund_score
-        + 0.15 * liq_score
-        + 0.15 * iv_score
+        0.25 * leap_thesis
+        + 0.25 * fund_score
+        + 0.20 * income_score
+        + 0.10 * liq_score
+        + 0.10 * iv_score
         + 0.10 * trend_score
     )
 
@@ -947,6 +967,7 @@ def _analyze_symbol(
         "Score": round(total, 1),
         "LeapThesis": round(leap_thesis, 1),
         "Fund": round(fund_score, 1),
+        "Income": round(income_score, 1),
         "FundVerdict": fund.get("verdict", ""),
         "Ret1Y%": round(ret_252 * 100, 1) if ret_252 == ret_252 else None,
         "Ret3M%": round(ret_63 * 100, 1) if ret_63 == ret_63 else None,
@@ -1035,7 +1056,10 @@ def run_pmcc_opportunities() -> Dict[str, Any]:
         except Exception as e:
             logger.info("[pmcc] %s analyze failed: %s", r.get("Ticker"), e)
 
-    rows.sort(key=lambda x: float(x.get("Score") or 0), reverse=True)
+    rows.sort(
+        key=lambda x: (float(x.get("Score") or 0), float(x.get("MonthlyOnDebit%") or 0)),
+        reverse=True,
+    )
     rows = rows[:PMCC_MAX_CANDIDATES]
 
     out["rows"] = rows
@@ -1154,9 +1178,9 @@ def format_pmcc_opportunities_html(
         f"{len(rows)} passed score ≥{PMCC_MIN_SCORE:g}. Mode={_esc(PMCC_MODE)}.</p>"
         f"{table}"
         "<p style='font-size:11px;color:#666'>"
-        "Score weights: 2yr thesis 30%, fundamentals 30%, liquidity 15%, IV 15%, trend 10%. "
+        "Score weights: thesis 25%, fundamentals 25%, short income 20%, liquidity 10%, IV 10%, trend 10%. "
+        "Short call picked for max premium (MonthlyOnDebit%) within Δ 0.15–0.25 across 25–55 DTE expiries. "
         "Long LEAP: 18–30mo, Δ 0.80–0.95, low extrinsic. "
-        "Short call: 30–45 DTE, Δ 0.15–0.25. "
         "PMCC structure requires short strike > long strike + net debit. "
         "MonthlyOnDebit% = short credit / LEAPS debit. "
         "Close short at 50% profit. Verify chain before trading."
