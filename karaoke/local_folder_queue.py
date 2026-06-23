@@ -179,9 +179,13 @@ try:
 except ValueError:
     MIN_STEM_WAV_BYTES = 4096
 try:
-    MIN_STEM_DURATION_SEC = float((os.environ.get("KARAOKE_MIN_STEM_DURATION_SEC") or "0.15").strip())
+    MIN_STEM_DURATION_SEC = float((os.environ.get("KARAOKE_MIN_STEM_DURATION_SEC") or "5.0").strip())
 except ValueError:
-    MIN_STEM_DURATION_SEC = 0.15
+    MIN_STEM_DURATION_SEC = 5.0
+try:
+    MIN_STEM_SOURCE_RATIO = float((os.environ.get("KARAOKE_MIN_STEM_SOURCE_RATIO") or "0.85").strip())
+except ValueError:
+    MIN_STEM_SOURCE_RATIO = 0.85
 KARAOKE_LIST_CACHE_TTL = float((os.environ.get("KARAOKE_LIST_CACHE_TTL") or "2.0").strip())
 
 
@@ -904,7 +908,13 @@ def seed_lyrics_metadata_from_audio(
     return payload
 
 
-def _validate_stem_files(job_id: str, voc_path: Path, band_path: Path) -> None:
+def _validate_stem_files(
+    job_id: str,
+    voc_path: Path,
+    band_path: Path,
+    *,
+    source_duration: Optional[float] = None,
+) -> None:
     """Raise if stem WAVs are missing, tiny on disk, or have no usable audio duration."""
     for label, p in (("vocals", voc_path), ("band / instrumental", band_path)):
         try:
@@ -925,8 +935,20 @@ def _validate_stem_files(job_id: str, voc_path: Path, band_path: Path) -> None:
         if dur is not None and dur < MIN_STEM_DURATION_SEC:
             raise RuntimeError(
                 f"{label} stem decodes to ~{dur:.3f}s (< {MIN_STEM_DURATION_SEC}s). "
-                "Silence-removal may have deleted all audio, or the source is effectively empty. "
-                "Try KARAOKE_PRETRIM=0 or increase KARAOKE_MIN_STEM_DURATION_SEC only after fixing trim."
+                "Silence-removal may have deleted all audio, Spleeter/Demucs failed, "
+                "or MP3 was not decoded fully — ensure ffmpeg is on PATH. "
+                "Try KARAOKE_PRETRIM=0; verify spleeter/tensorflow per requirements.txt."
+            )
+        if (
+            source_duration is not None
+            and source_duration >= MIN_STEM_DURATION_SEC
+            and dur is not None
+            and dur < source_duration * MIN_STEM_SOURCE_RATIO
+        ):
+            raise RuntimeError(
+                f"{label} stem is ~{dur:.1f}s but source was ~{source_duration:.1f}s "
+                f"(< {MIN_STEM_SOURCE_RATIO:.0%} of source). "
+                "Separator likely failed — check worker console for spleeter/demucs errors."
             )
         if frames is None and dur is None:
             LOG.warning(
@@ -940,7 +962,8 @@ def _validate_stem_files(job_id: str, voc_path: Path, band_path: Path) -> None:
     vsz = voc_path.stat().st_size
     bsz = band_path.stat().st_size
     LOG.info(
-        "[%s] stems ok on disk: vocals=%s bytes (~%s) band=%s bytes (~%s)",
+        "[%s] stems ok on disk: vocals=%s bytes (~%s) band=%s bytes (~%s)"
+        + (f" source=~{source_duration:.2f}s" if source_duration else ""),
         job_id,
         vsz,
         f"{vdur:.2f}s" if vdur is not None else "?",
@@ -1007,6 +1030,70 @@ def pretrim_audio_if_needed(work_audio: Path, tdp: Path, job_id: str) -> Tuple[P
         return work_audio, work_audio.stem
     LOG.info("[%s] pre-trim ok -> %s", job_id, out_wav)
     return out_wav, out_wav.stem
+
+
+def ensure_separator_input(
+    work_audio: Path,
+    tdp: Path,
+    job_id: str,
+    stem_hint: str,
+) -> Tuple[Path, str]:
+    """
+    Decode to 44.1kHz stereo PCM WAV before Spleeter/Demucs.
+    MP3/M4A direct input often yields truncated stems on Windows without this step.
+    Pre-trim already writes 44.1kHz stereo WAV — reuse it when duration is valid.
+    """
+    stem = (stem_hint or work_audio.stem or "audio").strip() or "audio"
+
+    if work_audio.suffix.lower() == ".wav":
+        dur = _ffprobe_duration_seconds(work_audio)
+        if dur is not None and dur >= MIN_STEM_DURATION_SEC:
+            LOG.info("[%s] separator input WAV ~%.1fs (skip re-decode): %s", job_id, dur, work_audio)
+            return work_audio, stem
+
+    ffmpeg_exe = shutil.which("ffmpeg")
+    if not ffmpeg_exe:
+        if work_audio.suffix.lower() == ".wav":
+            LOG.warning("[%s] ffmpeg missing; using WAV as-is (may fail in separator)", job_id)
+            return work_audio, stem
+        raise RuntimeError(
+            "ffmpeg not on PATH — required to decode MP3/M4A before Spleeter/Demucs. "
+            "Install ffmpeg or set FFMPEG_DIR."
+        )
+
+    out_stem = f"{stem}_decoded"
+    out_wav = tdp / f"{out_stem}.wav"
+    if work_audio.resolve() == out_wav.resolve():
+        out_stem = f"{stem}_sep"
+        out_wav = tdp / f"{out_stem}.wav"
+
+    cmd = [
+        ffmpeg_exe,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(work_audio),
+        "-ar",
+        "44100",
+        "-ac",
+        "2",
+        "-c:a",
+        "pcm_s16le",
+        str(out_wav),
+    ]
+    run_cmd(cmd, job_id, "ffmpeg decode")
+    if not out_wav.is_file() or out_wav.stat().st_size == 0:
+        raise RuntimeError(f"ffmpeg decode produced empty output: {out_wav}")
+    dur = _ffprobe_duration_seconds(out_wav)
+    if dur is not None and dur < MIN_STEM_DURATION_SEC:
+        raise RuntimeError(
+            f"decoded audio is only ~{dur:.3f}s — source may be corrupt or pre-trim removed too much "
+            f"(try KARAOKE_PRETRIM=0)"
+        )
+    LOG.info("[%s] separator input WAV ~%.1fs -> %s", job_id, dur or 0.0, out_wav)
+    return out_wav, out_stem
 
 
 def run_spleeter(inp: Path, work_base: Path, job_id: str, original_name: str) -> Path:
@@ -1133,6 +1220,8 @@ def process_job_file(input_file: Path, job_id: str, original_name: str) -> None:
             work_audio = tdp / Path(original_name).name
             shutil.copy2(input_file, work_audio)
             split_audio, basename = pretrim_audio_if_needed(work_audio, tdp, job_id)
+            split_audio, basename = ensure_separator_input(split_audio, tdp, job_id, basename)
+            source_duration = _ffprobe_duration_seconds(split_audio)
             put_status(job_id, {"state": "running", "progress": 35, "original_name": original_name})
             separator = resolve_separator()
             LOG.info(
@@ -1158,7 +1247,12 @@ def process_job_file(input_file: Path, job_id: str, original_name: str) -> None:
             put_status(job_id, {"state": "running", "progress": 94, "original_name": original_name})
             shutil.copy2(voc, out_job / "vocals.wav")
             shutil.copy2(band, out_job / "no_vocals.wav")
-            _validate_stem_files(job_id, out_job / "vocals.wav", out_job / "no_vocals.wav")
+            _validate_stem_files(
+                job_id,
+                out_job / "vocals.wav",
+                out_job / "no_vocals.wav",
+                source_duration=source_duration,
+            )
             _refresh_completed_jobs_cache_if_needed(force=True)
 
         outputs = {
