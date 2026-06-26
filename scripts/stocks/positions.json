@@ -11,18 +11,18 @@
       "symbol": "WYFI",
       "short_put": 35.0,
       "long_put": 30.0,
-      "expiration": "2026-07-17",
-      "credit": 2.32,
-      "entry_date": "2026-06-18",
-      "contracts": 10
+      "expiration": "2026-08-21",
+      "credit": 2.78,
+      "entry_date": "2026-06-26",
+      "contracts": 4
     },
     {
       "symbol": "FLNC",
-      "short_put": 22.0,
-      "long_put": 21.0,
-      "expiration": "2026-07-17",
-      "credit": 0.39,
-      "entry_date": "2026-06-18",
+      "short_put": 19.0,
+      "long_put": 17.0,
+      "expiration": "2026-11-20",
+      "credit": 0.70,
+      "entry_date": "2026-06-26",
       "contracts": 40
     },
   {
@@ -38,18 +38,18 @@
     "symbol": "SNDK",
     "short_put": 1880.0,
     "long_put": 1800.0,
-    "expiration": "2026-07-17",
-    "credit": 29.15,
-    "entry_date": "2026-06-15",
+    "expiration": "2026-07-31",
+    "credit": 33.85,
+    "entry_date": "2026-06-26",
     "contracts": 2
   },
   {
     "symbol": "STX",
     "short_put": 900.0,
     "long_put": 800.0,
-    "expiration": "2026-07-17",
-    "credit": 27.20,
-    "entry_date": "2026-06-15",
+    "expiration": "2026-07-31",
+    "credit": 27.50,
+    "entry_date": "2026-06-26",
     "contracts": 1
   },
     
@@ -75,9 +75,9 @@
       "symbol": "NBIS",
       "short_put": 200.0,
       "long_put": 190.0,
-      "expiration": "2026-07-17",
-      "credit": 4.2,
-      "entry_date": "2026-06-10",
+      "expiration": "2026-07-31",
+      "credit": 4.47,
+      "entry_date": "2026-06-26",
       "contracts": 2
     }
   ]
