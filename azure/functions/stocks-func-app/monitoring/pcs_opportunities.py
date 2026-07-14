@@ -118,21 +118,43 @@ def load_pie_scan_tickers() -> List[str]:
     return []
 
 
+def _safe_float(val, default: float = 0.0) -> float:
+    if val is None:
+        return default
+    try:
+        x = float(val)
+    except (TypeError, ValueError):
+        return default
+    if x != x:  # NaN
+        return default
+    return x
+
+
+def _safe_oi(row) -> int:
+    raw = row.get("openInterest")
+    if raw is None or (isinstance(raw, float) and raw != raw):
+        return 0
+    try:
+        return int(raw or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _mid_price(row) -> float:
-    bid = float(row.get("bid") or 0.0)
-    ask = float(row.get("ask") or 0.0)
+    bid = _safe_float(row.get("bid"))
+    ask = _safe_float(row.get("ask"))
     if bid > 0 and ask > 0:
         return (bid + ask) / 2.0
-    return float(row.get("lastPrice") or 0.0)
+    return _safe_float(row.get("lastPrice"))
 
 
 def _leg_is_liquid(row, *, min_oi: int, max_spread_pct: float) -> bool:
-    oi = int(row.get("openInterest") or 0)
+    oi = _safe_oi(row)
     if oi < min_oi:
         return False
 
-    bid = float(row.get("bid") or 0.0)
-    ask = float(row.get("ask") or 0.0)
+    bid = _safe_float(row.get("bid"))
+    ask = _safe_float(row.get("ask"))
     if bid <= 0 or ask <= 0 or ask < bid:
         return False
 
@@ -240,7 +262,7 @@ def build_pcs_plan(
     if max_risk <= 0:
         return None
 
-    iv_pct = float(short_row.get("impliedVolatility") or 0.0) * 100.0
+    iv_pct = _safe_float(short_row.get("impliedVolatility")) * 100.0
     actual_otm_pct = ((price - short_strike) / price * 100.0) if price > 0 else 0.0
 
     return PutCreditSpread(
@@ -313,19 +335,25 @@ def _build_rows_from_scan(
 
     for _, row in scan_group.iterrows():
         sym = str(row["Ticker"]).upper().strip()
-        price = float(row["Price"])
-        grade = str(row.get("Grade", label)).upper().strip()
-        signal = str(row.get("Signal", "")).upper().strip()
+        try:
+            price = float(row["Price"])
+            if price != price or price <= 0:
+                continue
+            grade = str(row.get("Grade", label)).upper().strip()
+            signal = str(row.get("Signal", "")).upper().strip()
 
-        plan = build_pcs_plan(sym, price, min_credit_width=min_credit_width)
-        if plan is None:
+            plan = build_pcs_plan(sym, price, min_credit_width=min_credit_width)
+            if plan is None:
+                continue
+
+            if earnings_blocks_new_spread(sym, plan.dte):
+                logger.info("[pcs_opportunities] %s blocked — earnings within trade window", sym)
+                continue
+
+            rows.append(_row_from_plan(plan, grade, signal))
+        except Exception as e:
+            logger.warning("[pcs_opportunities] %s plan failed: %s", sym, e)
             continue
-
-        if earnings_blocks_new_spread(sym, plan.dte):
-            logger.info("[pcs_opportunities] %s blocked — earnings within trade window", sym)
-            continue
-
-        rows.append(_row_from_plan(plan, grade, signal))
 
     rows.sort(key=lambda r: float(r.get("Credit%") or 0.0), reverse=True)
     return rows[:PIE_MAX_PCS_CANDIDATES]

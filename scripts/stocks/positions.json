@@ -26,15 +26,6 @@
       "contracts": 40
     },
   {
-    "symbol": "AMAT",
-    "short_put": 550.0,
-    "long_put": 530.0,
-    "expiration": "2026-07-17",
-    "credit": 7.325,
-    "entry_date": "2026-06-15",
-    "contracts": 2
-  },
-  {
     "symbol": "SNDK",
     "short_put": 1880.0,
     "long_put": 1800.0,
@@ -70,15 +61,6 @@
       "credit": 4.0,
       "entry_date": "2026-06-10",
       "contracts": 4
-    },
-    {
-      "symbol": "NBIS",
-      "short_put": 200.0,
-      "long_put": 190.0,
-      "expiration": "2026-07-31",
-      "credit": 4.47,
-      "entry_date": "2026-06-26",
-      "contracts": 2
     }
   ]
 }
