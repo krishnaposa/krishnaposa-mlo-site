@@ -17,7 +17,7 @@ fi
 # Email settings. Use a Gmail app password, not your normal Gmail password.
 export SEND_EMAIL="1"
 export EMAIL_FROM="krishna.posa@gmail.com"
-export EMAIL_PASSWORD="ivwy ubxh jzjd atmr"
+export EMAIL_PASSWORD="aoda cyqo izuy xdob"
 export EMAIL_TO="krishnaposa@gmail.com"
 export EMAIL_SUBJECT_PREFIX="Adhoc Stock Picks"
 

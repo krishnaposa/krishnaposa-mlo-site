@@ -14,7 +14,7 @@ fi
 
 export SEND_EMAIL="${SEND_EMAIL:-1}"
 export EMAIL_FROM="${EMAIL_FROM:-krishna.posa@gmail.com}"
-export EMAIL_PASSWORD="${EMAIL_PASSWORD:-ivwy ubxh jzjd atmr}"
+export EMAIL_PASSWORD="${EMAIL_PASSWORD:-aoda cyqo izuy xdob}"
 export EMAIL_TO="${EMAIL_TO:-krishnaposa@gmail.com}"
 export PMCC_MORNING_SUBJECT_PREFIX="${PMCC_MORNING_SUBJECT_PREFIX:-PMCC — today}"
 
