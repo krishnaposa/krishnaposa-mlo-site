@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import requests
-from finviz.screener import Screener  # pip install finviz
+import wb4u_finviz
 
 # ------------- Logging -------------
 logging.basicConfig(
@@ -79,12 +79,12 @@ def finviz_top_etfs(
     last_err = None
     for attempt in range(1, retries + 1):
         try:
-            rows = Screener(filters=finviz_filters, table="Valuation", order=order)
+            syms = wb4u_finviz.getStocksSymbols(finviz_filters, sortOrder=order)
             # polite delay to reduce 429s
             time.sleep(base_sleep + random.random() * base_sleep)
 
-            for r in rows:
-                t = str(r.get("Ticker", "")).upper().strip()
+            for t in syms:
+                t = str(t).upper().strip()
                 if t and t not in out:
                     out.append(t)
                 if len(out) >= top_n:
