@@ -27,21 +27,12 @@
     },
   {
     "symbol": "SNDK",
-    "short_put": 1880.0,
-    "long_put": 1800.0,
-    "expiration": "2026-07-31",
-    "credit": 33.85,
-    "entry_date": "2026-06-26",
+    "short_put": 1200.0,
+    "long_put": 1100.0,
+    "expiration": "2027-01-15",
+    "credit": 53.98,
+    "entry_date": "2026-07-18",
     "contracts": 2
-  },
-  {
-    "symbol": "STX",
-    "short_put": 900.0,
-    "long_put": 800.0,
-    "expiration": "2026-07-31",
-    "credit": 27.50,
-    "entry_date": "2026-06-26",
-    "contracts": 1
   },
     
     {
