@@ -155,6 +155,9 @@ python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100
 #   Columns: Ticker, Grade, Signal, Expiry, DTE, Short, Long, Width, Credit, MaxRisk, Credit%, OTM%, IV%
 #   PIE_TARGET_DTE=35  PIE_OTM_PCT=0.06  PIE_SPREAD_WIDTH_PCT=0.03  PIE_MAX_PCS_CANDIDATES=12 (per grade group)
 #   Open positions lifecycle: monitoring/pcs_lifecycle.py reads signals/positions.json (PCS_LIFECYCLE_ENABLED=1)
+#   Technical second opinion: monitoring/pcs_recommendations.py (PCS_RECOMMENDATIONS_ENABLED=1)
+#     Scores idea + open underlyings on short-put buffer, credit/width, Grade/Signal,
+#     breakdown/spike/earnings — Alpha Trend is soft only. Labels: PCS READY / CAUTION / WAIT / AVOID
 #   Local adhoc: PCS_POSITIONS_FILE=scripts/stocks/positions.json (see run_email_adhoc.sh)
 #   Holdings / momentum: trailing stop only (no relative-strength exits)
 

@@ -362,6 +362,7 @@ def format_pcs_execution_report_text(
     stamp: str,
     pcs_opportunities_result: Optional[Dict] = None,
     pcs_lifecycle_result: Optional[Dict] = None,
+    pcs_recommendations_result: Optional[Dict] = None,
     subj_prefix: str = "PCS — today",
 ) -> str:
     """Plain-text PCS execution report (morning email)."""
@@ -392,6 +393,16 @@ def format_pcs_execution_report_text(
             format_pcs_opportunities_result_text(pcs_opportunities_result),
         ])
 
+    if pcs_recommendations_result is not None:
+        rec_text = pcs_recommendations_result.get("text")
+        if not rec_text:
+            from .pcs_recommendations import format_pcs_recommendations_text
+
+            rec_text = format_pcs_recommendations_text(
+                pcs_recommendations_result.get("rows") or []
+            )
+        lines.extend(["\n## PCS technical recommendations", rec_text])
+
     lines.extend(["", "=" * 72, ""])
     return "\n".join(lines)
 
@@ -405,6 +416,9 @@ def send_pcs_execution_email(
     pcs_actionable_tickers: Optional[List[str]] = None,
     pcs_opportunities_result: Optional[Dict] = None,
     pcs_lifecycle_result: Optional[Dict] = None,
+    pcs_recommendations_section_html: Optional[str] = None,
+    pcs_recommendations_result: Optional[Dict] = None,
+    pcs_ready_tickers: Optional[List[str]] = None,
     subj_prefix: str = "PCS — today",
 ) -> None:
     """Morning PCS-only email: entry ideas + open-position plan."""
@@ -435,6 +449,12 @@ def send_pcs_execution_email(
         if len(po) > 8:
             ox += " …"
         alert_parts.append(f"ideas: {ox}")
+    pr = pcs_ready_tickers or []
+    if pr:
+        rx = ", ".join(str(t) for t in pr[:6])
+        if len(pr) > 6:
+            rx += " …"
+        alert_parts.append(f"ready: {rx}")
     if alert_parts:
         subject = f"{subject} — " + " · ".join(alert_parts)
 
@@ -452,10 +472,15 @@ def send_pcs_execution_email(
             f"<div>{pcs_opportunities_section_html}</div>"
         )
 
-    if not opp_block and not lifecycle_block:
+    rec_block = ""
+    if pcs_recommendations_section_html is not None:
+        rec_block = f"<div>{pcs_recommendations_section_html}</div>"
+
+    if not opp_block and not lifecycle_block and not rec_block:
         lifecycle_block = (
             "<p><i>PCS morning run produced no sections "
-            "(check PCS_OPPORTUNITIES_ENABLED / PCS_LIFECYCLE_ENABLED).</i></p>"
+            "(check PCS_OPPORTUNITIES_ENABLED / PCS_LIFECYCLE_ENABLED / "
+            "PCS_RECOMMENDATIONS_ENABLED).</i></p>"
         )
 
     html_body = f"""<html><body>
@@ -463,12 +488,14 @@ def send_pcs_execution_email(
       <p style="font-size:12px;color:#666">Morning execution sheet — live option quotes. Verify chain before placing orders.</p>
       {lifecycle_block}
       {opp_block}
+      {rec_block}
     </body></html>"""
 
     plain = format_pcs_execution_report_text(
         stamp=stamp,
         pcs_opportunities_result=pcs_opportunities_result,
         pcs_lifecycle_result=pcs_lifecycle_result,
+        pcs_recommendations_result=pcs_recommendations_result,
         subj_prefix=subj_prefix,
     )
 

@@ -8,6 +8,7 @@ Env:
   SEND_EMAIL=1, EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO
   PCS_OPPORTUNITIES_ENABLED   default 1
   PCS_LIFECYCLE_ENABLED       default 1
+  PCS_RECOMMENDATIONS_ENABLED default 1
   PCS_MORNING_SUBJECT_PREFIX  default "PCS — today"
 """
 
@@ -21,6 +22,34 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+def _tickers_for_recommendations(
+    opportunities: Optional[Dict[str, Any]],
+    lifecycle: Optional[Dict[str, Any]],
+) -> list[str]:
+    """Union of PCS idea tickers + open swing/spread underlyings."""
+    out: set[str] = set()
+    if opportunities:
+        for key in ("tickers",):
+            for t in opportunities.get(key) or []:
+                s = str(t).upper().strip()
+                if s:
+                    out.add(s)
+        for rows_key in ("rows", "rows_b", "rows_c"):
+            for row in opportunities.get(rows_key) or []:
+                if isinstance(row, dict):
+                    s = str(row.get("Ticker") or "").upper().strip()
+                    if s:
+                        out.add(s)
+    if lifecycle:
+        for rows_key in ("swing_rows", "pcs_rows"):
+            for row in lifecycle.get(rows_key) or []:
+                if isinstance(row, dict):
+                    s = str(row.get("Ticker") or "").upper().strip()
+                    if s:
+                        out.add(s)
+    return sorted(out)
+
+
 def run_pcs_morning(*, stamp: Optional[str] = None) -> Dict[str, Any]:
     """Run PCS scan + lifecycle review and send the execution email."""
     stamp = stamp or datetime.date.today().strftime("%Y-%m-%d")
@@ -30,6 +59,7 @@ def run_pcs_morning(*, stamp: Optional[str] = None) -> Dict[str, Any]:
         "stamp": stamp,
         "opportunities": None,
         "lifecycle": None,
+        "recommendations": None,
         "email_sent": False,
         "email_error": None,
     }
@@ -75,6 +105,48 @@ def run_pcs_morning(*, stamp: Optional[str] = None) -> Dict[str, Any]:
 
     out["lifecycle"] = pcs_lifecycle_result
 
+    pcs_recommendations_result: Dict[str, Any] | None = None
+    pcs_recommendations_html = ""
+    pcs_ready_tickers: list[str] = []
+
+    if os.getenv("PCS_RECOMMENDATIONS_ENABLED", "1") == "1":
+        try:
+            from .pcs_recommendations import (
+                build_recommendation_context,
+                run_pcs_recommendations,
+            )
+
+            rec_tickers = _tickers_for_recommendations(
+                pcs_opportunities_result,
+                pcs_lifecycle_result,
+            )
+            ctx = build_recommendation_context(
+                pcs_opportunities_result,
+                pcs_lifecycle_result,
+            )
+            pcs_recommendations_result = run_pcs_recommendations(
+                rec_tickers,
+                context_by_ticker=ctx,
+            )
+            pcs_recommendations_html = pcs_recommendations_result.get("html") or ""
+            pcs_ready_tickers = [
+                str(r.get("Ticker"))
+                for r in (pcs_recommendations_result.get("rows") or [])
+                if r.get("Recommendation") == "PCS READY"
+            ]
+            logger.info(
+                "[pcs_morning] recommendations — assessed=%d ready=%d ctx=%d",
+                len(pcs_recommendations_result.get("rows") or []),
+                len(pcs_ready_tickers),
+                len(ctx),
+            )
+        except Exception as e:
+            logger.exception("[pcs_morning] recommendations failed")
+            pcs_recommendations_result = {"rows": [], "error": str(e)}
+            pcs_recommendations_html = f"<p><i>PCS recommendations error: {e}</i></p>"
+
+    out["recommendations"] = pcs_recommendations_result
+
     try:
         from .emailer import send_pcs_execution_email
 
@@ -86,6 +158,9 @@ def run_pcs_morning(*, stamp: Optional[str] = None) -> Dict[str, Any]:
             pcs_actionable_tickers=pcs_actionable,
             pcs_opportunities_result=pcs_opportunities_result,
             pcs_lifecycle_result=pcs_lifecycle_result,
+            pcs_recommendations_section_html=pcs_recommendations_html,
+            pcs_recommendations_result=pcs_recommendations_result,
+            pcs_ready_tickers=pcs_ready_tickers,
             subj_prefix=os.getenv("PCS_MORNING_SUBJECT_PREFIX", "PCS — today"),
         )
 
