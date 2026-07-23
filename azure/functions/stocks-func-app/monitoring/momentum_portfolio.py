@@ -68,6 +68,47 @@ TRAILING_STOP_PCT = float(os.getenv("MOMENTUM_TRAILING_STOP_PCT", "0.15"))
 PORTFOLIO_SIZE = int(os.getenv("MOMENTUM_PORTFOLIO_SIZE", "20"))
 
 
+def _is_plausible_momentum_symbol(sym: str) -> bool:
+    """Reject 1-char Finviz-parse junk; allow BRK.B / PBR-A style names."""
+    s = str(sym or "").upper().strip()
+    if not s or len(s) > 8:
+        return False
+    body = s.replace(".", "").replace("-", "")
+    return len(body) >= 2 and body.isalpha()
+
+
+def _purge_invalid_momentum_symbols(portfolio: Dict[str, Any], out: Dict[str, Any]) -> List[str]:
+    """Remove broken one-letter (etc.) holdings so Finviz can refill empty slots."""
+    bad = [k for k in list(portfolio.keys()) if not _is_plausible_momentum_symbol(str(k))]
+    for k in bad:
+        portfolio.pop(k, None)
+    if bad:
+        preview = ", ".join(sorted(str(x).upper() for x in bad))
+        msg = f"Removed invalid momentum symbols (Finviz junk): {preview}"
+        out["messages"].append(msg)
+        logger.warning("[momentum] %s", msg)
+        try:
+            save_momentum_portfolio(portfolio, meta={"source": "purge_invalid_symbols"})
+            out["portfolio_saved"] = True
+        except Exception as e:
+            logger.warning("[momentum] purge save failed: %s", e)
+    return bad
+
+
+def _print_momentum_finviz_stage(label: str, syms: List[str], *, max_show: int = 150) -> None:
+    """Console trace for Finviz momentum seeding (stdout / Azure log stream)."""
+    u = [str(s).upper().strip() for s in syms if str(s).strip()]
+    n = len(u)
+    if n == 0:
+        print(f"[momentum Finviz] {label}: (empty)")
+        return
+    if n <= max_show:
+        body = ", ".join(u)
+    else:
+        body = ", ".join(u[:max_show]) + f" … (+{n - max_show} more)"
+    print(f"[momentum Finviz] {label} ({n}): {body}")
+
+
 def _close_panel(
     tickers: List[str], *, period: str, interval: str, adjusted: bool = True
 ) -> pd.DataFrame:
@@ -155,7 +196,11 @@ def _seed_portfolio_from_finviz_url(portfolio: Dict[str, Any], out: Dict[str, An
         out["messages"].append("Finviz screener returned no symbols.")
         return
 
-    sym_list_norm = [str(s).upper().strip() for s in sym_list if str(s).strip()]
+    sym_list_norm = [
+        str(s).upper().strip()
+        for s in sym_list
+        if str(s).strip() and _is_plausible_momentum_symbol(str(s))
+    ]
     out["finviz_screen_symbols"] = sym_list_norm
     _print_momentum_finviz_stage("raw screener (from URL, capped by fetch)", sym_list_norm)
 
@@ -398,6 +443,7 @@ def run_momentum_daily() -> Dict[str, Any]:
     }
 
     portfolio = load_momentum_portfolio()
+    _purge_invalid_momentum_symbols(portfolio, out)
     _seed_portfolio_from_finviz_url(portfolio, out)
 
     if not portfolio:

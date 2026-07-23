@@ -80,6 +80,11 @@ def _normalize_positions(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         kk = str(k).upper().strip()
         if not kk or not isinstance(v, dict):
             continue
+        # Drop 1-char junk left by broken Finviz HTML parses (rarely intentional).
+        body = kk.replace(".", "").replace("-", "")
+        if len(body) < 2 or len(kk) > 8 or not body.isalpha():
+            logger.info("[momentum_portfolio] dropping invalid symbol %r on load", kk)
+            continue
         try:
             hi = float(v.get("high_seen", 0.0) or 0.0)
         except (TypeError, ValueError):
