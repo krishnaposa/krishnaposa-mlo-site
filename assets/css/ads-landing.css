@@ -1,0 +1,105 @@
+/* Umbrella / niche ad landing pages */
+.ads-hero {
+  padding: clamp(40px, 8vw, 72px) 0 clamp(28px, 5vw, 40px);
+  background:
+    radial-gradient(900px 420px at 15% -10%, rgba(56, 189, 248, 0.16), transparent 55%),
+    radial-gradient(700px 380px at 90% 10%, rgba(96, 165, 250, 0.1), transparent 50%);
+}
+.ads-hero-inner { max-width: 720px; }
+.ads-brand {
+  margin: 0 0 18px;
+  font-size: 0.95rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.ads-brand strong { color: var(--text); font-weight: 650; }
+.ads-hero h1 {
+  margin: 0 0 14px;
+  font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.55rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.ads-hero .lead {
+  margin: 0 0 22px;
+  font-size: clamp(1.05rem, 0.95rem + 0.4vw, 1.25rem);
+  color: #cbd5e1;
+  max-width: 36em;
+}
+.ads-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.ads-cta .btn,
+.ads-cta .btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 18px;
+}
+.ads-micro {
+  margin: 14px 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.ads-section { padding: 28px 0 48px; }
+.ads-section h2 {
+  margin: 0 0 8px;
+  font-size: clamp(1.25rem, 1.1rem + 0.8vw, 1.6rem);
+}
+.ads-section .section-lead {
+  margin: 0 0 22px;
+  color: var(--muted);
+  max-width: 40em;
+}
+
+.ads-solutions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+.ads-solutions li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+.ads-solutions .who {
+  font-weight: 650;
+  color: var(--text);
+}
+.ads-solutions .how {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+@media (min-width: 720px) {
+  .ads-solutions {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 36px;
+    border-top: none;
+  }
+  .ads-solutions li {
+    border-top: 1px solid rgba(148, 163, 184, 0.2);
+    border-bottom: none;
+    padding: 16px 0;
+  }
+}
+
+.ads-disclaimer {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  font-size: 0.82rem;
+  color: var(--muted);
+  max-width: 52em;
+}
+.ads-disclaimer a { color: var(--accent); }
