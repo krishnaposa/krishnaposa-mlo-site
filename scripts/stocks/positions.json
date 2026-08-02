@@ -16,15 +16,6 @@
       "entry_date": "2026-06-26",
       "contracts": 4
     },
-    {
-      "symbol": "FLNC",
-      "short_put": 19.0,
-      "long_put": 17.0,
-      "expiration": "2026-11-20",
-      "credit": 0.70,
-      "entry_date": "2026-06-26",
-      "contracts": 40
-    },
   {
     "symbol": "SNDK",
     "short_put": 1200.0,

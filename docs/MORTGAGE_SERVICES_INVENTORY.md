@@ -15,7 +15,7 @@ The site is a **static marketing site** with:
 - Program and resource content (HTML)
 - **Client-side calculators** (no server required)
 - **Azure Functions** for AI loan advisor, refi monitor, pre-approval intake, and realtor partner forms
-- **External LOS** for real applications: [https://krishposa.com/](https://krishposa.com/)
+- **External LOS** for real applications: [Arive / my1003 register](https://innovative.my1003app.com/2533287/register)
 
 ```mermaid
 flowchart TB
@@ -60,7 +60,7 @@ flowchart TB
 2. **Explore** — `calculators.html` or Loan Advisor
 3. **Refinance** — `refi-monitor.html` (existing loan)
 4. **Compare offers** — `calculator-le-compare.html`
-5. **Apply** — `buyer-journey.html` intake or external Apply Now → `krishposa.com`
+5. **Apply** — `buyer-journey.html` intake or external Apply Now → Arive (`innovative.my1003app.com/2533287/register`)
 6. **Human touch** — WhatsApp, calendar, email (`contact.html`)
 
 ---
@@ -79,7 +79,7 @@ flowchart TB
 | About | `about.html` |
 | Tools | `calculators.html` |
 | Blog | `blogs/blog.html` |
-| Apply Now | External `https://krishposa.com/` |
+| Apply Now | External `https://innovative.my1003app.com/2533287/register` |
 
 **Footer** (`partials/footer.html`): Home, Mortgage Solutions, Resources, AI Loan Advisor, Refi Monitor, About, Blog — no Tools/Calculators or Buyer Journey.
 
@@ -275,7 +275,7 @@ window.LoanApi = {
 
 | Service | Use |
 |---------|-----|
-| `https://krishposa.com/` | Primary Apply / Get Pre-Approved (LOS) |
+| `https://innovative.my1003app.com/2533287/register` | Primary Apply / Get Pre-Approved (Arive / my1003) |
 | Google Form | Fallback pre-approval (`buyer-funnel.html`) |
 | `https://calendar.app.google/22s8fcMQLge9g63d6` | Booking |
 | GTM `GTM-KJZPQKBM` | Analytics |
@@ -376,4 +376,4 @@ The site delivers a **strong mortgage toolkit**: client-side calculators, AI loa
 | Refinance decision | `refi-monitor.html` |
 | Compare two LEs | `calculator-le-compare.html` |
 | Start pre-approval intake | `buyer-journey.html` |
-| Full application | External `krishposa.com` |
+| Full application | External Arive `https://innovative.my1003app.com/2533287/register` |
