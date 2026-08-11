@@ -10,8 +10,10 @@ Then:
   ticker universe -> pie scanner -> Grade A/B and Grade C groups -> option chain -> PCS plans.
 
 Important:
-  Credit% = credit / spread width.
-  This is NOT true probability of profit.
+  Credit% = credit / spread width (NOT true probability of profit).
+  ShortΔ = Black–Scholes |short-put delta|; pick closest to PCS_SHORT_DELTA_TARGET
+  within PCS_SHORT_DELTA_MIN..MAX (default 0.18–0.28 / 0.22). Falls back to PIE_OTM_PCT.
+  Rank = ShortΔ sweet-spot (0.20–0.24) + buffer (OTM%) + non-extreme Credit% + Grade/Signal.
 """
 
 from __future__ import annotations
@@ -28,7 +30,14 @@ import yfinance as yf
 import pandas as pd
 
 from .pie_scanner import run_scan, select_buy_candidates
-from .pcs_common import earnings_blocks_new_spread
+from .pcs_common import (
+    PCS_SHORT_DELTA_MAX,
+    PCS_SHORT_DELTA_MIN,
+    PCS_SHORT_DELTA_TARGET,
+    PCS_USE_DELTA,
+    abs_put_delta,
+    earnings_blocks_new_spread,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +63,14 @@ MIN_CREDIT_WIDTH_C = float(os.getenv("PCS_MIN_CREDIT_WIDTH_C", "0.10"))
 PCS_MIN_WIDTH = float(os.getenv("PCS_MIN_WIDTH", "0.5"))
 PCS_MAX_WIDTH = float(os.getenv("PCS_MAX_WIDTH", "20"))
 
+# Rank sweet-spots (entry email sort — not hard filters)
+PCS_RANK_DELTA_LO = float(os.getenv("PCS_RANK_DELTA_LO", "0.20"))
+PCS_RANK_DELTA_HI = float(os.getenv("PCS_RANK_DELTA_HI", "0.24"))
+PCS_RANK_BUF_GOOD = float(os.getenv("PCS_RANK_BUF_GOOD", "6"))
+PCS_RANK_BUF_GREAT = float(os.getenv("PCS_RANK_BUF_GREAT", "10"))
+PCS_RANK_CREDIT_SWEET = float(os.getenv("PCS_RANK_CREDIT_SWEET", "0.20"))
+PCS_RANK_CREDIT_EXTREME = float(os.getenv("PCS_RANK_CREDIT_EXTREME", "0.40"))
+
 
 @dataclass
 class PutCreditSpread:
@@ -68,6 +85,7 @@ class PutCreditSpread:
     credit_width_pct: float
     otm_pct: float
     iv_pct: float
+    short_delta: float  # |Δ| of short put (positive)
 
 
 def _parse_ticker_text(raw: str) -> List[str]:
@@ -221,11 +239,45 @@ def build_pcs_plan(
     if liquid.empty:
         return None
 
-    short_candidates = liquid[liquid["strike"] <= price * (1.0 - otm_pct)]
-    if short_candidates.empty:
-        return None
+    short_row = None
+    short_delta_abs = float("nan")
 
-    short_row = short_candidates.iloc[-1]
+    if PCS_USE_DELTA:
+        best_dist = float("inf")
+        best_row = None
+        best_d = float("nan")
+        for _, row in liquid.iterrows():
+            strike = float(row["strike"])
+            if strike >= price:
+                continue  # OTM / ATM puts only for short leg
+            iv = _safe_float(row.get("impliedVolatility"))
+            if iv <= 0:
+                continue
+            # yfinance IV is already annualized decimal
+            d_abs = abs_put_delta(price, strike, dte, iv)
+            if d_abs != d_abs:
+                continue
+            if d_abs < PCS_SHORT_DELTA_MIN or d_abs > PCS_SHORT_DELTA_MAX:
+                continue
+            dist = abs(d_abs - PCS_SHORT_DELTA_TARGET)
+            if dist < best_dist:
+                best_dist = dist
+                best_row = row
+                best_d = d_abs
+        if best_row is not None:
+            short_row = best_row
+            short_delta_abs = best_d
+
+    if short_row is None:
+        # Fallback: classic % OTM (highest liquid strike ≤ otm_pct below spot)
+        short_candidates = liquid[liquid["strike"] <= price * (1.0 - otm_pct)]
+        if short_candidates.empty:
+            return None
+        short_row = short_candidates.iloc[-1]
+        iv_fb = _safe_float(short_row.get("impliedVolatility"))
+        if iv_fb > 0:
+            short_delta_abs = abs_put_delta(price, float(short_row["strike"]), dte, iv_fb)
+
     short_strike = float(short_row["strike"])
 
     target_long = short_strike * (1.0 - spread_width_pct)
@@ -264,6 +316,8 @@ def build_pcs_plan(
 
     iv_pct = _safe_float(short_row.get("impliedVolatility")) * 100.0
     actual_otm_pct = ((price - short_strike) / price * 100.0) if price > 0 else 0.0
+    if short_delta_abs != short_delta_abs:
+        short_delta_abs = float("nan")
 
     return PutCreditSpread(
         symbol=symbol,
@@ -277,10 +331,12 @@ def build_pcs_plan(
         credit_width_pct=round(credit_width_pct, 3),
         otm_pct=round(actual_otm_pct, 1),
         iv_pct=round(iv_pct, 1),
+        short_delta=round(short_delta_abs, 2) if short_delta_abs == short_delta_abs else float("nan"),
     )
 
 
 def _row_from_plan(plan: PutCreditSpread, grade: str, signal: str) -> dict:
+    delta = plan.short_delta
     return {
         "Ticker": plan.symbol,
         "Grade": grade,
@@ -293,9 +349,73 @@ def _row_from_plan(plan: PutCreditSpread, grade: str, signal: str) -> dict:
         "Credit": plan.credit,
         "MaxRisk": plan.max_risk,
         "Credit%": plan.credit_width_pct,
+        "ShortΔ": round(delta, 2) if delta == delta else None,
         "OTM%": plan.otm_pct,
         "IV%": plan.iv_pct,
     }
+
+
+def _pcs_opportunity_rank(row: dict) -> float:
+    """
+    Prefer Grade A/B (within group), ShortΔ ~0.20–0.24, decent OTM buffer,
+    and Credit% that is solid but not extreme.
+    """
+    score = 0.0
+
+    # ShortΔ — peak in sweet band around target
+    d_raw = row.get("ShortΔ")
+    d = _safe_float(d_raw, default=float("nan"))
+    if d == d:
+        if PCS_RANK_DELTA_LO <= d <= PCS_RANK_DELTA_HI:
+            score += 40.0 - abs(d - PCS_SHORT_DELTA_TARGET) * 100.0
+        elif PCS_SHORT_DELTA_MIN <= d <= PCS_SHORT_DELTA_MAX:
+            edge = PCS_RANK_DELTA_LO if d < PCS_RANK_DELTA_LO else PCS_RANK_DELTA_HI
+            score += max(12.0, 28.0 - abs(d - edge) * 100.0)
+        else:
+            score += 6.0  # computed but outside band (e.g. %OTM fallback)
+    else:
+        score += 8.0  # missing Δ
+
+    # Buffer via OTM% (price vs short)
+    otm = _safe_float(row.get("OTM%"))
+    if otm >= PCS_RANK_BUF_GREAT:
+        score += 30.0
+    elif otm >= PCS_RANK_BUF_GOOD:
+        span = max(PCS_RANK_BUF_GREAT - PCS_RANK_BUF_GOOD, 1e-6)
+        score += 18.0 + (otm - PCS_RANK_BUF_GOOD) / span * 12.0
+    elif otm >= 4.0:
+        score += 8.0 + (otm - 4.0) * 2.0
+    else:
+        score += max(0.0, otm)
+
+    # Credit% — reward healthy premium; penalize extreme (often junk IV / thin buffer)
+    cw = _safe_float(row.get("Credit%"))
+    if cw <= 0:
+        pass
+    elif cw < 0.12:
+        score += 6.0
+    elif cw <= 0.30:
+        score += 26.0 - abs(cw - PCS_RANK_CREDIT_SWEET) * 50.0
+    elif cw < PCS_RANK_CREDIT_EXTREME:
+        score += max(4.0, 14.0 - (cw - 0.30) * 80.0)
+    else:
+        score -= min(18.0, (cw - PCS_RANK_CREDIT_EXTREME) * 60.0 + 6.0)
+
+    grade = str(row.get("Grade", "")).upper().strip()
+    if grade == "A":
+        score += 8.0
+    elif grade == "B":
+        score += 4.0
+
+    signal = str(row.get("Signal", "")).upper().strip()
+    if signal == "BUY":
+        score += 3.0
+    elif signal in ("SELL", "REDUCE"):
+        score -= 10.0
+    elif signal == "WATCH":
+        score -= 2.0
+
+    return score
 
 
 def _funnel_label() -> str:
@@ -355,7 +475,14 @@ def _build_rows_from_scan(
             logger.warning("[pcs_opportunities] %s plan failed: %s", sym, e)
             continue
 
-    rows.sort(key=lambda r: float(r.get("Credit%") or 0.0), reverse=True)
+    rows.sort(
+        key=lambda r: (
+            _pcs_opportunity_rank(r),
+            _safe_float(r.get("OTM%")),
+            -abs(_safe_float(r.get("Credit%")) - PCS_RANK_CREDIT_SWEET),
+        ),
+        reverse=True,
+    )
     return rows[:PIE_MAX_PCS_CANDIDATES]
 
 
@@ -428,6 +555,7 @@ PCS_TABLE_COLS = [
     "Credit",
     "MaxRisk",
     "Credit%",
+    "ShortΔ",
     "OTM%",
     "IV%",
 ]
@@ -454,6 +582,12 @@ def _fmt_cell(col: str, val) -> str:
             return f"{float(val) * 100.0:.1f}%"
         except (TypeError, ValueError):
             return str(val)
+
+    if col == "ShortΔ":
+        try:
+            return f"{float(val):.2f}"
+        except (TypeError, ValueError):
+            return "—"
 
     if col in ("OTM%", "IV%"):
         try:
@@ -519,10 +653,12 @@ def format_pcs_opportunities_html(
         f"{_format_table(rows_c)}"
 
         "<p style='font-size:11px;color:#666'>"
-        f"Funnel: {PCS_FUNNEL} ({_esc(funnel_note)}). Ranked by Credit%. "
+        f"Funnel: {PCS_FUNNEL} ({_esc(funnel_note)}). "
+        "Ranked by ShortΔ sweet-spot (~0.20–0.24) + buffer (OTM%) + non-extreme Credit% + Grade. "
         "Earnings blocked when report falls before spread expiry. "
         "Grade A/B = stronger setup; Grade C = secondary. "
-        "Credit% = credit / spread width (not true POP). "
+        "Credit% = credit / spread width (not true POP); extreme Credit% is de-ranked. "
+        "ShortΔ = |short-put delta| (target ~0.22, band 0.18–0.28; falls back to ~6% OTM if IV missing). "
         "Set PCS_FUNNEL=buy to match pie_analyze_swing default, or all for --all. "
         "Estimates only — verify option chain, bid/ask, and liquidity before trading."
         "</p>"
@@ -557,6 +693,7 @@ def format_pcs_opportunities_text(
                 f"Exp={r.get('Expiry','')} DTE={r.get('DTE','')} "
                 f"Short={r.get('Short','')} Long={r.get('Long','')} "
                 f"Credit={r.get('Credit','')} Credit%={_fmt_cell('Credit%', r.get('Credit%'))} "
+                f"ShortΔ={_fmt_cell('ShortΔ', r.get('ShortΔ'))} "
                 f"OTM%={r.get('OTM%','')} IV%={r.get('IV%','')}"
             )
 
@@ -569,6 +706,7 @@ def format_pcs_opportunities_text(
     lines.append("")
     lines.append(
         f"Funnel: {PCS_FUNNEL} ({funnel_note}). "
+        "Ranked by ShortΔ sweet-spot + OTM buffer + non-extreme Credit% + Grade. "
         "Earnings blocked before spread expiry. Estimates only — verify chain before trading."
     )
 

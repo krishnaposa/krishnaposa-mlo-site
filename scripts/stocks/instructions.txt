@@ -145,15 +145,19 @@ python pie_analyze_swing.py --review --positions positions.json
 python pie_analyze_swing.py --review --alerts-only
 python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100 --pcs-roll-dte 14 --pcs-manage-dte 21
 
-# PCS scan filters (build_pcs_plan): min_open_interest=100, max_spread_pct=15, min_credit_width=0.15 (Grade C: PCS_MIN_CREDIT_WIDTH_C=0.10)
+# PCS scan filters (build_pcs_plan): short |Δ| 0.18–0.28 target 0.22 (PCS_USE_DELTA=1);
+#   fallback PIE_OTM_PCT=0.06 if no delta; min_open_interest=100, max_spread_pct=15,
+#   min_credit_width=0.10 (PCS_MIN_CREDIT_WIDTH / PCS_MIN_CREDIT_WIDTH_C)
 # Entry funnel: PCS_FUNNEL=grade (default, Grade A/B/C excl REDUCE/SELL) | buy (pie_analyze default) | all (pie_analyze --all)
 # Entry: earnings blocked when report before spread expiry (PCS_BLOCK_EARNINGS=1)
 # Azure PCS email (morning pcs_morning + optional evening if MONITOR_EMAIL_INCLUDE_PCS=1):
 #   monitoring/pcs_opportunities.py — pie scanner splits Grade A/B vs Grade C into two tables
 #   PCS_OPPORTUNITIES_ENABLED=1 (default), tickers from blob signals/my_tickers.txt else local_list+holdings_list
 #   Local adhoc: ./run_pcs_morning_adhoc.sh (PIE_TICKERS_FILE, PCS_POSITIONS_FILE)
-#   Columns: Ticker, Grade, Signal, Expiry, DTE, Short, Long, Width, Credit, MaxRisk, Credit%, OTM%, IV%
-#   PIE_TARGET_DTE=35  PIE_OTM_PCT=0.06  PIE_SPREAD_WIDTH_PCT=0.03  PIE_MAX_PCS_CANDIDATES=12 (per grade group)
+#   Columns: Ticker, Grade, Signal, Expiry, DTE, Short, Long, Width, Credit, MaxRisk, Credit%, ShortΔ, OTM%, IV%
+#   Ranked by ShortΔ sweet (~0.20–0.24) + OTM buffer + non-extreme Credit% + Grade (not raw Credit%)
+#   PIE_TARGET_DTE=35  PCS_SHORT_DELTA_MIN=0.18  PCS_SHORT_DELTA_MAX=0.28  PCS_SHORT_DELTA_TARGET=0.22
+#   PIE_SPREAD_WIDTH_PCT=0.03  PIE_MAX_PCS_CANDIDATES=12 (per grade group)
 #   Open positions lifecycle: monitoring/pcs_lifecycle.py reads signals/positions.json (PCS_LIFECYCLE_ENABLED=1)
 #   Technical second opinion: monitoring/pcs_recommendations.py (PCS_RECOMMENDATIONS_ENABLED=1)
 #     Scores idea + open underlyings on short-put buffer, credit/width, Grade/Signal,

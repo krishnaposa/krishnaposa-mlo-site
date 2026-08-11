@@ -7,15 +7,6 @@
   "swings": [],
   "pmcc": [],
   "spreads": [
-    {
-      "symbol": "WYFI",
-      "short_put": 35.0,
-      "long_put": 30.0,
-      "expiration": "2026-08-21",
-      "credit": 2.78,
-      "entry_date": "2026-06-26",
-      "contracts": 4
-    },
   {
     "symbol": "SNDK",
     "short_put": 1200.0,
@@ -57,8 +48,8 @@
       "symbol": "META",
       "short_put": 585.0,
       "long_put": 575.0,
-      "expiration": "2026-08-28",
-      "credit": 4.10,
+      "expiration": "2026-09-04",
+      "credit": 4.25,
       "entry_date": "2026-07-24",
       "contracts": 2
     },
@@ -68,15 +59,6 @@
       "long_put": 900.0,
       "expiration": "2026-08-28",
       "credit": 4.82,
-      "entry_date": "2026-07-24",
-      "contracts": 2
-    },
-    {
-      "symbol": "PLTR",
-      "short_put": 119.0,
-      "long_put": 114.0,
-      "expiration": "2026-08-28",
-      "credit": 2.05,
       "entry_date": "2026-07-24",
       "contracts": 2
     }

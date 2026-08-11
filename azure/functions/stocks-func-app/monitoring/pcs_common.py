@@ -4,10 +4,12 @@ Shared helpers for PCS opportunities (entry) and lifecycle (exit).
 
 from __future__ import annotations
 
+import math
 import os
 from typing import Optional
 
 import pandas as pd
+from scipy.stats import norm
 
 from .options_metrics import days_to_next_earnings
 
@@ -22,6 +24,40 @@ PCS_EARNINGS_BLOCK_DAYS = int(
     os.getenv("PCS_EARNINGS_BLOCK_DAYS", os.getenv("EARNINGS_BLOCK_DAYS", "14"))
 )
 PCS_STRIKE_MATCH_TOL = float(os.getenv("PCS_STRIKE_MATCH_TOL", "0.02"))
+
+PCS_RISK_FREE = float(os.getenv("PCS_RISK_FREE_RATE", os.getenv("PMCC_RISK_FREE_RATE", "0.04")))
+# Short-put |Δ| band (positive magnitude). Default ~0.18–0.28, target 0.22.
+PCS_SHORT_DELTA_MIN = float(os.getenv("PCS_SHORT_DELTA_MIN", "0.18"))
+PCS_SHORT_DELTA_MAX = float(os.getenv("PCS_SHORT_DELTA_MAX", "0.28"))
+PCS_SHORT_DELTA_TARGET = float(os.getenv("PCS_SHORT_DELTA_TARGET", "0.22"))
+PCS_USE_DELTA = os.getenv("PCS_USE_DELTA", "1") == "1"
+
+
+def bs_put_delta(
+    spot: float,
+    strike: float,
+    dte: int,
+    iv: float,
+    *,
+    r: float = PCS_RISK_FREE,
+) -> float:
+    """Black–Scholes put delta (negative for long puts). Returns NaN if inputs invalid."""
+    if spot <= 0 or strike <= 0 or dte <= 0 or iv <= 0:
+        return float("nan")
+    t = dte / 365.0
+    try:
+        d1 = (math.log(spot / strike) + (r + 0.5 * iv * iv) * t) / (iv * math.sqrt(t))
+        return float(norm.cdf(d1) - 1.0)
+    except (ValueError, ZeroDivisionError):
+        return float("nan")
+
+
+def abs_put_delta(spot: float, strike: float, dte: int, iv: float) -> float:
+    """Positive short-put delta magnitude for PCS targeting."""
+    d = bs_put_delta(spot, strike, dte, iv)
+    if d != d:
+        return float("nan")
+    return abs(d)
 
 
 def pcs_buffer_pct(price: float, short_strike: float) -> float:
