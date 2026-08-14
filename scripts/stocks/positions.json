@@ -36,15 +36,6 @@
       "contracts": 4
     },
     {
-      "symbol": "AMD",
-      "short_put": 490.0,
-      "long_put": 475.0,
-      "expiration": "2026-08-28",
-      "credit": 4.54,
-      "entry_date": "2026-07-23",
-      "contracts": 2
-    },
-    {
       "symbol": "META",
       "short_put": 585.0,
       "long_put": 575.0,
@@ -57,12 +48,47 @@
       "symbol": "MU",
       "short_put": 910.0,
       "long_put": 900.0,
-      "expiration": "2026-08-28",
-      "credit": 4.82,
+      "expiration": "2026-09-25",
+      "credit": 5.17,
       "entry_date": "2026-07-24",
       "contracts": 2
+    },
+    {
+      "symbol": "ANET",
+      "short_put": 175.0,
+      "long_put": 165.0,
+      "expiration": "2026-10-16",
+      "credit": 3.01,
+      "entry_date": "2026-08-11",
+      "contracts": 5
+    },
+    {
+      "symbol": "FSLR",
+      "short_put": 210.0,
+      "long_put": 200.0,
+      "expiration": "2026-09-18",
+      "credit": 2.02,
+      "entry_date": "2026-08-11",
+      "contracts": 5
+    },
+    {
+      "symbol": "TER",
+      "short_put": 350.0,
+      "long_put": 340.0,
+      "expiration": "2026-09-18",
+      "credit": 2.35,
+      "entry_date": "2026-08-13",
+      "contracts": 5
+    },
+    {
+      "symbol": "BE",
+      "short_put": 200.0,
+      "long_put": 190.0,
+      "expiration": "2026-09-18",
+      "credit": 2.95,
+      "entry_date": "2026-08-13",
+      "contracts": 5
     }
-
 
   ]
 }

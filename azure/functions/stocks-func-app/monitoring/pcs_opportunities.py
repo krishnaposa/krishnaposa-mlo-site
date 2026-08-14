@@ -13,7 +13,10 @@ Important:
   Credit% = credit / spread width (NOT true probability of profit).
   ShortΔ = Black–Scholes |short-put delta|; pick closest to PCS_SHORT_DELTA_TARGET
   within PCS_SHORT_DELTA_MIN..MAX (default 0.18–0.28 / 0.22). Falls back to PIE_OTM_PCT.
-  Rank = ShortΔ sweet-spot (0.20–0.24) + buffer (OTM%) + non-extreme Credit% + Grade/Signal.
+  Rank = ShortΔ sweet-spot (0.20–0.24) + buffer (OTM%) + non-extreme Credit%
+  + Grade/Signal + 1Y Touch% (soft bands; not a hard filter).
+  1Y Touch% = share of last-year entries where a same-OTM% / same-DTE short put
+  was tagged by a later daily low before calendar expiry.
 """
 
 from __future__ import annotations
@@ -22,12 +25,13 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape as _esc
 from typing import Any, Dict, List, Optional
 
-import yfinance as yf
+import numpy as np
 import pandas as pd
+import yfinance as yf
 
 from .pie_scanner import run_scan, select_buy_candidates
 from .pcs_common import (
@@ -70,6 +74,15 @@ PCS_RANK_BUF_GOOD = float(os.getenv("PCS_RANK_BUF_GOOD", "6"))
 PCS_RANK_BUF_GREAT = float(os.getenv("PCS_RANK_BUF_GREAT", "10"))
 PCS_RANK_CREDIT_SWEET = float(os.getenv("PCS_RANK_CREDIT_SWEET", "0.20"))
 PCS_RANK_CREDIT_EXTREME = float(os.getenv("PCS_RANK_CREDIT_EXTREME", "0.40"))
+
+# 1Y historical short-strike touch (soft rank only — not a reject)
+PCS_TOUCH_LOOKBACK_DAYS = int(os.getenv("PCS_TOUCH_LOOKBACK_DAYS", "365"))
+PCS_TOUCH_HISTORY_PAD_DAYS = int(os.getenv("PCS_TOUCH_HISTORY_PAD_DAYS", "90"))
+PCS_TOUCH_MIN_SAMPLES = int(os.getenv("PCS_TOUCH_MIN_SAMPLES", "40"))
+PCS_TOUCH_EXCELLENT = float(os.getenv("PCS_TOUCH_EXCELLENT", "15"))
+PCS_TOUCH_GOOD = float(os.getenv("PCS_TOUCH_GOOD", "20"))
+PCS_TOUCH_OK = float(os.getenv("PCS_TOUCH_OK", "25"))
+PCS_TOUCH_CAUTION = float(os.getenv("PCS_TOUCH_CAUTION", "30"))
 
 
 @dataclass
@@ -181,6 +194,148 @@ def _leg_is_liquid(row, *, min_oi: int, max_spread_pct: float) -> bool:
         return False
 
     return ((ask - bid) / mid * 100.0) <= max_spread_pct
+
+
+def _ohlc_close_low(data: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    """Extract adjusted Close/Low for one ticker from a yfinance download."""
+    if data is None or data.empty:
+        return pd.DataFrame()
+
+    close = None
+    low = None
+    if isinstance(data.columns, pd.MultiIndex):
+        try:
+            close = data["Close"]
+            low = data["Low"]
+        except (KeyError, TypeError):
+            try:
+                close = data[symbol]
+                if isinstance(close, pd.DataFrame):
+                    low = close["Low"]
+                    close = close["Close"]
+            except (KeyError, TypeError):
+                return pd.DataFrame()
+        if isinstance(close, pd.DataFrame):
+            if symbol not in close.columns:
+                return pd.DataFrame()
+            close = close[symbol]
+            low = low[symbol]
+    else:
+        if "Close" not in data.columns or "Low" not in data.columns:
+            return pd.DataFrame()
+        close = data["Close"]
+        low = data["Low"]
+
+    out = pd.DataFrame({"Close": close, "Low": low}).apply(pd.to_numeric, errors="coerce").dropna()
+    out = out[(out["Close"] > 0) & (out["Low"] > 0)]
+    return out
+
+
+def historical_touch_pct_from_ohlc(
+    df: pd.DataFrame,
+    *,
+    otm_pct: float,
+    dte: int,
+    lookback_days: int = PCS_TOUCH_LOOKBACK_DAYS,
+    min_samples: int = PCS_TOUCH_MIN_SAMPLES,
+) -> Optional[float]:
+    """
+    1Y touch rate for a PCS-shaped short put.
+
+    For each historical entry day t (last ``lookback_days``):
+      barrier = Close[t] * (1 - today's OTM%)
+      expiry  = date[t] + DTE calendar days
+      touch   if min(Low[t+1 : last session on/before expiry]) <= barrier
+    Incomplete forward windows (no bar on/after calendar expiry) are skipped.
+    """
+    if df is None or df.empty or dte <= 0 or not (otm_pct == otm_pct) or otm_pct <= 0:
+        return None
+
+    close = df["Close"].to_numpy(dtype=float)
+    low = df["Low"].to_numpy(dtype=float)
+    idx = pd.DatetimeIndex(pd.to_datetime(df.index))
+    if idx.tz is not None:
+        idx = idx.tz_convert("UTC").tz_localize(None)
+    idx = idx.normalize()
+    dates = idx.values.astype("datetime64[D]")
+    n = len(dates)
+    if n < min_samples + 5:
+        return None
+
+    otm_frac = float(otm_pct) / 100.0
+    last_date = dates[-1]
+    start_cut = last_date - np.timedelta64(int(lookback_days), "D")
+    expiry = dates + np.timedelta64(int(dte), "D")
+    j = np.searchsorted(dates, expiry, side="right") - 1
+
+    eligible = 0
+    touches = 0
+    for i in range(n - 1):
+        if dates[i] < start_cut:
+            continue
+        if last_date < expiry[i]:
+            continue
+        end_i = int(j[i])
+        if end_i <= i:
+            continue
+        barrier = close[i] * (1.0 - otm_frac)
+        if barrier <= 0 or barrier != barrier:
+            continue
+        window = low[i + 1 : end_i + 1]
+        if window.size == 0:
+            continue
+        eligible += 1
+        wmin = np.nanmin(window)
+        if wmin == wmin and wmin <= barrier:
+            touches += 1
+
+    if eligible < min_samples:
+        return None
+    return round(100.0 * touches / eligible, 1)
+
+
+def _fetch_touch_history(symbols: List[str]) -> Dict[str, pd.DataFrame]:
+    uniq = sorted({s.upper().strip() for s in symbols if s})
+    out: Dict[str, pd.DataFrame] = {s: pd.DataFrame() for s in uniq}
+    if not uniq:
+        return out
+
+    end = datetime.today().date() + timedelta(days=1)
+    start = end - timedelta(days=PCS_TOUCH_LOOKBACK_DAYS + PCS_TOUCH_HISTORY_PAD_DAYS)
+    try:
+        data = yf.download(
+            uniq,
+            start=start.isoformat(),
+            end=end.isoformat(),
+            auto_adjust=True,
+            progress=False,
+        )
+    except Exception as e:
+        logger.warning("[pcs_opportunities] touch history download failed: %s", e)
+        return out
+
+    for sym in uniq:
+        try:
+            out[sym] = _ohlc_close_low(data, sym)
+        except Exception as e:
+            logger.info("[pcs_opportunities] %s touch OHLC extract failed: %s", sym, e)
+    return out
+
+
+def _attach_1y_touch(rows: List[dict]) -> None:
+    if not rows:
+        return
+    hist = _fetch_touch_history([str(r.get("Ticker") or "") for r in rows])
+    for r in rows:
+        sym = str(r.get("Ticker") or "").upper().strip()
+        otm = _safe_float(r.get("OTM%"), default=float("nan"))
+        dte = int(_safe_float(r.get("DTE")))
+        touch = historical_touch_pct_from_ohlc(
+            hist.get(sym, pd.DataFrame()),
+            otm_pct=otm,
+            dte=dte,
+        )
+        r["1YTouch%"] = touch
 
 
 def build_pcs_plan(
@@ -352,13 +507,14 @@ def _row_from_plan(plan: PutCreditSpread, grade: str, signal: str) -> dict:
         "ShortΔ": round(delta, 2) if delta == delta else None,
         "OTM%": plan.otm_pct,
         "IV%": plan.iv_pct,
+        "1YTouch%": None,
     }
 
 
 def _pcs_opportunity_rank(row: dict) -> float:
     """
     Prefer Grade A/B (within group), ShortΔ ~0.20–0.24, decent OTM buffer,
-    and Credit% that is solid but not extreme.
+    Credit% that is solid but not extreme, and low 1Y Touch% (soft bands).
     """
     score = 0.0
 
@@ -414,6 +570,22 @@ def _pcs_opportunity_rank(row: dict) -> float:
         score -= 10.0
     elif signal == "WATCH":
         score -= 2.0
+
+    # 1Y Touch% — path risk; missing is neutral (not a reject)
+    touch_raw = row.get("1YTouch%")
+    if touch_raw is not None and touch_raw != "":
+        touch = _safe_float(touch_raw, default=float("nan"))
+        if touch == touch:
+            if touch <= PCS_TOUCH_EXCELLENT:
+                score += 22.0
+            elif touch <= PCS_TOUCH_GOOD:
+                score += 12.0
+            elif touch <= PCS_TOUCH_OK:
+                pass
+            elif touch <= PCS_TOUCH_CAUTION:
+                score -= 12.0
+            else:
+                score -= 22.0
 
     return score
 
@@ -474,6 +646,11 @@ def _build_rows_from_scan(
         except Exception as e:
             logger.warning("[pcs_opportunities] %s plan failed: %s", sym, e)
             continue
+
+    try:
+        _attach_1y_touch(rows)
+    except Exception as e:
+        logger.warning("[pcs_opportunities] 1Y Touch% attach failed: %s", e)
 
     rows.sort(
         key=lambda r: (
@@ -558,6 +735,7 @@ PCS_TABLE_COLS = [
     "ShortΔ",
     "OTM%",
     "IV%",
+    "1YTouch%",
 ]
 
 
@@ -586,6 +764,15 @@ def _fmt_cell(col: str, val) -> str:
     if col == "ShortΔ":
         try:
             return f"{float(val):.2f}"
+        except (TypeError, ValueError):
+            return "—"
+
+    if col == "1YTouch%":
+        try:
+            x = float(val)
+            if x != x:
+                return "—"
+            return f"{x:.1f}%"
         except (TypeError, ValueError):
             return "—"
 
@@ -654,7 +841,10 @@ def format_pcs_opportunities_html(
 
         "<p style='font-size:11px;color:#666'>"
         f"Funnel: {PCS_FUNNEL} ({_esc(funnel_note)}). "
-        "Ranked by ShortΔ sweet-spot (~0.20–0.24) + buffer (OTM%) + non-extreme Credit% + Grade. "
+        "Ranked by ShortΔ sweet-spot (~0.20–0.24) + buffer (OTM%) + non-extreme Credit% "
+        "+ 1Y Touch% + Grade. "
+        "1Y Touch% = last-year share of same-OTM% / same-DTE windows where a daily low tagged the short barrier "
+        "(≤15 excellent, 15–20 good, 20–25 ok, 25–30 caution, >30 penalize; not a hard filter). "
         "Earnings blocked when report falls before spread expiry. "
         "Grade A/B = stronger setup; Grade C = secondary. "
         "Credit% = credit / spread width (not true POP); extreme Credit% is de-ranked. "
@@ -694,7 +884,8 @@ def format_pcs_opportunities_text(
                 f"Short={r.get('Short','')} Long={r.get('Long','')} "
                 f"Credit={r.get('Credit','')} Credit%={_fmt_cell('Credit%', r.get('Credit%'))} "
                 f"ShortΔ={_fmt_cell('ShortΔ', r.get('ShortΔ'))} "
-                f"OTM%={r.get('OTM%','')} IV%={r.get('IV%','')}"
+                f"OTM%={r.get('OTM%','')} IV%={r.get('IV%','')} "
+                f"1YTouch%={_fmt_cell('1YTouch%', r.get('1YTouch%'))}"
             )
 
     add_rows(rows_b)
@@ -706,7 +897,7 @@ def format_pcs_opportunities_text(
     lines.append("")
     lines.append(
         f"Funnel: {PCS_FUNNEL} ({funnel_note}). "
-        "Ranked by ShortΔ sweet-spot + OTM buffer + non-extreme Credit% + Grade. "
+        "Ranked by ShortΔ sweet-spot + OTM buffer + non-extreme Credit% + 1Y Touch% + Grade. "
         "Earnings blocked before spread expiry. Estimates only — verify chain before trading."
     )
 
