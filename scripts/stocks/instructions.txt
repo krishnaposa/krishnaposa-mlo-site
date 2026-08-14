@@ -154,7 +154,7 @@ python pie_analyze_swing.py --review --pcs-profit-target 50 --pcs-stop-loss -100
 #   monitoring/pcs_opportunities.py — pie scanner splits Grade A/B vs Grade C into two tables
 #   PCS_OPPORTUNITIES_ENABLED=1 (default), tickers from blob signals/my_tickers.txt else local_list+holdings_list
 #   Local adhoc: ./run_pcs_morning_adhoc.sh (PIE_TICKERS_FILE, PCS_POSITIONS_FILE)
-#   Columns: Ticker, Grade, Signal, Expiry, DTE, Short, Long, Width, Credit, MaxRisk, Credit%, ShortΔ, OTM%, IV%, 1YTouch%, Quality
+#   Columns: Ticker, Grade, Signal, Expiry, DTE, Short, Long, ShortΔ, OTM%, IV%, 1YTouch%, Quality
 #   Ranked by ShortΔ sweet (~0.20–0.24) + OTM buffer + non-extreme Credit% + 1Y Touch% + Quality + Grade
 #   1YTouch% = last-year same-OTM%/same-DTE windows where daily low tagged short barrier (soft rank, not a reject)
 #   Quality = Credit% / 1YTouch% (percent units; higher = more credit per historical challenge)

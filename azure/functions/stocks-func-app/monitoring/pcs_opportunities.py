@@ -748,10 +748,6 @@ PCS_TABLE_COLS = [
     "DTE",
     "Short",
     "Long",
-    "Width",
-    "Credit",
-    "MaxRisk",
-    "Credit%",
     "ShortΔ",
     "OTM%",
     "IV%",
@@ -913,7 +909,6 @@ def format_pcs_opportunities_text(
                 f"  {r.get('Ticker','')} Grade={r.get('Grade','')} Signal={r.get('Signal','')} "
                 f"Exp={r.get('Expiry','')} DTE={r.get('DTE','')} "
                 f"Short={r.get('Short','')} Long={r.get('Long','')} "
-                f"Credit={r.get('Credit','')} Credit%={_fmt_cell('Credit%', r.get('Credit%'))} "
                 f"ShortΔ={_fmt_cell('ShortΔ', r.get('ShortΔ'))} "
                 f"OTM%={r.get('OTM%','')} IV%={r.get('IV%','')} "
                 f"1YTouch%={_fmt_cell('1YTouch%', r.get('1YTouch%'))} "
