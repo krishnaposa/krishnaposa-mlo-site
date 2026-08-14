@@ -14,9 +14,10 @@ Important:
   ShortΔ = Black–Scholes |short-put delta|; pick closest to PCS_SHORT_DELTA_TARGET
   within PCS_SHORT_DELTA_MIN..MAX (default 0.18–0.28 / 0.22). Falls back to PIE_OTM_PCT.
   Rank = ShortΔ sweet-spot (0.20–0.24) + buffer (OTM%) + non-extreme Credit%
-  + Grade/Signal + 1Y Touch% (soft bands; not a hard filter).
+  + Grade/Signal + 1Y Touch% (soft bands; not a hard filter) + Quality.
   1Y Touch% = share of last-year entries where a same-OTM% / same-DTE short put
   was tagged by a later daily low before calendar expiry.
+  Quality = Credit% / 1YTouch% (same percent units; higher = more credit per historical challenge).
 """
 
 from __future__ import annotations
@@ -336,6 +337,16 @@ def _attach_1y_touch(rows: List[dict]) -> None:
             dte=dte,
         )
         r["1YTouch%"] = touch
+        r["Quality"] = _pcs_quality(r.get("Credit%"), touch)
+
+
+def _pcs_quality(credit_width_pct, touch_pct) -> Optional[float]:
+    """Credit% / 1YTouch% using percent units (e.g. 25.0 / 17.3 → 1.45)."""
+    cw = _safe_float(credit_width_pct, default=float("nan"))
+    touch = _safe_float(touch_pct, default=float("nan"))
+    if cw != cw or touch != touch or cw <= 0 or touch <= 0:
+        return None
+    return round((cw * 100.0) / touch, 2)
 
 
 def build_pcs_plan(
@@ -508,13 +519,15 @@ def _row_from_plan(plan: PutCreditSpread, grade: str, signal: str) -> dict:
         "OTM%": plan.otm_pct,
         "IV%": plan.iv_pct,
         "1YTouch%": None,
+        "Quality": None,
     }
 
 
 def _pcs_opportunity_rank(row: dict) -> float:
     """
     Prefer Grade A/B (within group), ShortΔ ~0.20–0.24, decent OTM buffer,
-    Credit% that is solid but not extreme, and low 1Y Touch% (soft bands).
+    Credit% that is solid but not extreme, low 1Y Touch%, and high Quality
+    (Credit% / 1YTouch%).
     """
     score = 0.0
 
@@ -587,6 +600,12 @@ def _pcs_opportunity_rank(row: dict) -> float:
             else:
                 score -= 22.0
 
+    q_raw = row.get("Quality")
+    if q_raw is not None and q_raw != "":
+        q = _safe_float(q_raw, default=float("nan"))
+        if q == q:
+            score += q * 12.0
+
     return score
 
 
@@ -655,6 +674,7 @@ def _build_rows_from_scan(
     rows.sort(
         key=lambda r: (
             _pcs_opportunity_rank(r),
+            _safe_float(r.get("Quality"), default=0.0),
             _safe_float(r.get("OTM%")),
             -abs(_safe_float(r.get("Credit%")) - PCS_RANK_CREDIT_SWEET),
         ),
@@ -736,6 +756,7 @@ PCS_TABLE_COLS = [
     "OTM%",
     "IV%",
     "1YTouch%",
+    "Quality",
 ]
 
 
@@ -773,6 +794,15 @@ def _fmt_cell(col: str, val) -> str:
             if x != x:
                 return "—"
             return f"{x:.1f}%"
+        except (TypeError, ValueError):
+            return "—"
+
+    if col == "Quality":
+        try:
+            x = float(val)
+            if x != x:
+                return "—"
+            return f"{x:.2f}"
         except (TypeError, ValueError):
             return "—"
 
@@ -842,9 +872,10 @@ def format_pcs_opportunities_html(
         "<p style='font-size:11px;color:#666'>"
         f"Funnel: {PCS_FUNNEL} ({_esc(funnel_note)}). "
         "Ranked by ShortΔ sweet-spot (~0.20–0.24) + buffer (OTM%) + non-extreme Credit% "
-        "+ 1Y Touch% + Grade. "
+        "+ 1Y Touch% + Quality + Grade. "
         "1Y Touch% = last-year share of same-OTM% / same-DTE windows where a daily low tagged the short barrier "
         "(≤15 excellent, 15–20 good, 20–25 ok, 25–30 caution, >30 penalize; not a hard filter). "
+        "Quality = Credit% / 1YTouch% (higher = more credit per historical challenge). "
         "Earnings blocked when report falls before spread expiry. "
         "Grade A/B = stronger setup; Grade C = secondary. "
         "Credit% = credit / spread width (not true POP); extreme Credit% is de-ranked. "
@@ -885,7 +916,8 @@ def format_pcs_opportunities_text(
                 f"Credit={r.get('Credit','')} Credit%={_fmt_cell('Credit%', r.get('Credit%'))} "
                 f"ShortΔ={_fmt_cell('ShortΔ', r.get('ShortΔ'))} "
                 f"OTM%={r.get('OTM%','')} IV%={r.get('IV%','')} "
-                f"1YTouch%={_fmt_cell('1YTouch%', r.get('1YTouch%'))}"
+                f"1YTouch%={_fmt_cell('1YTouch%', r.get('1YTouch%'))} "
+                f"Quality={_fmt_cell('Quality', r.get('Quality'))}"
             )
 
     add_rows(rows_b)
@@ -897,7 +929,7 @@ def format_pcs_opportunities_text(
     lines.append("")
     lines.append(
         f"Funnel: {PCS_FUNNEL} ({funnel_note}). "
-        "Ranked by ShortΔ sweet-spot + OTM buffer + non-extreme Credit% + 1Y Touch% + Grade. "
+        "Ranked by ShortΔ sweet-spot + OTM buffer + non-extreme Credit% + 1Y Touch% + Quality + Grade. "
         "Earnings blocked before spread expiry. Estimates only — verify chain before trading."
     )
 

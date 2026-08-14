@@ -16,7 +16,6 @@
     "entry_date": "2026-07-18",
     "contracts": 2
   },
-    
     {
       "symbol": "IONQ",
       "short_put": 45.0,
@@ -25,15 +24,6 @@
       "credit": 1.2,
       "entry_date": "2026-06-10",
       "contracts": 10
-    },
-    {
-      "symbol": "MXL",
-      "short_put": 65.0,
-      "long_put": 55.0,
-      "expiration": "2026-09-18",
-      "credit": 4.0,
-      "entry_date": "2026-06-10",
-      "contracts": 4
     },
     {
       "symbol": "META",
