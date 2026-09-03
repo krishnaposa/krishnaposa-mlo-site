@@ -68,7 +68,7 @@ tail -30 /home/opc/logs/karaoke-local.log
 
 scp -i /c/pers/oracleCloud/ssh-key-2026-05-11.key -r /c/pers/karaoke-local/ opc@129.158.220.48:/mnt/karaoke-data/karaoke-local/
 
-
+ssh -i ssh-key-2026-05-11.key opc@129.158.220.48
 
 # /etc/nginx/conf.d/sing.krishposa.com.conf
 # Prerequisites:
@@ -145,6 +145,11 @@ server {
 
 
 sudo nginx -t && sudo systemctl reload nginx
+
+export EMAIL_PASSWORD="eotr csau gwoj zkpr"
+./run_pcs_morning_adhoc.sh
+
+az functionapp config appsettings set -g mortgage-rg -n stocks-func-app --settings EMAIL_PASSWORD="eotr csau gwoj zkpr"
 
 
 

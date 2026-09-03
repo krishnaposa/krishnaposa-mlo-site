@@ -14,7 +14,7 @@ fi
 
 export SEND_EMAIL="${SEND_EMAIL:-1}"
 export EMAIL_FROM="${EMAIL_FROM:-krishna.posa@gmail.com}"
-export EMAIL_PASSWORD="${EMAIL_PASSWORD:-aoda cyqo izuy xdob}"
+export EMAIL_PASSWORD="${EMAIL_PASSWORD:-eotr csau gwoj zkpr}"
 export EMAIL_TO="${EMAIL_TO:-krishnaposa@gmail.com}"
 export PCS_MORNING_SUBJECT_PREFIX="${PCS_MORNING_SUBJECT_PREFIX:-PCS — today}"
 export PCS_SESSION_LABEL="${PCS_SESSION_LABEL:-"today's session"}"
